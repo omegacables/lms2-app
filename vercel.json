@@ -3,7 +3,6 @@
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "installCommand": "npm install",
-  "regions": ["nrt1"],
   "functions": {
     "app/api/**/*": {
       "maxDuration": 30
