@@ -1,0 +1,147 @@
+import { jsPDF } from 'jspdf';
+
+export function generateCertificatePDF(
+  certificate: any,
+  userName: string,
+  company?: string
+) {
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  // カスタムフォントの登録（Base64エンコードされた日本語フォントが必要）
+  // 実際の実装では、NotoSansJP等の日本語フォントをBase64で埋め込む必要があります
+
+  // 代替案: Canvas APIを使用して画像として生成し、PDFに埋め込む
+  const canvas = document.createElement('canvas');
+  canvas.width = 2970; // A4横 297mm × 10
+  canvas.height = 2100; // A4縦 210mm × 10
+  const ctx = canvas.getContext('2d')!;
+
+  // 背景
+  ctx.fillStyle = '#fafafa';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // 枠線
+  ctx.strokeStyle = '#c8b48c';
+  ctx.lineWidth = 20;
+  ctx.strokeRect(100, 100, 2770, 1900);
+  ctx.lineWidth = 5;
+  ctx.strokeRect(150, 150, 2670, 1800);
+
+  // フォント設定
+  ctx.fillStyle = '#323232';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // タイトル
+  ctx.font = 'bold 180px "Noto Sans JP", sans-serif';
+  ctx.fillText('修了証明書', canvas.width / 2, 450);
+
+  // Certificate of Completion
+  ctx.font = '60px "Noto Sans JP", sans-serif';
+  ctx.fillStyle = '#646464';
+  ctx.fillText('Certificate of Completion', canvas.width / 2, 550);
+
+  // 受講者名
+  ctx.font = 'bold 120px "Noto Sans JP", sans-serif';
+  ctx.fillStyle = '#323232';
+  ctx.fillText(userName, canvas.width / 2, 800);
+
+  // 会社名
+  if (company) {
+    ctx.font = '60px "Noto Sans JP", sans-serif';
+    ctx.fillStyle = '#505050';
+    ctx.fillText(company, canvas.width / 2, 900);
+  }
+
+  // 本文
+  ctx.font = '50px "Noto Sans JP", sans-serif';
+  ctx.fillStyle = '#505050';
+  ctx.fillText('上記の者は、下記のコースを修了したことを証明いたします。', canvas.width / 2, 1100);
+
+  // コース名
+  ctx.font = 'bold 90px "Noto Sans JP", sans-serif';
+  ctx.fillStyle = '#1e5ab4';
+  ctx.fillText(certificate.courses?.title || 'コース名', canvas.width / 2, 1300);
+
+  // 発行日
+  ctx.font = '45px "Noto Sans JP", sans-serif';
+  ctx.fillStyle = '#505050';
+  const issueDate = new Date(certificate.issued_at);
+  const formattedDate = `${issueDate.getFullYear()}年${issueDate.getMonth() + 1}月${issueDate.getDate()}日`;
+  ctx.fillText(`発行日: ${formattedDate}`, canvas.width / 2, 1500);
+
+  // 証明書番号
+  ctx.font = '40px "Noto Sans JP", sans-serif';
+  ctx.fillStyle = '#787878';
+  ctx.fillText(`証明書番号: ${certificate.certificate_number}`, canvas.width / 2, 1600);
+
+  // 検証コード
+  ctx.fillText(`検証コード: ${certificate.verification_code}`, canvas.width / 2, 1680);
+
+  // 署名欄
+  ctx.strokeStyle = '#969696';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(2000, 1750);
+  ctx.lineTo(2600, 1750);
+  ctx.stroke();
+  ctx.font = '40px "Noto Sans JP", sans-serif';
+  ctx.fillStyle = '#646464';
+  ctx.fillText('管理者署名', 2300, 1820);
+
+  // 装飾的な要素
+  ctx.strokeStyle = '#c8b48c';
+  ctx.lineWidth = 3;
+  // 左上
+  ctx.beginPath();
+  ctx.moveTo(200, 200);
+  ctx.lineTo(300, 200);
+  ctx.moveTo(200, 200);
+  ctx.lineTo(200, 300);
+  ctx.stroke();
+  // 右上
+  ctx.beginPath();
+  ctx.moveTo(2670, 200);
+  ctx.lineTo(2770, 200);
+  ctx.moveTo(2770, 200);
+  ctx.lineTo(2770, 300);
+  ctx.stroke();
+  // 左下
+  ctx.beginPath();
+  ctx.moveTo(200, 1850);
+  ctx.lineTo(300, 1850);
+  ctx.moveTo(200, 1750);
+  ctx.lineTo(200, 1850);
+  ctx.stroke();
+  // 右下
+  ctx.beginPath();
+  ctx.moveTo(2670, 1850);
+  ctx.lineTo(2770, 1850);
+  ctx.moveTo(2770, 1750);
+  ctx.lineTo(2770, 1850);
+  ctx.stroke();
+
+  // トロフィーアイコン
+  ctx.fillStyle = '#ffd700';
+  ctx.beginPath();
+  ctx.arc(canvas.width / 2, 1750, 80, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(canvas.width / 2, 1750, 60, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffd700';
+  ctx.beginPath();
+  ctx.arc(canvas.width / 2, 1750, 40, 0, Math.PI * 2);
+  ctx.fill();
+
+  // CanvasをPDFに追加
+  const imgData = canvas.toDataURL('image/png');
+  doc.addImage(imgData, 'PNG', 0, 0, 297, 210);
+
+  return doc;
+}

@@ -1,0 +1,662 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { AuthGuard } from '@/components/auth/AuthGuard';
+import { Button } from '@/components/ui/Button';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { supabase } from '@/lib/database/supabase';
+import { useAuth } from '@/stores/auth';
+import { EnhancedVideoPlayer } from '@/components/video/EnhancedVideoPlayer';
+import type { Tables } from '@/lib/database/supabase';
+import {
+  DocumentTextIcon,
+  ClipboardDocumentCheckIcon,
+  BookOpenIcon,
+  ChatBubbleLeftRightIcon,
+  ArrowDownTrayIcon,
+  PaperClipIcon,
+  DocumentIcon
+} from '@heroicons/react/24/outline';
+
+type Course = Tables<'courses'>;
+type Video = Tables<'videos'>;
+type VideoViewLog = Tables<'video_view_logs'>;
+
+type VideoResource = {
+  id: number;
+  video_id: number;
+  resource_type: 'material' | 'assignment' | 'reference' | 'explanation';
+  title: string;
+  description?: string;
+  file_url?: string;
+  file_name?: string;
+  file_size?: number;
+  file_type?: string;
+  content?: string;
+  display_order: number;
+  is_required: boolean;
+  created_at: string;
+};
+
+
+export default function VideoPlayerPage() {
+  const params = useParams();
+  const router = useRouter();
+  const { user } = useAuth();
+  const courseId = parseInt(params.id as string);
+  const videoId = parseInt(params.videoId as string);
+
+  const [course, setCourse] = useState<Course | null>(null);
+  const [video, setVideo] = useState<Video | null>(null);
+  const [allVideos, setAllVideos] = useState<Video[]>([]);
+  const [viewLog, setViewLog] = useState<VideoViewLog | null>(null);
+  const [resources, setResources] = useState<VideoResource[]>([]);
+  const [activeTab, setActiveTab] = useState<'description' | 'materials' | 'assignments' | 'references'>('description');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const sessionId = useRef<string>(crypto.randomUUID());
+
+  // ファイルダウンロード関数
+  const handleDownload = async (fileUrl: string, fileName: string) => {
+    try {
+      const response = await fetch(fileUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName || 'download';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('ダウンロードエラー:', error);
+      alert('ファイルのダウンロードに失敗しました');
+    }
+  };
+
+  useEffect(() => {
+    if (courseId && videoId && user) {
+      fetchVideoDetails();
+    }
+  }, [courseId, videoId, user]);
+
+
+  const fetchVideoDetails = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // コース詳細を取得
+      const { data: courseData, error: courseError } = await supabase
+        .from('courses')
+        .select('*')
+        .eq('id', courseId)
+        .single();
+
+      if (courseError) throw courseError;
+      setCourse(courseData);
+
+      // 動画詳細を取得
+      const { data: videoData, error: videoError } = await supabase
+        .from('videos')
+        .select('*')
+        .eq('id', videoId)
+        .eq('course_id', courseId)
+        .single();
+
+      if (videoError) throw videoError;
+      setVideo(videoData);
+
+      // コース内の全動画を取得
+      const { data: allVideosData, error: allVideosError } = await supabase
+        .from('videos')
+        .select('*')
+        .eq('course_id', courseId)
+        .eq('status', 'active')
+        .order('order_index', { ascending: true });
+
+      if (allVideosError) throw allVideosError;
+      setAllVideos(allVideosData || []);
+
+      // 既存の視聴ログを取得
+      const { data: logData, error: logError } = await supabase
+        .from('video_view_logs')
+        .select('*')
+        .eq('user_id', user!.id)
+        .eq('video_id', videoId)
+        .single();
+
+      if (logError && logError.code !== 'PGRST116') {
+        console.error('視聴ログ取得エラー:', logError);
+      } else if (logData) {
+        setViewLog(logData);
+      }
+
+      // 新しい視聴セッションを開始
+      await startViewingSession();
+
+      // リソースを取得
+      try {
+        const response = await fetch(`/api/videos/${videoId}/resources`);
+        if (response.ok) {
+          const { data: resourcesData } = await response.json();
+          setResources(resourcesData || []);
+        }
+      } catch (err) {
+        console.error('リソース取得エラー:', err);
+      }
+
+    } catch (err) {
+      console.error('動画詳細取得エラー:', err);
+      setError('動画の詳細情報を取得できませんでした');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startViewingSession = async () => {
+    if (!user || !video) return;
+
+    try {
+      // まず既存のログを確認
+      const { data: existingLog, error: checkError } = await supabase
+        .from('video_view_logs')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('video_id', videoId)
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error('既存ログ確認エラー:', checkError);
+        return;
+      }
+
+      if (existingLog) {
+        // 既存のログがある場合は更新
+        const { error } = await supabase
+          .from('video_view_logs')
+          .update({
+            session_id: sessionId.current,
+            status: 'in_progress',
+            last_updated: new Date().toISOString(),
+          })
+          .eq('id', existingLog.id);
+
+        if (error) {
+          console.error('視聴セッション更新エラー:', error);
+        }
+      } else {
+        // 新規作成
+        const { error } = await supabase
+          .from('video_view_logs')
+          .insert({
+            user_id: user.id,
+            video_id: videoId,
+            course_id: courseId,
+            session_id: sessionId.current,
+            current_position: 0,
+            total_watched_time: 0,
+            progress_percent: 0,
+            status: 'in_progress',
+            last_updated: new Date().toISOString(),
+          });
+
+        if (error) {
+          console.error('視聴セッション作成エラー:', error);
+        }
+      }
+    } catch (err) {
+      console.error('視聴セッション開始エラー:', err);
+    }
+  };
+
+  const updateProgress = async (position: number, videoDuration: number, progressPercent: number) => {
+    if (!user || !video) return;
+
+    const isCompleted = progressPercent >= (course?.completion_threshold || 95);
+
+    try {
+      // まず既存のログを確認
+      const { data: existingLog, error: checkError } = await supabase
+        .from('video_view_logs')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('video_id', videoId)
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error('既存ログ確認エラー:', checkError);
+        return;
+      }
+
+      const updateData: any = {
+        session_id: sessionId.current,
+        current_position: Math.round(position),
+        progress_percent: progressPercent,
+        status: isCompleted ? 'completed' as const : 'in_progress' as const,
+        last_updated: new Date().toISOString(),
+      };
+
+      if (isCompleted && (!existingLog || existingLog.status !== 'completed')) {
+        updateData.completed_at = new Date().toISOString();
+      }
+
+      // 既存のログがある場合はIDで更新、なければ新規作成
+      if (existingLog) {
+        // 総視聴時間を累積
+        updateData.total_watched_time = (existingLog.total_watched_time || 0) + 5; // 5秒ごとに更新と仮定
+
+        const { error } = await supabase
+          .from('video_view_logs')
+          .update(updateData)
+          .eq('id', existingLog.id);
+
+        if (error) {
+          console.error('進捗更新エラー:', error);
+        } else {
+          // ローカル状態を更新
+          setViewLog({ ...existingLog, ...updateData });
+        }
+      } else {
+        // 新規作成（通常はstartViewingSessionで作成されるはず）
+        const insertData = {
+          ...updateData,
+          user_id: user.id,
+          video_id: videoId,
+          course_id: courseId,
+          total_watched_time: 5,
+        };
+
+        const { data: newLog, error } = await supabase
+          .from('video_view_logs')
+          .insert(insertData)
+          .select()
+          .single();
+
+        if (error) {
+          console.error('進捗作成エラー:', error);
+        } else if (newLog) {
+          setViewLog(newLog);
+        }
+      }
+    } catch (err) {
+      console.error('進捗更新エラー:', err);
+    }
+  };
+
+  const handleVideoComplete = () => {
+    console.log('動画視聴完了');
+    // 必要に応じて完了時の処理を追加
+  };
+
+
+  const formatTime = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    if (minutes < 60) {
+      return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    return `${hours}:${remainingMinutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
+  const getNextVideo = () => {
+    const currentIndex = allVideos.findIndex(v => v.id === videoId);
+    return currentIndex < allVideos.length - 1 ? allVideos[currentIndex + 1] : null;
+  };
+
+  const getPreviousVideo = () => {
+    const currentIndex = allVideos.findIndex(v => v.id === videoId);
+    return currentIndex > 0 ? allVideos[currentIndex - 1] : null;
+  };
+
+  if (loading) {
+    return (
+      <AuthGuard>
+        <div className="flex justify-center items-center min-h-screen">
+          <LoadingSpinner size="lg" />
+        </div>
+      </AuthGuard>
+    );
+  }
+
+  if (error || !video || !course) {
+    return (
+      <AuthGuard>
+        <div className="container mx-auto px-4 py-8">
+          <div className="text-center py-12">
+            <p className="text-destructive mb-4">
+              {error || '動画が見つかりませんでした'}
+            </p>
+            <Link href={`/courses/${courseId}`}>
+              <Button variant="outline">
+                コースに戻る
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </AuthGuard>
+    );
+  }
+
+  const progressPercent = viewLog?.progress_percent || 0;
+  const nextVideo = getNextVideo();
+  const prevVideo = getPreviousVideo();
+
+  return (
+    <AuthGuard>
+      <div className="min-h-screen bg-black">
+        {/* ビデオプレイヤー */}
+        <div className="relative bg-black">
+          <div className="aspect-video max-h-[70vh]">
+            <EnhancedVideoPlayer
+              videoUrl={video.file_url}
+              videoId={videoId}
+              title={video.title}
+              currentPosition={viewLog?.current_position || 0}
+              onProgressUpdate={updateProgress}
+              onComplete={handleVideoComplete}
+              enableSkipPrevention={true}
+              completionThreshold={course?.completion_threshold || 95}
+              isCompleted={viewLog?.status === 'completed'}
+            />
+          </div>
+
+        </div>
+
+        {/* 動画情報とコントロール */}
+        <div className="bg-background text-foreground p-6">
+          <div className="max-w-6xl mx-auto">
+            <div className="grid md:grid-cols-3 gap-6">
+              {/* 動画情報 */}
+              <div className="md:col-span-2">
+                <h1 className="text-2xl font-bold mb-2">{video.title}</h1>
+
+                <div className="flex items-center gap-4 mb-4">
+                  <span className="text-sm text-muted-foreground">
+                    コース: {course.title}
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    進捗: {progressPercent}%
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    時間: {formatTime(video.duration)}
+                  </span>
+                </div>
+
+                {/* 進捗バー */}
+                <div className="w-full bg-muted rounded-full h-2 mb-6">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+
+                {/* タブナビゲーション */}
+                <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
+                  <nav className="-mb-px flex space-x-8">
+                    <button
+                      onClick={() => setActiveTab('description')}
+                      className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                        activeTab === 'description'
+                          ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                      }`}
+                    >
+                      <DocumentTextIcon className="h-5 w-5 inline-block mr-2" />
+                      説明
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('materials')}
+                      className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                        activeTab === 'materials'
+                          ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                      }`}
+                    >
+                      <PaperClipIcon className="h-5 w-5 inline-block mr-2" />
+                      配布資料 {resources.filter(r => r.resource_type === 'material').length > 0 &&
+                        `(${resources.filter(r => r.resource_type === 'material').length})`}
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('assignments')}
+                      className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                        activeTab === 'assignments'
+                          ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                      }`}
+                    >
+                      <ClipboardDocumentCheckIcon className="h-5 w-5 inline-block mr-2" />
+                      課題 {resources.filter(r => r.resource_type === 'assignment').length > 0 &&
+                        `(${resources.filter(r => r.resource_type === 'assignment').length})`}
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('references')}
+                      className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                        activeTab === 'references'
+                          ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                      }`}
+                    >
+                      <BookOpenIcon className="h-5 w-5 inline-block mr-2" />
+                      参考資料 {resources.filter(r => r.resource_type === 'reference').length > 0 &&
+                        `(${resources.filter(r => r.resource_type === 'reference').length})`}
+                    </button>
+                  </nav>
+                </div>
+
+                {/* タブコンテンツ */}
+                <div className="mb-6">
+                  {activeTab === 'description' && (
+                    <div>
+                      {video.description ? (
+                        <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                          {video.description}
+                        </p>
+                      ) : (
+                        <p className="text-gray-500 dark:text-gray-400 italic">
+                          説明はありません
+                        </p>
+                      )}
+
+                      {/* 解説セクション */}
+                      {resources.filter(r => r.resource_type === 'explanation').map(resource => (
+                        <div key={resource.id} className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                          <h4 className="font-semibold text-blue-900 dark:text-blue-400 mb-2">
+                            <ChatBubbleLeftRightIcon className="h-5 w-5 inline-block mr-2" />
+                            {resource.title}
+                          </h4>
+                          {resource.content && (
+                            <div className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                              {resource.content}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {activeTab === 'materials' && (
+                    <div className="space-y-3">
+                      {resources.filter(r => r.resource_type === 'material').length > 0 ? (
+                        resources.filter(r => r.resource_type === 'material').map(resource => (
+                          <div key={resource.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                            <div className="flex items-center space-x-3">
+                              <DocumentIcon className="h-6 w-6 text-gray-500" />
+                              <div>
+                                <h4 className="font-medium text-gray-900 dark:text-gray-100">{resource.title}</h4>
+                                {resource.description && (
+                                  <p className="text-sm text-gray-500 dark:text-gray-400">{resource.description}</p>
+                                )}
+                              </div>
+                            </div>
+                            {resource.file_url && (
+                              <button
+                                onClick={() => handleDownload(resource.file_url, resource.file_name || resource.title)}
+                                className="flex items-center px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                              >
+                                <ArrowDownTrayIcon className="h-4 w-4 mr-1" />
+                                ダウンロード
+                              </button>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-gray-500 dark:text-gray-400 italic">配布資料はありません</p>
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab === 'assignments' && (
+                    <div className="space-y-3">
+                      {resources.filter(r => r.resource_type === 'assignment').length > 0 ? (
+                        resources.filter(r => r.resource_type === 'assignment').map(resource => (
+                          <div key={resource.id} className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                            <div className="flex items-start space-x-3">
+                              <ClipboardDocumentCheckIcon className="h-6 w-6 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-1" />
+                              <div className="flex-1">
+                                <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-1">
+                                  {resource.title}
+                                  {resource.is_required && (
+                                    <span className="ml-2 text-xs bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 px-2 py-0.5 rounded">必須</span>
+                                  )}
+                                </h4>
+                                {resource.description && (
+                                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{resource.description}</p>
+                                )}
+                                {resource.content && (
+                                  <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap mb-3">
+                                    {resource.content}
+                                  </div>
+                                )}
+                                <Button
+                                  size="sm"
+                                  variant="primary"
+                                  onClick={() => router.push('/homework')}
+                                >
+                                  課題を提出
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-gray-500 dark:text-gray-400 italic">課題はありません</p>
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab === 'references' && (
+                    <div className="space-y-3">
+                      {resources.filter(r => r.resource_type === 'reference').length > 0 ? (
+                        resources.filter(r => r.resource_type === 'reference').map(resource => (
+                          <div key={resource.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                            <div className="flex items-center space-x-3">
+                              <BookOpenIcon className="h-6 w-6 text-gray-500" />
+                              <div>
+                                <h4 className="font-medium text-gray-900 dark:text-gray-100">{resource.title}</h4>
+                                {resource.description && (
+                                  <p className="text-sm text-gray-500 dark:text-gray-400">{resource.description}</p>
+                                )}
+                              </div>
+                            </div>
+                            {resource.file_url && (
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleDownload(resource.file_url, resource.file_name || resource.title)}
+                                  className="flex items-center px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                                >
+                                  <ArrowDownTrayIcon className="h-4 w-4 mr-1" />
+                                  ダウンロード
+                                </button>
+                                <a
+                                  href={resource.file_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center px-3 py-1 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                                >
+                                  開く
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-gray-500 dark:text-gray-400 italic">参考資料はありません</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* ナビゲーションボタン */}
+                <div className="flex gap-4">
+                  {prevVideo && (
+                    <Link href={`/courses/${courseId}/videos/${prevVideo.id}`}>
+                      <Button variant="outline">
+                        ← 前の動画
+                      </Button>
+                    </Link>
+                  )}
+                  
+                  <Link href={`/courses/${courseId}`}>
+                    <Button variant="outline">
+                      コースに戻る
+                    </Button>
+                  </Link>
+
+                  {nextVideo && (
+                    <Link href={`/courses/${courseId}/videos/${nextVideo.id}`}>
+                      <Button>
+                        次の動画 →
+                      </Button>
+                    </Link>
+                  )}
+                </div>
+              </div>
+
+              {/* コース内の他の動画 */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4">このコースの動画</h3>
+                <div className="space-y-2">
+                  {allVideos.map((v, index) => (
+                    <Link
+                      key={v.id}
+                      href={`/courses/${courseId}/videos/${v.id}`}
+                      className={`block p-3 rounded-lg border transition-colors ${
+                        v.id === videoId 
+                          ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200' 
+                          : 'bg-card border-border hover:bg-muted'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm text-muted-foreground">
+                          {index + 1}.
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {v.title}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatTime(v.duration)}
+                          </p>
+                        </div>
+                        {v.id === videoId && (
+                          <div className="w-2 h-2 bg-blue-600 rounded-full" />
+                        )}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </AuthGuard>
+  );
+}

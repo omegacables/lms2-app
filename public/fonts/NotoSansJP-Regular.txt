@@ -1,0 +1,3 @@
+This is a placeholder for the Japanese font file.
+For production use, please download NotoSansJP-Regular.ttf from Google Fonts
+and place it in this directory.
