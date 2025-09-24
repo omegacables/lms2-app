@@ -1,0 +1,3 @@
+name,type,value,ttl,priority
+@,A,76.76.21.21,3600,
+www,CNAME,cname.vercel-dns.com,3600,
