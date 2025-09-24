@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/stores/auth';
 import { UserRole } from '@/types';
@@ -13,26 +13,31 @@ interface AuthGuardProps {
   fallback?: React.ReactNode;
 }
 
-export function AuthGuard({ 
-  children, 
-  requiredRoles, 
+export function AuthGuard({
+  children,
+  requiredRoles,
   redirectTo = '/auth/login',
-  fallback 
+  fallback
 }: AuthGuardProps) {
   const { user, loading, initialized, initialize } = useAuth();
   const router = useRouter();
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
+    setIsMounted(true);
     console.log('[AuthGuard] Component mounted - initialized:', initialized, 'loading:', loading, 'user:', user?.email);
     if (!initialized) {
       console.log('[AuthGuard] Calling initialize...');
       initialize();
     }
-  }, [initialized, initialize]);
+  }, []);
 
   useEffect(() => {
+    // マウントされていない場合はリダイレクトしない
+    if (!isMounted) return;
+
     console.log('[AuthGuard] Auth check - user:', user?.email, 'loading:', loading, 'initialized:', initialized);
-    
+
     if (!initialized || loading) return;
 
     // 開発用バイパスユーザーの場合は認証チェックをスキップ
@@ -44,7 +49,10 @@ export function AuthGuard({
     // 未認証の場合はログインページへリダイレクト
     if (!user) {
       console.log('[AuthGuard] No user, redirecting to:', redirectTo);
-      router.push(redirectTo);
+      // setTimeoutを使用してマウント後にリダイレクト
+      setTimeout(() => {
+        router.push(redirectTo);
+      }, 0);
       return;
     }
 
@@ -52,14 +60,16 @@ export function AuthGuard({
     if (requiredRoles && user.profile) {
       if (!requiredRoles.includes(user.profile.role)) {
         console.log('[AuthGuard] Insufficient permissions, redirecting to /unauthorized');
-        router.push('/unauthorized');
+        setTimeout(() => {
+          router.push('/unauthorized');
+        }, 0);
         return;
       }
     }
-  }, [user, loading, initialized, requiredRoles, router, redirectTo]);
+  }, [user, loading, initialized, requiredRoles, router, redirectTo, isMounted]);
 
-  // 初期化中またはローディング中
-  if (!initialized || loading) {
+  // マウントされていない、または初期化中、またはローディング中
+  if (!isMounted || !initialized || loading) {
     return <LoadingPage message="認証情報を確認中..." />;
   }
 
@@ -104,34 +114,39 @@ export function InstructorGuard({ children, fallback }: { children: React.ReactN
 }
 
 // ゲストガード（未認証ユーザー専用）
-export function GuestGuard({ 
-  children, 
-  redirectTo = '/dashboard' 
-}: { 
-  children: React.ReactNode; 
-  redirectTo?: string; 
+export function GuestGuard({
+  children,
+  redirectTo = '/dashboard'
+}: {
+  children: React.ReactNode;
+  redirectTo?: string;
 }) {
   const { user, loading, initialized, initialize } = useAuth();
   const router = useRouter();
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
+    setIsMounted(true);
     if (!initialized) {
       initialize();
     }
-  }, [initialized, initialize]);
+  }, []);
 
   useEffect(() => {
+    if (!isMounted) return;
     if (!initialized || loading) return;
 
     // 認証済みの場合はダッシュボードへリダイレクト
     if (user) {
-      router.push(redirectTo);
+      setTimeout(() => {
+        router.push(redirectTo);
+      }, 0);
       return;
     }
-  }, [user, loading, initialized, router, redirectTo]);
+  }, [user, loading, initialized, router, redirectTo, isMounted]);
 
-  // 初期化中またはローディング中
-  if (!initialized || loading) {
+  // マウントされていない、または初期化中、またはローディング中
+  if (!isMounted || !initialized || loading) {
     return <LoadingPage message="認証情報を確認中..." />;
   }
 
