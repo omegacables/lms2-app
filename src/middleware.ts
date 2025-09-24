@@ -3,6 +3,9 @@ import type { NextRequest } from 'next/server';
 import { createMiddlewareSupabaseClient } from '@/lib/database/supabase';
 
 export async function middleware(req: NextRequest) {
+  // 一時的にミドルウェアを完全に無効化（デバッグ用）
+  return NextResponse.next();
+
   // 開発環境では一時的にミドルウェアを簡素化
   if (process.env.NODE_ENV === 'development') {
     console.log('[Middleware] Development mode - simplified middleware');
