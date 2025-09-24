@@ -224,6 +224,20 @@ export default function CourseDetailPage() {
                 </p>
               )}
 
+              {/* 学習開始ボタン */}
+              <div className="mb-6">
+                <Button
+                  onClick={() => router.push(`/courses/${courseId}/learn`)}
+                  className="flex items-center gap-2"
+                  size="lg"
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                  </svg>
+                  {calculateCourseProgress() > 0 ? '学習を続ける' : '学習を開始'}
+                </Button>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 {course.difficulty_level && (
                   <div className="bg-background rounded-lg p-4 border border-border">

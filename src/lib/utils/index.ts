@@ -250,6 +250,27 @@ export const throttle = <T extends (...args: any[]) => any>(
 };
 
 /**
+ * Debounce function - delays function execution until after wait milliseconds
+ */
+export const debounce = <T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): ((...args: Parameters<T>) => void) => {
+  let timeoutId: NodeJS.Timeout | null = null;
+
+  return (...args: Parameters<T>) => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+
+    timeoutId = setTimeout(() => {
+      func(...args);
+      timeoutId = null;
+    }, wait);
+  };
+};
+
+/**
  * エラーハンドリングユーティリティ
  */
 export const handleError = (error: unknown): string => {
