@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -21,14 +20,7 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { signIn } = useAuth();
-  const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
-
-  // コンポーネントがマウントされたことを確認
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
 
   // URLパラメータからredirectToを取得
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
@@ -77,11 +69,9 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
 
       console.log('[LoginForm] Redirecting to:', redirectUrl);
 
-      // コンポーネントがマウントされていることを確認してからリダイレクト
-      if (isMounted) {
-        // window.locationを使用して確実にリダイレクト
-        window.location.href = redirectUrl;
-      }
+      // window.locationを使用して確実にリダイレクト
+      // React Routerを使わず、ブラウザのネイティブナビゲーションを使用
+      window.location.replace(redirectUrl);
 
     } catch (err) {
       console.error('[LoginForm] Unexpected error:', err);
