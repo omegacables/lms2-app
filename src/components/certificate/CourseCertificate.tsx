@@ -1,10 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { CheckCircleIcon, DocumentArrowDownIcon, AcademicCapIcon } from '@heroicons/react/24/solid';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { generateCertificatePDF } from '@/lib/utils/certificatePDF';
+import { generateCertificatePDF, type CertificateData } from '@/lib/utils/certificatePDF';
+import { supabase } from '@/lib/database/supabase';
+import { generateCertificateId } from '@/lib/utils';
 import type { Course, UserProfile } from '@/types';
 
 interface CourseCertificateProps {
@@ -26,21 +28,52 @@ export function CourseCertificate({
 }: CourseCertificateProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [existingCertificate, setExistingCertificate] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // すべての動画を視聴したかチェック
   const isEligibleForCertificate = progress.completedVideos === progress.totalVideos;
 
+  // 既存の証明書をチェック
+  useEffect(() => {
+    const checkExistingCertificate = async () => {
+      if (!user || !course) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('certificates')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('course_id', course.id)
+          .single();
+
+        if (data) {
+          setExistingCertificate(data);
+        }
+      } catch (err) {
+        console.error('Error checking certificate:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkExistingCertificate();
+  }, [user, course]);
+
   // 証明書データの準備
-  const certificateData = {
-    certificateId: `CERT-${course.id}-${user.id}-${Date.now()}`,
-    courseName: course.title,
-    userName: user.display_name || user.email,
-    completionDate: format(completionDate, 'yyyy年MM月dd日', { locale: ja }),
-    issueDate: format(new Date(), 'yyyy年MM月dd日', { locale: ja }),
-    totalVideos: progress.totalVideos,
-    totalWatchTime: Math.round(progress.totalWatchTime / 60), // 分に変換
-    courseDescription: course.description || '',
-    organization: '企業研修LMS',
+  const prepareCertificateData = (): CertificateData => {
+    return {
+      certificateId: existingCertificate?.certificate_number || generateCertificateId(),
+      courseName: course.title,
+      userName: user.display_name || user.email,
+      completionDate: format(completionDate, 'yyyy年MM月dd日', { locale: ja }),
+      issueDate: format(new Date(), 'yyyy年MM月dd日', { locale: ja }),
+      totalVideos: progress.totalVideos,
+      totalWatchTime: Math.round(progress.totalWatchTime / 60), // 分に変換
+      courseDescription: course.description || '',
+      organization: '企業研修LMS',
+      company: user.company_name || undefined,
+    };
   };
 
   const handleDownloadCertificate = async () => {
@@ -53,10 +86,46 @@ export function CourseCertificate({
     setError(null);
 
     try {
-      // PDF生成
-      await generateCertificatePDF(certificateData);
+      const certificateData = prepareCertificateData();
 
-      // 成功メッセージを表示してもよい
+      // 既存の証明書がない場合は新規作成
+      if (!existingCertificate) {
+        // PDF生成（証明書番号と検証コードも生成される）
+        const result = await generateCertificatePDF(certificateData);
+
+        // データベースに保存
+        const { data: newCertificate, error: dbError } = await supabase
+          .from('certificates')
+          .insert({
+            user_id: user.id,
+            course_id: course.id,
+            certificate_number: result.certificateNumber,
+            verification_code: result.verificationCode,
+            issued_at: new Date().toISOString(),
+            completion_date: completionDate.toISOString(),
+            total_videos: progress.totalVideos,
+            total_watch_time: progress.totalWatchTime,
+            status: 'active'
+          })
+          .select()
+          .single();
+
+        if (dbError) {
+          console.error('Certificate save error:', dbError);
+          // エラーがカラム不足の場合は、証明書は生成されたことを伝える
+          if (dbError.code === 'PGRST204' || dbError.message?.includes('column')) {
+            setError('証明書は生成されましたが、データベースへの保存に失敗しました。管理者に連絡してください。');
+          } else {
+            throw dbError;
+          }
+        } else {
+          setExistingCertificate(newCertificate);
+        }
+      } else {
+        // 既存の証明書を再ダウンロード
+        await generateCertificatePDF(certificateData);
+      }
+
       console.log('Certificate generated successfully');
     } catch (err) {
       console.error('Certificate generation error:', err);
@@ -160,7 +229,7 @@ export function CourseCertificate({
       {/* 発行ボタン */}
       <button
         onClick={handleDownloadCertificate}
-        disabled={!isEligibleForCertificate || isGenerating}
+        disabled={!isEligibleForCertificate || isGenerating || isLoading}
         className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium transition-colors ${
           isEligibleForCertificate
             ? 'bg-blue-600 hover:bg-blue-700 text-white'
@@ -171,6 +240,11 @@ export function CourseCertificate({
           <>
             <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
             生成中...
+          </>
+        ) : existingCertificate ? (
+          <>
+            <DocumentArrowDownIcon className="w-5 h-5" />
+            修了証を再ダウンロード
           </>
         ) : (
           <>

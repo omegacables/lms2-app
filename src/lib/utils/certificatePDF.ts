@@ -1,10 +1,24 @@
 import { jsPDF } from 'jspdf';
+import { generateCertificateId } from './index';
 
-export function generateCertificatePDF(
-  certificate: any,
-  userName: string,
-  company?: string
-) {
+export interface CertificateData {
+  certificateId?: string;
+  courseName: string;
+  userName: string;
+  completionDate: string;
+  issueDate: string;
+  totalVideos: number;
+  totalWatchTime: number;
+  courseDescription?: string;
+  organization?: string;
+  company?: string;
+}
+
+export async function generateCertificatePDF(certificateData: CertificateData) {
+  // 証明書IDと検証コードを生成
+  const certificateNumber = certificateData.certificateId || generateCertificateId();
+  const verificationCode = Math.random().toString(36).substring(2, 18).toUpperCase();
+
   const doc = new jsPDF({
     orientation: 'landscape',
     unit: 'mm',
@@ -48,13 +62,13 @@ export function generateCertificatePDF(
   // 受講者名
   ctx.font = 'bold 120px "Noto Sans JP", sans-serif';
   ctx.fillStyle = '#323232';
-  ctx.fillText(userName, canvas.width / 2, 800);
+  ctx.fillText(certificateData.userName, canvas.width / 2, 800);
 
   // 会社名
-  if (company) {
+  if (certificateData.company) {
     ctx.font = '60px "Noto Sans JP", sans-serif';
     ctx.fillStyle = '#505050';
-    ctx.fillText(company, canvas.width / 2, 900);
+    ctx.fillText(certificateData.company, canvas.width / 2, 900);
   }
 
   // 本文
@@ -65,22 +79,20 @@ export function generateCertificatePDF(
   // コース名
   ctx.font = 'bold 90px "Noto Sans JP", sans-serif';
   ctx.fillStyle = '#1e5ab4';
-  ctx.fillText(certificate.courses?.title || 'コース名', canvas.width / 2, 1300);
+  ctx.fillText(certificateData.courseName, canvas.width / 2, 1300);
 
   // 発行日
   ctx.font = '45px "Noto Sans JP", sans-serif';
   ctx.fillStyle = '#505050';
-  const issueDate = new Date(certificate.issued_at);
-  const formattedDate = `${issueDate.getFullYear()}年${issueDate.getMonth() + 1}月${issueDate.getDate()}日`;
-  ctx.fillText(`発行日: ${formattedDate}`, canvas.width / 2, 1500);
+  ctx.fillText(`発行日: ${certificateData.issueDate}`, canvas.width / 2, 1500);
 
   // 証明書番号
   ctx.font = '40px "Noto Sans JP", sans-serif';
   ctx.fillStyle = '#787878';
-  ctx.fillText(`証明書番号: ${certificate.certificate_number}`, canvas.width / 2, 1600);
+  ctx.fillText(`証明書番号: ${certificateNumber}`, canvas.width / 2, 1600);
 
   // 検証コード
-  ctx.fillText(`検証コード: ${certificate.verification_code}`, canvas.width / 2, 1680);
+  ctx.fillText(`検証コード: ${verificationCode}`, canvas.width / 2, 1680);
 
   // 署名欄
   ctx.strokeStyle = '#969696';
@@ -143,5 +155,14 @@ export function generateCertificatePDF(
   const imgData = canvas.toDataURL('image/png');
   doc.addImage(imgData, 'PNG', 0, 0, 297, 210);
 
-  return doc;
+  // PDFをダウンロード
+  const fileName = `certificate_${certificateData.courseName.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.pdf`;
+  doc.save(fileName);
+
+  // 証明書情報を返す（データベースへの保存用）
+  return {
+    certificateNumber,
+    verificationCode,
+    doc
+  };
 }

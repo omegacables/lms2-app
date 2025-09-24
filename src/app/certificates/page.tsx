@@ -20,17 +20,20 @@ import {
   DocumentArrowDownIcon
 } from '@heroicons/react/24/outline';
 import type { Tables } from '@/lib/database/supabase';
-import { generateCertificatePDF } from '@/lib/utils/certificatePDF';
+import { generateCertificatePDF, type CertificateData } from '@/lib/utils/certificatePDF';
+import { formatDuration } from '@/lib/utils';
 
 type Certificate = Tables<'certificates'> & {
   courses?: {
+    id: number;
     title: string;
     category_id: number;
     description?: string;
+    thumbnail_url?: string;
   };
-  user_profile?: {
+  user_profiles?: {
     display_name: string;
-    company?: string;
+    company_name?: string;
   };
 };
 
@@ -40,52 +43,32 @@ export default function CertificatesPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedYear, setSelectedYear] = useState<string>('all');
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
 
-  // モック証明書データ
-  const mockCertificates: Certificate[] = [
-    {
-      id: 1,
-      user_id: user?.id || 'mock-user',
-      course_id: 1,
-      certificate_number: 'LMS-2024-001',
-      issued_at: '2024-01-15T10:00:00Z',
-      expires_at: null,
-      is_active: true,
-      verification_code: 'ABC123DEF456',
-      pdf_url: null,
-      template_id: null,
-      created_at: '2024-01-15T10:00:00Z',
-      updated_at: '2024-01-15T10:00:00Z',
-      courses: {
-        title: 'JavaScript基礎講座',
-        category_id: 1,
-      }
-    },
-    {
-      id: 2,
-      user_id: user?.id || 'mock-user',
-      course_id: 3,
-      certificate_number: 'LMS-2024-002',
-      issued_at: '2024-01-20T14:30:00Z',
-      expires_at: null,
-      is_active: true,
-      verification_code: 'XYZ789GHI012',
-      pdf_url: null,
-      template_id: null,
-      created_at: '2024-01-20T14:30:00Z',
-      updated_at: '2024-01-20T14:30:00Z',
-      courses: {
-        title: 'データベース設計',
-        category_id: 2,
-      }
-    },
-  ];
+  const fetchUserProfile = async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error) throw error;
+      setUserProfile(data);
+    } catch (err) {
+      console.error('Error fetching user profile:', err);
+    }
+  };
 
   useEffect(() => {
-    // モックデータを使用
-    setCertificates(mockCertificates);
-    setLoading(false);
-  }, []);
+    if (user) {
+      fetchCertificates();
+      fetchUserProfile();
+    }
+  }, [user]);
 
   const fetchCertificates = async () => {
     if (!user) return;
@@ -96,10 +79,16 @@ export default function CertificatesPage() {
         .from('certificates')
         .select(`
           *,
-          courses(title, category_id)
+          courses (
+            id,
+            title,
+            category_id,
+            description,
+            thumbnail_url
+          )
         `)
         .eq('user_id', user.id)
-        .eq('is_active', true)
+        .eq('status', 'active')
         .order('issued_at', { ascending: false });
 
       if (error) {
@@ -116,15 +105,38 @@ export default function CertificatesPage() {
   };
 
   const handleDownload = async (certificate: Certificate) => {
-    try {
-      const userName = user?.profile?.display_name || user?.email || '受講者名';
-      const company = user?.profile?.company;
+    if (downloadingId === certificate.id) return;
 
-      const doc = generateCertificatePDF(certificate, userName, company);
-      doc.save(`certificate_${certificate.certificate_number}.pdf`);
+    setDownloadingId(certificate.id);
+
+    try {
+      const certificateData: CertificateData = {
+        certificateId: certificate.certificate_number,
+        courseName: certificate.courses?.title || 'コース名',
+        userName: userProfile?.display_name || user?.email || 'ユーザー名',
+        completionDate: new Date(certificate.completion_date || certificate.issued_at).toLocaleDateString('ja-JP', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        }),
+        issueDate: new Date(certificate.issued_at).toLocaleDateString('ja-JP', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        }),
+        totalVideos: certificate.total_videos || 0,
+        totalWatchTime: Math.round((certificate.total_watch_time || 0) / 60),
+        courseDescription: certificate.courses?.description || '',
+        organization: '企業研修LMS',
+        company: userProfile?.company_name || undefined,
+      };
+
+      await generateCertificatePDF(certificateData);
     } catch (error) {
       console.error('ダウンロードエラー:', error);
       alert('ダウンロードに失敗しました。');
+    } finally {
+      setDownloadingId(null);
     }
   };
 
@@ -220,7 +232,7 @@ export default function CertificatesPage() {
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-600 dark:text-gray-400">有効な証明書</p>
                   <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {certificates.filter(cert => cert.is_active).length}
+                    {certificates.filter(cert => cert.status === 'active').length}
                   </p>
                 </div>
               </div>
@@ -296,14 +308,19 @@ export default function CertificatesPage() {
                             </div>
                           </div>
                           
-                          <div className="flex items-center">
+                          <div className="flex items-center gap-2">
                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                               <CheckCircleIcon className="h-3 w-3 mr-1" />
                               有効
                             </span>
-                            {certificate.expires_at && (
-                              <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
-                                有効期限: {new Date(certificate.expires_at).toLocaleDateString('ja-JP')}
+                            {certificate.total_watch_time && (
+                              <span className="text-xs text-gray-500 dark:text-gray-400">
+                                学習時間: {formatDuration(certificate.total_watch_time)}
+                              </span>
+                            )}
+                            {certificate.total_videos && (
+                              <span className="text-xs text-gray-500 dark:text-gray-400">
+                                動画数: {certificate.total_videos}本
                               </span>
                             )}
                           </div>
@@ -331,10 +348,20 @@ export default function CertificatesPage() {
                         <Button
                           size="sm"
                           onClick={() => handleDownload(certificate)}
-                          className="bg-blue-600 hover:bg-blue-700 flex items-center"
+                          disabled={downloadingId === certificate.id}
+                          className="bg-blue-600 hover:bg-blue-700 flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <DocumentArrowDownIcon className="h-4 w-4 mr-1" />
-                          PDF
+                          {downloadingId === certificate.id ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-1" />
+                              ダウンロード中...
+                            </>
+                          ) : (
+                            <>
+                              <DocumentArrowDownIcon className="h-4 w-4 mr-1" />
+                              PDF
+                            </>
+                          )}
                         </Button>
                       </div>
                     </div>
