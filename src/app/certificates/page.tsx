@@ -27,7 +27,6 @@ type Certificate = Tables<'certificates'> & {
   courses?: {
     id: number;
     title: string;
-    category_id: number;
     description?: string;
     thumbnail_url?: string;
   };
@@ -82,7 +81,6 @@ export default function CertificatesPage() {
           courses (
             id,
             title,
-            category_id,
             description,
             thumbnail_url
           )
