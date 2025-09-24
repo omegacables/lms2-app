@@ -42,22 +42,24 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
     console.log('[LoginForm] Login attempt started');
     setError(null);
     setIsLoading(true);
-    
+
     try {
       const result = await signIn(data.email, data.password);
-      
+
       if (result.error) {
         console.error('[LoginForm] Login failed:', result.error);
         setError(result.error);
+        setIsLoading(false);
         return;
       }
 
-      console.log('[LoginForm] Login successful');
-      
-      // ユーザーのロールに応じてリダイレクト先を決定
+      console.log('[LoginForm] Login successful, result:', result);
+
+      // ログイン成功後、強制的にリダイレクト
+      // windowオブジェクトを使用して確実にリダイレクトする
       const userRole = result.user?.profile?.role;
       let redirectUrl = urlRedirectTo;
-      
+
       // URLパラメータが指定されていない場合のデフォルト動作
       if (!searchParams?.get('redirectTo')) {
         if (userRole === 'admin') {
@@ -66,19 +68,25 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
           redirectUrl = '/dashboard';
         }
       }
-      
+
       console.log('[LoginForm] Redirecting to:', redirectUrl);
-      
-      // Next.jsのルーターを使用してリダイレクト
-      await router.push(redirectUrl);
-      
+
+      // 複数の方法でリダイレクトを試みる
+      setTimeout(() => {
+        // Next.jsのルーターを使用
+        router.push(redirectUrl);
+        // 念のためwindow.locationも使用
+        setTimeout(() => {
+          if (typeof window !== 'undefined') {
+            window.location.href = redirectUrl;
+          }
+        }, 500);
+      }, 100);
+
     } catch (err) {
       console.error('[LoginForm] Unexpected error:', err);
       setError('ログインに失敗しました');
-    } finally {
-      // 必ずローディング状態を解除
       setIsLoading(false);
-      console.log('[LoginForm] Loading state cleared');
     }
   };
 
