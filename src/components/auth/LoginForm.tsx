@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
@@ -23,6 +23,12 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
   const { signIn } = useAuth();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+
+  // コンポーネントがマウントされたことを確認
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // URLパラメータからredirectToを取得
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
@@ -71,17 +77,11 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
 
       console.log('[LoginForm] Redirecting to:', redirectUrl);
 
-      // 複数の方法でリダイレクトを試みる
-      setTimeout(() => {
-        // Next.jsのルーターを使用
-        router.push(redirectUrl);
-        // 念のためwindow.locationも使用
-        setTimeout(() => {
-          if (typeof window !== 'undefined') {
-            window.location.href = redirectUrl;
-          }
-        }, 500);
-      }, 100);
+      // コンポーネントがマウントされていることを確認してからリダイレクト
+      if (isMounted) {
+        // window.locationを使用して確実にリダイレクト
+        window.location.href = redirectUrl;
+      }
 
     } catch (err) {
       console.error('[LoginForm] Unexpected error:', err);
