@@ -94,7 +94,7 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
 
       {/* フォーム */}
       <div className="liquid-glass-interactive dark:bg-neutral-900 rounded-lg shadow-sm dark:shadow-gray-900/20 border border-gray-200 dark:border-neutral-800 p-6">
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6" method="POST" action="#">
           {error && (
             <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 p-4">
               <div className="flex">
@@ -110,7 +110,7 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
               type="email"
               label="メールアドレス"
               placeholder="user@example.com"
-              autoComplete="email"
+              autoComplete="username email"
               error={errors.email?.message}
               {...register('email')}
             />
