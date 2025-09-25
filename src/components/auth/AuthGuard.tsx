@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useLayoutEffect, useRef } from 'react';
 import { useAuth } from '@/stores/auth';
 import { UserRole } from '@/types';
 import { LoadingPage } from '@/components/ui/LoadingSpinner';
@@ -20,6 +20,8 @@ export function AuthGuard({
 }: AuthGuardProps) {
   const { user, loading, initialized, initialize } = useAuth();
   const [isMounted, setIsMounted] = useState(false);
+  const [shouldRedirect, setShouldRedirect] = useState<string | null>(null);
+  const hasRedirected = useRef(false);
 
   useEffect(() => {
     setIsMounted(true);
@@ -46,25 +48,33 @@ export function AuthGuard({
 
     // 未認証の場合はログインページへリダイレクト
     if (!user) {
-      console.log('[AuthGuard] No user, redirecting to:', redirectTo);
-      // window.locationを使用して確実にリダイレクト
-      setTimeout(() => {
-        window.location.replace(redirectTo);
-      }, 100);
+      console.log('[AuthGuard] No user, setting redirect to:', redirectTo);
+      setShouldRedirect(redirectTo);
       return;
     }
 
     // 権限チェック
     if (requiredRoles && user.profile) {
       if (!requiredRoles.includes(user.profile.role)) {
-        console.log('[AuthGuard] Insufficient permissions, redirecting to /unauthorized');
-        setTimeout(() => {
-          window.location.replace('/unauthorized');
-        }, 100);
+        console.log('[AuthGuard] Insufficient permissions, setting redirect to /unauthorized');
+        setShouldRedirect('/unauthorized');
         return;
       }
     }
   }, [user, loading, initialized, requiredRoles, redirectTo, isMounted]);
+
+  // 別のエフェクトでリダイレクトを処理
+  useLayoutEffect(() => {
+    if (shouldRedirect && !hasRedirected.current) {
+      hasRedirected.current = true;
+      const timer = setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          window.location.href = shouldRedirect;
+        }
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [shouldRedirect]);
 
   // マウントされていない、または初期化中、またはローディング中
   if (!isMounted || !initialized || loading) {
@@ -121,6 +131,8 @@ export function GuestGuard({
 }) {
   const { user, loading, initialized, initialize } = useAuth();
   const [isMounted, setIsMounted] = useState(false);
+  const [shouldRedirect, setShouldRedirect] = useState<string | null>(null);
+  const hasRedirected = useRef(false);
 
   useEffect(() => {
     setIsMounted(true);
@@ -135,12 +147,23 @@ export function GuestGuard({
 
     // 認証済みの場合はダッシュボードへリダイレクト
     if (user) {
-      setTimeout(() => {
-        window.location.replace(redirectTo);
-      }, 100);
+      setShouldRedirect(redirectTo);
       return;
     }
   }, [user, loading, initialized, redirectTo, isMounted]);
+
+  // 別のエフェクトでリダイレクトを処理
+  useLayoutEffect(() => {
+    if (shouldRedirect && !hasRedirected.current) {
+      hasRedirected.current = true;
+      const timer = setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          window.location.href = shouldRedirect;
+        }
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [shouldRedirect]);
 
   // マウントされていない、または初期化中、またはローディング中
   if (!isMounted || !initialized || loading) {
