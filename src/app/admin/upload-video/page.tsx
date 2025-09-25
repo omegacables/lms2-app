@@ -3,7 +3,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { AdminGuard } from '@/components/auth/AuthGuard';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { VideoUploader3GB } from '@/components/admin/VideoUploader3GB';
+import { VideoUploader } from '@/components/admin/VideoUploader';
 import { Button } from '@/components/ui/Button';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { useState } from 'react';
@@ -38,10 +38,10 @@ export default function UploadVideoPage() {
             </Button>
 
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-              動画アップロード（3GBまで対応）
+              動画アップロード
             </h1>
             <p className="text-gray-600 dark:text-gray-400 mt-2">
-              大容量動画を直接Supabaseにアップロードします
+              動画を直接Supabaseにアップロードします
             </p>
           </div>
 
@@ -65,7 +65,7 @@ export default function UploadVideoPage() {
 
           {/* アップローダー */}
           {courseId ? (
-            <VideoUploader3GB
+            <VideoUploader
               courseId={parseInt(courseId)}
               onSuccess={handleSuccess}
               onError={handleError}
@@ -87,7 +87,7 @@ export default function UploadVideoPage() {
               <li>• Vercelを経由せず、直接Supabaseにアップロード</li>
               <li>• 413エラーを完全に回避</li>
               <li>• 最大3GBまでの動画に対応</li>
-              <li>• 500MB以上は自動的にチャンク分割</li>
+              <li>• 動画の長さを自動的に取得</li>
             </ul>
           </div>
         </div>

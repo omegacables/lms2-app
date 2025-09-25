@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>動画アップロードテスト</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        input[type="file"] {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>LMS2 動画アップロードテスト</h1>
+
+    <div class="test-section">
+        <h2>1. 動画の長さ取得テスト</h2>
+        <input type="file" id="duration-test" accept="video/*">
+        <button onclick="testDuration()">動画の長さを取得</button>
+        <div id="duration-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Supabase認証テスト</h2>
+        <button onclick="testAuth()">認証状態を確認</button>
+        <div id="auth-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. Service Role Key エラーチェック</h2>
+        <button onclick="checkServiceRoleKey()">エラーをチェック</button>
+        <div id="service-role-result"></div>
+    </div>
+
+    <script>
+        // 動画の長さ取得テスト
+        function testDuration() {
+            const input = document.getElementById('duration-test');
+            const file = input.files[0];
+
+            if (!file) {
+                showResult('duration-result', 'ファイルを選択してください', false);
+                return;
+            }
+
+            const video = document.createElement('video');
+            video.preload = 'metadata';
+
+            video.onloadedmetadata = function() {
+                window.URL.revokeObjectURL(video.src);
+                const duration = Math.round(video.duration);
+                showResult('duration-result',
+                    `動画の長さ: ${duration}秒 (${Math.floor(duration/60)}分${duration%60}秒)`,
+                    true
+                );
+            };
+
+            video.onerror = function() {
+                showResult('duration-result', '動画の長さを取得できませんでした', false);
+            };
+
+            video.src = URL.createObjectURL(file);
+        }
+
+        // Supabase認証テスト
+        async function testAuth() {
+            try {
+                const response = await fetch('/api/test/auth-check', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult('auth-result',
+                        `認証状態: ${data.authenticated ? 'ログイン済み' : '未ログイン'}\n` +
+                        `ユーザーロール: ${data.role || 'なし'}`,
+                        data.authenticated
+                    );
+                } else {
+                    showResult('auth-result', `エラー: ${response.status} ${response.statusText}`, false);
+                }
+            } catch (error) {
+                showResult('auth-result', `エラー: ${error.message}`, false);
+            }
+        }
+
+        // Service Role Key エラーチェック
+        function checkServiceRoleKey() {
+            // クライアントサイドコードでService Role Keyが使用されていないかチェック
+            const hasServiceRoleKey = typeof SUPABASE_SERVICE_ROLE_KEY !== 'undefined' ||
+                                      window.SUPABASE_SERVICE_ROLE_KEY ||
+                                      localStorage.getItem('SUPABASE_SERVICE_ROLE_KEY');
+
+            if (hasServiceRoleKey) {
+                showResult('service-role-result',
+                    '⚠️ Service Role Keyがクライアントサイドで検出されました！\n' +
+                    'これはセキュリティリスクです。',
+                    false
+                );
+            } else {
+                showResult('service-role-result',
+                    '✅ Service Role Keyは検出されませんでした。\n' +
+                    'クライアントサイドは正しく設定されています。',
+                    true
+                );
+            }
+        }
+
+        // 結果表示ヘルパー
+        function showResult(elementId, message, isSuccess) {
+            const element = document.getElementById(elementId);
+            element.className = 'result ' + (isSuccess ? 'success' : 'error');
+            element.textContent = message;
+        }
+    </script>
+</body>
+</html>
