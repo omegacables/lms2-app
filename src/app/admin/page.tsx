@@ -122,15 +122,10 @@ export default function AdminDashboard() {
         supabase.from('certificates').select('*', { count: 'exact', head: true }),
         // 視聴ログ統計
         supabase.from('video_view_logs').select('total_watched_time'),
-        // 最近のアクティビティ
+        // 最近のアクティビティ（JOINを簡略化）
         supabase
           .from('video_view_logs')
-          .select(`
-            *,
-            user_profiles!inner(display_name, email),
-            videos!inner(title),
-            courses!inner(title)
-          `)
+          .select('*')
           .order('last_updated', { ascending: false })
           .limit(5),
         // 今週の新規ユーザー
