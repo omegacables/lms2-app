@@ -8,6 +8,15 @@ export const runtime = 'nodejs';
 export const preferredRegion = 'auto';
 export const dynamic = 'force-dynamic';
 
+// Next.js 13+ API route config for large file uploads
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '500mb',
+    },
+  },
+};
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

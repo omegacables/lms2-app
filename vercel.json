@@ -5,7 +5,16 @@
   "installCommand": "npm install",
   "functions": {
     "app/api/**/*": {
-      "maxDuration": 30
+      "maxDuration": 30,
+      "bodyParser": {
+        "sizeLimit": "500mb"
+      }
+    },
+    "app/api/courses/*/videos/route.ts": {
+      "maxDuration": 60,
+      "bodyParser": {
+        "sizeLimit": "500mb"
+      }
     }
   }
 }
