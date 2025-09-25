@@ -14,7 +14,7 @@ import {
   validateVideoFile,
   formatFileSize
 } from '@/utils/supabase-storage';
-import { VideoUploader3GB } from '@/components/admin/VideoUploader3GB';
+import { VideoUploader } from '@/components/admin/VideoUploader';
 import {
   ArrowLeftIcon,
   PlusIcon,
@@ -112,7 +112,7 @@ export default function CourseVideosPage() {
   const fetchVideos = async () => {
     try {
       setLoading(true);
-      
+
       const { data: videosData, error: videosError } = await supabase
         .from('videos')
         .select('*')
@@ -123,6 +123,9 @@ export default function CourseVideosPage() {
         console.error('動画取得エラー:', videosError);
         return;
       }
+
+      console.log('取得した動画データ:', videosData);
+      console.log('動画の時間情報:', videosData?.map(v => ({ id: v.id, title: v.title, duration: v.duration })));
 
       setVideos(videosData || []);
     } catch (error) {
@@ -197,37 +200,51 @@ export default function CourseVideosPage() {
       }
 
       // ストレージから動画ファイルを削除
-      if (video?.file_url || video?.url) {
+      // file_pathが存在する場合はそれを使用、そうでなければURLから抽出
+      let filePathToDelete = video.file_path;
+
+      if (!filePathToDelete && (video.file_url || video.url)) {
         const fileUrl = video.file_url || video.url;
         const urlParts = fileUrl.split('/storage/v1/object/public/videos/');
         if (urlParts.length > 1) {
-          const filePath = decodeURIComponent(urlParts[1]);
-          console.log('ストレージから削除:', filePath);
+          filePathToDelete = decodeURIComponent(urlParts[1]);
+        }
+      }
 
-          try {
-            const { error: storageError } = await supabase.storage
-              .from('videos')
-              .remove([filePath]);
+      if (filePathToDelete) {
+        console.log('ストレージから削除:', filePathToDelete);
 
-            if (storageError) {
-              console.warn('ストレージ削除エラー:', storageError);
-            }
-          } catch (e) {
-            console.warn('ストレージエラー:', e);
+        try {
+          const { data: deleteData, error: storageError } = await supabase.storage
+            .from('videos')
+            .remove([filePathToDelete]);
+
+          if (storageError) {
+            console.error('ストレージ削除エラー:', storageError);
+            // ストレージ削除に失敗してもデータベース削除は続行
+          } else {
+            console.log('ストレージから削除成功:', deleteData);
           }
+        } catch (e) {
+          console.error('ストレージ削除例外:', e);
         }
       }
 
       // データベースから動画レコードを削除（直接Supabaseを使用）
-      const { error: deleteError } = await supabase
+      const { data: deletedVideo, error: deleteError } = await supabase
         .from('videos')
         .delete()
-        .eq('id', videoId);
+        .eq('id', videoId)
+        .eq('course_id', courseId)
+        .select()
+        .single();
 
       if (deleteError) {
         console.error('データベース削除エラー:', deleteError);
-        throw deleteError;
+        throw new Error('データベースからの削除に失敗しました');
       }
+
+      console.log('データベースから削除成功:', deletedVideo);
 
       setVideos(prev => prev.filter(v => v.id !== videoId));
       alert('動画が削除されました');
@@ -759,9 +776,9 @@ export default function CourseVideosPage() {
                   </div>
                 </div>
 
-                {/* 3GB Video Uploader */}
+                {/* Video Uploader */}
                 <div className="p-6 overflow-y-auto max-h-[60vh]">
-                  <VideoUploader3GB
+                  <VideoUploader
                     courseId={parseInt(courseId)}
                     onSuccess={() => {
                       setShowAddModal(false);
