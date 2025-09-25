@@ -1,5 +1,3 @@
-import { hostname } from 'os';
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -16,17 +14,6 @@ const nextConfig = {
     ],
   },
 
-  // APIボディサイズの設定
-  api: {
-    bodyParser: {
-      sizeLimit: '500mb',
-    },
-    responseLimit: '500mb',
-  },
-
-  // 静的エクスポートの設定
-  output: process.env.NODE_ENV === 'production' ? 'standalone' : undefined,
-
   // TypeScriptとESLintの設定
   typescript: {
     ignoreBuildErrors: false,
@@ -36,12 +23,7 @@ const nextConfig = {
     ignoreDuringBuilds: false,
   },
 
-  // Serverless Function Configuration
-  serverRuntimeConfig: {
-    maxDuration: 60,
-    bodySizeLimit: '500mb',
-  },
-
+  // Server Actions設定
   experimental: {
     serverActions: {
       bodySizeLimit: '500mb',
