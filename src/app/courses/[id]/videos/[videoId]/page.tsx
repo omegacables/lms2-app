@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { checkAndGenerateCertificate } from '@/lib/certificate/autoGenerateCertificate';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AuthGuard } from '@/components/auth/AuthGuard';
@@ -243,6 +244,11 @@ export default function VideoPlayerPage() {
 
       if (isCompleted && (!existingLog || existingLog.status !== 'completed')) {
         updateData.completed_at = new Date().toISOString();
+
+        // 動画完了時にコース全体の完了状態を確認
+        setTimeout(async () => {
+          await checkCourseCompletionAndGenerateCertificate();
+        }, 1000); // 1秒待ってから確認
       }
 
       // 既存のログがある場合はIDで更新、なければ新規作成
@@ -290,7 +296,59 @@ export default function VideoPlayerPage() {
 
   const handleVideoComplete = () => {
     console.log('動画視聴完了');
-    // 必要に応じて完了時の処理を追加
+    // コース完了確認と証明書生成
+    checkCourseCompletionAndGenerateCertificate();
+  };
+
+  // コース完了確認と証明書自動生成
+  const checkCourseCompletionAndGenerateCertificate = async () => {
+    if (!user || !courseId) return;
+
+    try {
+      // コース内のすべての動画を取得
+      const { data: courseVideos, error: videosError } = await supabase
+        .from('videos')
+        .select('id')
+        .eq('course_id', courseId)
+        .eq('status', 'active');
+
+      if (videosError) {
+        console.error('動画一覧取得エラー:', videosError);
+        return;
+      }
+
+      const totalVideos = courseVideos?.length || 0;
+      if (totalVideos === 0) return;
+
+      // ユーザーの完了した動画を取得
+      const { data: completedLogs, error: logsError } = await supabase
+        .from('video_view_logs')
+        .select('video_id')
+        .eq('user_id', user.id)
+        .eq('course_id', courseId)
+        .eq('status', 'completed');
+
+      if (logsError) {
+        console.error('視聴ログ取得エラー:', logsError);
+        return;
+      }
+
+      const completedVideos = completedLogs?.length || 0;
+      console.log(`コース進捗: ${completedVideos}/${totalVideos}`);
+
+      // すべての動画が完了した場合、証明書を生成
+      if (completedVideos >= totalVideos) {
+        const result = await checkAndGenerateCertificate(user.id, parseInt(courseId));
+
+        if (result.hasNewCertificate) {
+          console.log('証明書が自動生成されました:', result.certificateId);
+          // ユーザーに通知（オプション）
+          alert('おめでとうございます！\nコースを完了し、証明書が発行されました。');
+        }
+      }
+    } catch (err) {
+      console.error('コース完了確認エラー:', err);
+    }
   };
 
 

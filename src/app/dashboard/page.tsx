@@ -99,12 +99,51 @@ export default function DashboardPage() {
           .select("*")
           .in("id", courseIds);
 
-        userCourses = coursesData
-          ? coursesData.map((course) => ({
-              ...assignments.find((a) => a.course_id === course.id),
-              courses: course,
-            }))
-          : [];
+        // 各コースの動画情報を取得して総時間を計算
+        if (coursesData) {
+          for (const course of coursesData) {
+            // コースの動画を取得
+            const { data: videos } = await supabase
+              .from("videos")
+              .select("duration")
+              .eq("course_id", course.id)
+              .eq("status", "active");
+
+            // 動画の総時間を計算（秒）
+            const totalDuration = videos?.reduce((sum, video) => sum + (video.duration || 0), 0) || 0;
+
+            // 動画の数
+            const videoCount = videos?.length || 0;
+
+            // ユーザーの視聴時間を取得
+            const { data: userViewLogs } = await supabase
+              .from("video_view_logs")
+              .select("total_watched_time")
+              .eq("user_id", user.id)
+              .eq("course_id", course.id);
+
+            const totalWatchedTime = userViewLogs?.reduce((sum, log) => sum + (log.total_watched_time || 0), 0) || 0;
+
+            // コースのステータスを判定
+            let status = "not_started";
+            if (userViewLogs && userViewLogs.length > 0) {
+              const completedCount = userViewLogs.filter(log => log.status === "completed").length;
+              if (completedCount === videoCount && videoCount > 0) {
+                status = "completed";
+              } else {
+                status = "in_progress";
+              }
+            }
+
+            userCourses.push({
+              ...course,
+              totalDuration, // 動画の総時間（秒）
+              videoCount,    // 動画の数
+              totalWatchedTime, // ユーザーの視聴時間（秒）
+              status        // コースのステータス
+            });
+          }
+        }
       }
 
       const totalCourses = userCourses?.length || 0;
@@ -473,9 +512,9 @@ export default function DashboardPage() {
                                     ? formatWatchTime(course.totalWatchedTime) +
                                       " / "
                                     : ""}
-                                  {formatWatchTime(
-                                    (course.estimated_duration || 0) * 60,
-                                  )}
+                                  {course.totalDuration
+                                    ? formatWatchTime(course.totalDuration)
+                                    : "時間未設定"}
                                 </span>
                                 <span className="flex items-center">
                                   <AcademicCapIcon className="h-4 w-4 mr-1" />

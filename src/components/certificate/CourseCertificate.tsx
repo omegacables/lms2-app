@@ -45,7 +45,7 @@ export function CourseCertificate({
           .select('*')
           .eq('user_id', user.id)
           .eq('course_id', course.id)
-          .single();
+          .maybeSingle();
 
         if (data) {
           setExistingCertificate(data);
@@ -63,7 +63,7 @@ export function CourseCertificate({
   // 証明書データの準備
   const prepareCertificateData = (): CertificateData => {
     return {
-      certificateId: existingCertificate?.certificate_number || generateCertificateId(),
+      certificateId: existingCertificate?.id || generateCertificateId(),
       courseName: course.title,
       userName: user.display_name || user.email,
       completionDate: format(completionDate, 'yyyy年MM月dd日', { locale: ja }),
@@ -90,36 +90,53 @@ export function CourseCertificate({
 
       // 既存の証明書がない場合は新規作成
       if (!existingCertificate) {
-        // PDF生成（証明書番号と検証コードも生成される）
-        const result = await generateCertificatePDF(certificateData);
+        // 証明書IDを生成
+        const certificateId = generateCertificateId();
+        certificateData.certificateId = certificateId;
 
         // データベースに保存
         const { data: newCertificate, error: dbError } = await supabase
           .from('certificates')
           .insert({
+            id: certificateId,
             user_id: user.id,
             course_id: course.id,
-            certificate_number: result.certificateNumber,
-            verification_code: result.verificationCode,
-            issued_at: new Date().toISOString(),
+            user_name: user.display_name || user.email || 'ユーザー',
+            course_title: course.title,
             completion_date: completionDate.toISOString(),
-            total_videos: progress.totalVideos,
-            total_watch_time: progress.totalWatchTime,
-            status: 'active'
+            pdf_url: null, // PDFは保存しない（動的生成）
+            is_active: true,
+            created_at: new Date().toISOString()
           })
           .select()
           .single();
 
         if (dbError) {
           console.error('Certificate save error:', dbError);
-          // エラーがカラム不足の場合は、証明書は生成されたことを伝える
-          if (dbError.code === 'PGRST204' || dbError.message?.includes('column')) {
-            setError('証明書は生成されましたが、データベースへの保存に失敗しました。管理者に連絡してください。');
-          } else {
-            throw dbError;
+          // 重複エラーの場合は既存の証明書を取得
+          if (dbError.code === '23505' || dbError.message?.includes('duplicate')) {
+            const { data: existingData } = await supabase
+              .from('certificates')
+              .select('*')
+              .eq('user_id', user.id)
+              .eq('course_id', course.id)
+              .maybeSingle();
+
+            if (existingData) {
+              setExistingCertificate(existingData);
+              certificateData.certificateId = existingData.id;
+              await generateCertificatePDF(certificateData);
+              console.log('Using existing certificate');
+              return;
+            }
           }
+          // その他のエラーの場合はPDF生成のみ実行
+          await generateCertificatePDF(certificateData);
+          setError('証明書は生成されましたが、データベースへの保存に失敗しました。');
         } else {
           setExistingCertificate(newCertificate);
+          // PDF生成
+          await generateCertificatePDF(certificateData);
         }
       } else {
         // 既存の証明書を再ダウンロード

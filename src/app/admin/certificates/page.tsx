@@ -98,9 +98,9 @@ export default function CertificatesManagement() {
           studentName: profile?.display_name || profile?.email || '不明',
           studentEmail: profile?.email || '不明',
           studentCompany: profile?.company || '-',
-          certificateId: cert.certificate_number || `CERT-${cert.id}`,
-          issuedAt: cert.issued_at || cert.created_at,
-          completedAt: cert.issued_at || cert.created_at,
+          certificateId: cert.id || `CERT-${Date.now()}`,
+          issuedAt: cert.created_at,
+          completedAt: cert.completion_date || cert.created_at,
           downloadCount: 0,
           status: cert.is_active ? 'active' : 'revoked'
         };
@@ -121,7 +121,7 @@ export default function CertificatesManagement() {
     try {
       const { error } = await supabase
         .from('certificates')
-        .update({ status: 'revoked', updated_at: new Date() })
+        .update({ is_active: false })
         .eq('id', certificateId);
 
       if (error) throw error;
@@ -140,10 +140,8 @@ export default function CertificatesManagement() {
     try {
       const { error } = await supabase
         .from('certificates')
-        .update({ 
-          status: 'active',
-          updated_at: new Date(),
-          certificate_id: `CERT-${Date.now()}`
+        .update({
+          is_active: true
         })
         .eq('id', certificateId);
 
@@ -255,11 +253,11 @@ export default function CertificatesManagement() {
     // PDFを保存
     doc.save(`certificate_${certificate.certificateId}.pdf`);
 
-    // ダウンロード数を更新
-    await supabase
-      .from('certificates')
-      .update({ download_count: certificate.downloadCount + 1 })
-      .eq('id', certificate.id);
+    // ダウンロード数を更新（download_countフィールドがある場合）
+    // await supabase
+    //   .from('certificates')
+    //   .update({ download_count: certificate.downloadCount + 1 })
+    //   .eq('id', certificate.id);
   };
 
   // ソート機能を追加
