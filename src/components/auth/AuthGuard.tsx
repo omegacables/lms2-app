@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useLayoutEffect, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAuth } from '@/stores/auth';
 import { UserRole } from '@/types';
 import { LoadingPage } from '@/components/ui/LoadingSpinner';
@@ -64,9 +64,10 @@ export function AuthGuard({
   }, [user, loading, initialized, requiredRoles, redirectTo, isMounted]);
 
   // 別のエフェクトでリダイレクトを処理
-  useLayoutEffect(() => {
-    if (shouldRedirect && !hasRedirected.current) {
+  useEffect(() => {
+    if (shouldRedirect && !hasRedirected.current && isMounted) {
       hasRedirected.current = true;
+      // React 18以降では、ナビゲーションを次のティックまで遅延させる
       const timer = setTimeout(() => {
         if (typeof window !== 'undefined') {
           window.location.href = shouldRedirect;
@@ -74,7 +75,7 @@ export function AuthGuard({
       }, 0);
       return () => clearTimeout(timer);
     }
-  }, [shouldRedirect]);
+  }, [shouldRedirect, isMounted]);
 
   // マウントされていない、または初期化中、またはローディング中
   if (!isMounted || !initialized || loading) {
@@ -153,9 +154,10 @@ export function GuestGuard({
   }, [user, loading, initialized, redirectTo, isMounted]);
 
   // 別のエフェクトでリダイレクトを処理
-  useLayoutEffect(() => {
-    if (shouldRedirect && !hasRedirected.current) {
+  useEffect(() => {
+    if (shouldRedirect && !hasRedirected.current && isMounted) {
       hasRedirected.current = true;
+      // React 18以降では、ナビゲーションを次のティックまで遅延させる
       const timer = setTimeout(() => {
         if (typeof window !== 'undefined') {
           window.location.href = shouldRedirect;
@@ -163,7 +165,7 @@ export function GuestGuard({
       }, 0);
       return () => clearTimeout(timer);
     }
-  }, [shouldRedirect]);
+  }, [shouldRedirect, isMounted]);
 
   // マウントされていない、または初期化中、またはローディング中
   if (!isMounted || !initialized || loading) {
