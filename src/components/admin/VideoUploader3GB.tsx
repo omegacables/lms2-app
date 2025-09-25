@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { supabase, createAdminSupabaseClient } from '@/lib/database/supabase';
+import { supabase } from '@/lib/database/supabase';
 import { Button } from '@/components/ui/Button';
 import {
   CloudArrowUpIcon,
@@ -66,9 +66,8 @@ export function VideoUploader3GB({
 
         const chunkName = `course_${courseId}/${uploadId}/${fileName}.part${i.toString().padStart(4, '0')}`;
 
-        // 管理者クライアントでチャンクをアップロード
-        const adminClient = createAdminSupabaseClient();
-        const { error: uploadError } = await adminClient.storage
+        // 通常のクライアントでチャンクをアップロード（認証済みユーザー）
+        const { error: uploadError } = await supabase.storage
           .from('videos')
           .upload(chunkName, chunk, {
             cacheControl: '3600',
@@ -91,8 +90,7 @@ export function VideoUploader3GB({
 
       // 公開URLを取得（最初のチャンクのURLを使用）
       const firstChunkPath = `course_${courseId}/${uploadId}/${fileName}.part0000`;
-      const adminClient = createAdminSupabaseClient();
-      const { data: { publicUrl } } = adminClient.storage
+      const { data: { publicUrl } } = supabase.storage
         .from('videos')
         .getPublicUrl(firstChunkPath);
 
@@ -191,9 +189,8 @@ export function VideoUploader3GB({
     // 動画の長さを取得
     const duration = await getVideoDuration(file);
 
-    // 管理者クライアントで直接アップロード
-    const adminClient = createAdminSupabaseClient();
-    const { error: uploadError } = await adminClient.storage
+    // 通常のクライアントで直接アップロード（認証済みユーザー）
+    const { error: uploadError } = await supabase.storage
       .from('videos')
       .upload(filePath, file, {
         cacheControl: '3600',
@@ -205,7 +202,7 @@ export function VideoUploader3GB({
     }
 
     // URLを取得
-    const { data: { publicUrl } } = adminClient.storage
+    const { data: { publicUrl } } = supabase.storage
       .from('videos')
       .getPublicUrl(filePath);
 
