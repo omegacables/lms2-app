@@ -33,11 +33,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ファイルサイズチェック（500MB）
-    const MAX_SIZE = 500 * 1024 * 1024;
+    // ファイルサイズチェック（3GB）
+    const MAX_SIZE = 3000 * 1024 * 1024;
     if (file.size > MAX_SIZE) {
       return NextResponse.json(
-        { error: 'ファイルサイズが大きすぎます（最大500MB）' },
+        { error: 'ファイルサイズが大きすぎます（最大3GB）' },
         { status: 413 }
       );
     }

@@ -17,7 +17,7 @@ interface VideoUploaderProps {
   onError?: (error: Error) => void;
 }
 
-const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB（安定性のため制限）
+const MAX_FILE_SIZE = 3000 * 1024 * 1024; // 3000MB (3GB)
 
 export function VideoUploader({ courseId, onSuccess, onError }: VideoUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
@@ -67,7 +67,7 @@ export function VideoUploader({ courseId, onSuccess, onError }: VideoUploaderPro
 
     // ファイルサイズチェック
     if (selectedFile.size > MAX_FILE_SIZE) {
-      setError(`ファイルサイズが大きすぎます。最大500MBまでアップロード可能です。`);
+      setError(`ファイルサイズが大きすぎます。最大3GBまでアップロード可能です。`);
       return;
     }
 
@@ -286,7 +286,7 @@ export function VideoUploader({ courseId, onSuccess, onError }: VideoUploaderPro
                 クリックまたはドラッグ＆ドロップで動画を選択
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                最大500MBまでアップロード可能（安定性優先）
+                最大3GB（3000MB）までアップロード可能
               </p>
             </div>
           )}
