@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { supabase } from '@/lib/database/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/Button';
 import {
   CloudArrowUpIcon,
@@ -33,6 +34,41 @@ export function VideoUploader3GB({
   const [success, setSuccess] = useState(false);
 
   const abortController = useRef<AbortController | null>(null);
+
+  // 長いタイムアウトを持つSupabaseクライアントを作成
+  const createUploadClient = () => {
+    return createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          fetch: (url, options = {}) => {
+            // ストレージアップロードには長いタイムアウトを設定
+            const timeout = url.includes('/storage/') ? 600000 : 45000; // ストレージは10分、その他は45秒
+            const controller = new AbortController();
+
+            const timeoutId = setTimeout(() => {
+              controller.abort();
+            }, timeout);
+
+            return fetch(url, {
+              ...options,
+              signal: controller.signal,
+            }).then((response) => {
+              clearTimeout(timeoutId);
+              return response;
+            }).catch((error) => {
+              clearTimeout(timeoutId);
+              if (error.name === 'AbortError') {
+                throw new Error('アップロードがタイムアウトしました。ネットワーク接続を確認してください。');
+              }
+              throw error;
+            });
+          },
+        },
+      }
+    );
+  };
 
   // ファイルサイズをフォーマット
   const formatFileSize = (bytes: number): string => {
@@ -66,8 +102,9 @@ export function VideoUploader3GB({
 
         const chunkName = `course_${courseId}/${uploadId}/${fileName}.part${i.toString().padStart(4, '0')}`;
 
-        // チャンクをアップロード
-        const { error: uploadError } = await supabase.storage
+        // カスタムクライアントでチャンクをアップロード
+        const uploadClient = createUploadClient();
+        const { error: uploadError } = await uploadClient.storage
           .from('videos')
           .upload(chunkName, chunk, {
             cacheControl: '3600',
@@ -75,6 +112,7 @@ export function VideoUploader3GB({
           });
 
         if (uploadError) {
+          console.error(`チャンク ${i + 1}/${totalChunks} のアップロード失敗:`, uploadError);
           throw uploadError;
         }
 
@@ -188,8 +226,9 @@ export function VideoUploader3GB({
     // 動画の長さを取得
     const duration = await getVideoDuration(file);
 
-    // 直接アップロード
-    const { error: uploadError } = await supabase.storage
+    // カスタムクライアントで直接アップロード
+    const uploadClient = createUploadClient();
+    const { error: uploadError } = await uploadClient.storage
       .from('videos')
       .upload(filePath, file, {
         cacheControl: '3600',
