@@ -163,14 +163,35 @@ export default function CourseVideosPage() {
         throw new Error(`権限が不足しています。現在のロール: ${userProfile?.role || 'なし'}`);
       }
 
-      // 動画情報を取得
-      const { data: video, error: fetchError } = await supabase
+      // 動画情報を取得 - まずfile_urlで試し、失敗したらurlで試す
+      let video: any = null;
+      let fetchError: any = null;
+
+      // 新しいスキーマで試す
+      const { data: videoNew, error: errorNew } = await supabase
         .from('videos')
-        .select('file_url, url, file_path')
+        .select('file_url, file_path')
         .eq('id', videoId)
         .single();
 
-      if (fetchError) {
+      if (!errorNew && videoNew) {
+        video = videoNew;
+      } else {
+        // 古いスキーマで試す
+        const { data: videoOld, error: errorOld } = await supabase
+          .from('videos')
+          .select('*')
+          .eq('id', videoId)
+          .single();
+
+        if (!errorOld && videoOld) {
+          video = videoOld;
+        } else {
+          fetchError = errorNew || errorOld;
+        }
+      }
+
+      if (fetchError || !video) {
         console.error('動画取得エラー:', fetchError);
         throw new Error('動画が見つかりません');
       }
