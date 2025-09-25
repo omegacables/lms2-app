@@ -93,34 +93,27 @@ export function VideoUploader3GB({
         .from('videos')
         .getPublicUrl(firstChunkPath);
 
-      // 動画情報をデータベースに保存（互換性のためにurlフィールドも含む）
+      // 動画情報をデータベースに保存
       const videoData: any = {
         course_id: courseId,
         title: file.name.replace(/\.[^/.]+$/, ''),
         description: `ファイルサイズ: ${formatFileSize(file.size)}`,
-        url: publicUrl,  // 互換性のため
+        file_url: publicUrl,
+        file_path: finalPath,
+        file_size: file.size,
+        mime_type: file.type,
         duration: duration,  // 取得した動画の長さを設定
         order_index: 999,
-        status: 'active'
-      };
-
-      // 新しいカラムが存在する場合のみ追加
-      try {
-        videoData.file_url = publicUrl;
-        videoData.file_path = finalPath;
-        videoData.file_size = file.size;
-        videoData.mime_type = file.type;
-        videoData.metadata = {
+        status: 'active',
+        metadata: {
           originalName: file.name,
           size: file.size,
           type: file.type,
           chunks: totalChunks,
           uploadId: uploadId,
           chunked: true
-        };
-      } catch (e) {
-        console.log('新しいカラムはまだ利用できません');
-      }
+        }
+      };
 
       const { error: dbError } = await supabase
         .from('videos')
@@ -212,32 +205,25 @@ export function VideoUploader3GB({
       .from('videos')
       .getPublicUrl(filePath);
 
-    // データベースに保存（互換性のためにurlフィールドも含む）
+    // データベースに保存
     const videoData: any = {
       course_id: courseId,
       title: file.name.replace(/\.[^/.]+$/, ''),
       description: `ファイルサイズ: ${formatFileSize(file.size)}`,
-      url: publicUrl,  // 互換性のため
+      file_url: publicUrl,
+      file_path: filePath,
+      file_size: file.size,
+      mime_type: file.type,
       duration: duration,  // 取得した動画の長さを設定
       order_index: 999,
-      status: 'active'
-    };
-
-    // 新しいカラムが存在する場合のみ追加
-    try {
-      videoData.file_url = publicUrl;
-      videoData.file_path = filePath;
-      videoData.file_size = file.size;
-      videoData.mime_type = file.type;
-      videoData.metadata = {
+      status: 'active',
+      metadata: {
         originalName: file.name,
         size: file.size,
         type: file.type,
         chunked: false
-      };
-    } catch (e) {
-      console.log('新しいカラムはまだ利用できません');
-    }
+      }
+    };
 
     const { error: dbError } = await supabase
       .from('videos')
