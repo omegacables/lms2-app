@@ -8,7 +8,7 @@ import { useAuth } from '@/stores/auth';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/database/supabase';
-import { 
+import {
   UsersIcon,
   AcademicCapIcon,
   DocumentTextIcon,
@@ -20,7 +20,8 @@ import {
   EyeIcon,
   Cog6ToothIcon,
   ChatBubbleLeftRightIcon,
-  DocumentCheckIcon
+  DocumentCheckIcon,
+  CloudArrowUpIcon
 } from '@heroicons/react/24/outline';
 
 interface AdminStats {
@@ -269,6 +270,12 @@ export default function AdminDashboard() {
                 </div>
               </div>
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                <Link href="/admin/upload-video">
+                  <Button className="bg-red-600 hover:bg-red-700 flex items-center justify-center w-full sm:w-auto whitespace-nowrap">
+                    <CloudArrowUpIcon className="h-4 w-4 mr-2 flex-shrink-0" />
+                    <span className="whitespace-nowrap">動画アップ(3GB)</span>
+                  </Button>
+                </Link>
                 <Link href="/admin/courses/new">
                   <Button className="bg-indigo-600 hover:bg-indigo-700 flex items-center justify-center w-full sm:w-auto whitespace-nowrap">
                     <PlusIcon className="h-4 w-4 mr-2 flex-shrink-0" />

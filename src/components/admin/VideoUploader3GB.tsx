@@ -49,6 +49,9 @@ export function VideoUploader3GB({
     const uploadId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
     const fileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_'); // ファイル名を安全にする
 
+    // 動画の長さを取得
+    const duration = await getVideoDuration(file);
+
     let uploadedChunks = 0;
 
     try {
@@ -84,26 +87,44 @@ export function VideoUploader3GB({
       // 全チャンクアップロード完了後、メタデータを保存
       const finalPath = `course_${courseId}/${uploadId}/${fileName}`;
 
-      // 動画情報をデータベースに保存
+      // 公開URLを取得（最初のチャンクのURLを使用）
+      const firstChunkPath = `course_${courseId}/${uploadId}/${fileName}.part0000`;
+      const { data: { publicUrl } } = supabase.storage
+        .from('videos')
+        .getPublicUrl(firstChunkPath);
+
+      // 動画情報をデータベースに保存（互換性のためにurlフィールドも含む）
+      const videoData: any = {
+        course_id: courseId,
+        title: file.name.replace(/\.[^/.]+$/, ''),
+        description: `ファイルサイズ: ${formatFileSize(file.size)}`,
+        url: publicUrl,  // 互換性のため
+        duration: duration,  // 取得した動画の長さを設定
+        order_index: 999,
+        status: 'active'
+      };
+
+      // 新しいカラムが存在する場合のみ追加
+      try {
+        videoData.file_url = publicUrl;
+        videoData.file_path = finalPath;
+        videoData.file_size = file.size;
+        videoData.mime_type = file.type;
+        videoData.metadata = {
+          originalName: file.name,
+          size: file.size,
+          type: file.type,
+          chunks: totalChunks,
+          uploadId: uploadId,
+          chunked: true
+        };
+      } catch (e) {
+        console.log('新しいカラムはまだ利用できません');
+      }
+
       const { error: dbError } = await supabase
         .from('videos')
-        .insert({
-          course_id: courseId,
-          title: file.name.replace(/\.[^/.]+$/, ''),
-          description: `ファイルサイズ: ${formatFileSize(file.size)}`,
-          url: finalPath,
-          duration: 0,
-          order_index: 999,
-          status: 'active',
-          metadata: {
-            originalName: file.name,
-            size: file.size,
-            type: file.type,
-            chunks: totalChunks,
-            uploadId: uploadId,
-            chunked: true
-          }
-        });
+        .insert(videoData);
 
       if (dbError) {
         // データベースエラーの場合、アップロードしたファイルを削除
@@ -144,11 +165,35 @@ export function VideoUploader3GB({
     }
   };
 
+  // 動画の長さを取得する関数
+  const getVideoDuration = (file: File): Promise<number> => {
+    return new Promise((resolve) => {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+
+      video.onloadedmetadata = () => {
+        window.URL.revokeObjectURL(video.src);
+        const duration = Math.round(video.duration);
+        resolve(duration);
+      };
+
+      video.onerror = () => {
+        console.warn('動画の長さを取得できませんでした');
+        resolve(0); // エラーの場合は0を返す
+      };
+
+      video.src = URL.createObjectURL(file);
+    });
+  };
+
   // 通常アップロード（500MB以下）
   const uploadDirect = async (file: File) => {
     const timestamp = Date.now();
     const fileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
     const filePath = `course_${courseId}/${timestamp}_${fileName}`;
+
+    // 動画の長さを取得
+    const duration = await getVideoDuration(file);
 
     // 直接アップロード
     const { error: uploadError } = await supabase.storage
@@ -167,24 +212,36 @@ export function VideoUploader3GB({
       .from('videos')
       .getPublicUrl(filePath);
 
-    // データベースに保存
+    // データベースに保存（互換性のためにurlフィールドも含む）
+    const videoData: any = {
+      course_id: courseId,
+      title: file.name.replace(/\.[^/.]+$/, ''),
+      description: `ファイルサイズ: ${formatFileSize(file.size)}`,
+      url: publicUrl,  // 互換性のため
+      duration: duration,  // 取得した動画の長さを設定
+      order_index: 999,
+      status: 'active'
+    };
+
+    // 新しいカラムが存在する場合のみ追加
+    try {
+      videoData.file_url = publicUrl;
+      videoData.file_path = filePath;
+      videoData.file_size = file.size;
+      videoData.mime_type = file.type;
+      videoData.metadata = {
+        originalName: file.name,
+        size: file.size,
+        type: file.type,
+        chunked: false
+      };
+    } catch (e) {
+      console.log('新しいカラムはまだ利用できません');
+    }
+
     const { error: dbError } = await supabase
       .from('videos')
-      .insert({
-        course_id: courseId,
-        title: file.name.replace(/\.[^/.]+$/, ''),
-        description: `ファイルサイズ: ${formatFileSize(file.size)}`,
-        url: publicUrl,
-        duration: 0,
-        order_index: 999,
-        status: 'active',
-        metadata: {
-          originalName: file.name,
-          size: file.size,
-          type: file.type,
-          chunked: false
-        }
-      });
+      .insert(videoData);
 
     if (dbError) {
       // エラー時はアップロードしたファイルを削除
@@ -208,6 +265,12 @@ export function VideoUploader3GB({
     abortController.current = new AbortController();
 
     try {
+      // 認証チェック
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('ログインが必要です。');
+      }
+
       // ファイルサイズで処理を分ける
       if (file.size > 500 * 1024 * 1024) {
         // 500MB以上はチャンク分割
@@ -232,7 +295,23 @@ export function VideoUploader3GB({
 
     } catch (err) {
       console.error('Upload failed:', err);
-      const errorMessage = err instanceof Error ? err.message : 'アップロードに失敗しました';
+      let errorMessage = 'アップロードに失敗しました';
+
+      if (err instanceof Error) {
+        // Supabaseのエラーメッセージをより詳細に
+        if (err.message.includes('row-level security')) {
+          errorMessage = 'アップロード権限がありません。管理者に確認してください。';
+        } else if (err.message.includes('storage/bucket')) {
+          errorMessage = 'ストレージバケットの設定に問題があります。';
+        } else if (err.message.includes('payload too large')) {
+          errorMessage = 'ファイルサイズが大きすぎます。';
+        } else if (err.message.includes('Invalid storage bucket')) {
+          errorMessage = 'Supabaseのストレージバケット "videos" が見つかりません。';
+        } else {
+          errorMessage = `エラー: ${err.message}`;
+        }
+      }
+
       setError(errorMessage);
       onError?.(err instanceof Error ? err : new Error(errorMessage));
     } finally {

@@ -179,21 +179,50 @@ export async function DELETE(
     const supabase = createServerSupabaseClient(cookieStore);
     const adminSupabase = createAdminSupabaseClient();
 
-    // 認証チェック
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    // 認証チェック（Authorizationヘッダーから）
+    const authHeader = request.headers.get('authorization');
+    let user = null;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.replace('Bearer ', '');
+      const { data: authData, error: authError } = await supabase.auth.getUser(token);
+      user = authData?.user;
+    } else {
+      // ヘッダーがない場合はクッキーから取得
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      user = authData?.user;
+    }
+
+    if (!user) {
       return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
     }
 
     // 講師または管理者権限チェック
-    const { data: userProfile } = await supabase
+    const { data: userProfile, error: profileError } = await supabase
       .from('user_profiles')
       .select('role')
       .eq('id', user.id)
       .single();
 
-    if (!userProfile || !['instructor', 'admin'].includes(userProfile.role)) {
-      return NextResponse.json({ error: '講師または管理者権限が必要です' }, { status: 403 });
+    // デバッグ情報をログに出力
+    console.log('DELETE - User ID:', user.id);
+    console.log('DELETE - User Profile:', userProfile);
+    console.log('DELETE - Profile Error:', profileError);
+
+    if (profileError || !userProfile) {
+      console.error('Profile not found for user:', user.id);
+      return NextResponse.json({
+        error: 'ユーザープロファイルが見つかりません',
+        debug: { userId: user.id }
+      }, { status: 403 });
+    }
+
+    if (!['instructor', 'admin'].includes(userProfile.role)) {
+      console.error('Insufficient permissions. User role:', userProfile.role);
+      return NextResponse.json({
+        error: `権限が不足しています。現在のロール: ${userProfile.role}`,
+        debug: { userId: user.id, role: userProfile.role }
+      }, { status: 403 });
     }
 
     // 動画情報を取得

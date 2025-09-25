@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '@/stores/auth';
 import { UserRole } from '@/types';
 import { LoadingPage } from '@/components/ui/LoadingSpinner';
@@ -20,7 +19,6 @@ export function AuthGuard({
   fallback
 }: AuthGuardProps) {
   const { user, loading, initialized, initialize } = useAuth();
-  const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -49,10 +47,10 @@ export function AuthGuard({
     // 未認証の場合はログインページへリダイレクト
     if (!user) {
       console.log('[AuthGuard] No user, redirecting to:', redirectTo);
-      // setTimeoutを使用してマウント後にリダイレクト
+      // window.locationを使用して確実にリダイレクト
       setTimeout(() => {
-        router.push(redirectTo);
-      }, 0);
+        window.location.replace(redirectTo);
+      }, 100);
       return;
     }
 
@@ -61,12 +59,12 @@ export function AuthGuard({
       if (!requiredRoles.includes(user.profile.role)) {
         console.log('[AuthGuard] Insufficient permissions, redirecting to /unauthorized');
         setTimeout(() => {
-          router.push('/unauthorized');
-        }, 0);
+          window.location.replace('/unauthorized');
+        }, 100);
         return;
       }
     }
-  }, [user, loading, initialized, requiredRoles, router, redirectTo, isMounted]);
+  }, [user, loading, initialized, requiredRoles, redirectTo, isMounted]);
 
   // マウントされていない、または初期化中、またはローディング中
   if (!isMounted || !initialized || loading) {
@@ -122,7 +120,6 @@ export function GuestGuard({
   redirectTo?: string;
 }) {
   const { user, loading, initialized, initialize } = useAuth();
-  const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -139,11 +136,11 @@ export function GuestGuard({
     // 認証済みの場合はダッシュボードへリダイレクト
     if (user) {
       setTimeout(() => {
-        router.push(redirectTo);
-      }, 0);
+        window.location.replace(redirectTo);
+      }, 100);
       return;
     }
-  }, [user, loading, initialized, router, redirectTo, isMounted]);
+  }, [user, loading, initialized, redirectTo, isMounted]);
 
   // マウントされていない、または初期化中、またはローディング中
   if (!isMounted || !initialized || loading) {

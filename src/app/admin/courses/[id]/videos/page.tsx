@@ -14,6 +14,7 @@ import {
   validateVideoFile,
   formatFileSize
 } from '@/utils/supabase-storage';
+import { VideoUploader3GB } from '@/components/admin/VideoUploader3GB';
 import {
   ArrowLeftIcon,
   PlusIcon,
@@ -70,32 +71,12 @@ export default function CourseVideosPage() {
 
   // 動画追加用の状態
   const [showAddModal, setShowAddModal] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
-  const [addForm, setAddForm] = useState({
-    title: '',
-    description: '',
-    order_index: 1,
-    status: 'active' as 'active' | 'inactive'
-  });
-
-  // リソース追加用の状態
-  interface ResourceToAdd {
-    type: 'material' | 'assignment' | 'reference' | 'explanation';
-    title: string;
-    description?: string;
-    content?: string;
-    file?: File;
-    is_required?: boolean;
-  }
-  const [resourcesToAdd, setResourcesToAdd] = useState<ResourceToAdd[]>([]);
-  const [activeAddTab, setActiveAddTab] = useState<'basic' | 'resources'>('basic');
 
   // 動画置き換え用の状態
   const [replacingVideo, setReplacingVideo] = useState<string | null>(null);
   const [replaceFile, setReplaceFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   // ドラッグ&ドロップ用の状態
   const [draggedVideo, setDraggedVideo] = useState<Video | null>(null);
@@ -108,14 +89,6 @@ export default function CourseVideosPage() {
     }
   }, [courseId]);
 
-  useEffect(() => {
-    if (showAddModal) {
-      setAddForm(prev => ({
-        ...prev,
-        order_index: videos.length + 1
-      }));
-    }
-  }, [showAddModal, videos.length]);
 
   const fetchCourse = async () => {
     try {
@@ -171,17 +144,68 @@ export default function CourseVideosPage() {
         throw new Error('認証が必要です。再度ログインしてください。');
       }
 
-      // APIエンドポイント経由で削除
-      const response = await fetch(`/api/courses/${courseId}/videos/${videoId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
-        }
+      // ユーザープロファイルを確認
+      const { data: userProfile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('role')
+        .eq('id', session.user.id)
+        .single();
+
+      console.log('削除実行ユーザー:', {
+        userId: session.user.id,
+        email: session.user.email,
+        role: userProfile?.role,
+        profileError
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || '削除に失敗しました');
+      // 管理者またはインストラクター権限を確認
+      if (!userProfile || !['admin', 'instructor'].includes(userProfile.role)) {
+        throw new Error(`権限が不足しています。現在のロール: ${userProfile?.role || 'なし'}`);
+      }
+
+      // 動画情報を取得
+      const { data: video, error: fetchError } = await supabase
+        .from('videos')
+        .select('file_url, url, file_path')
+        .eq('id', videoId)
+        .single();
+
+      if (fetchError) {
+        console.error('動画取得エラー:', fetchError);
+        throw new Error('動画が見つかりません');
+      }
+
+      // ストレージから動画ファイルを削除
+      if (video?.file_url || video?.url) {
+        const fileUrl = video.file_url || video.url;
+        const urlParts = fileUrl.split('/storage/v1/object/public/videos/');
+        if (urlParts.length > 1) {
+          const filePath = decodeURIComponent(urlParts[1]);
+          console.log('ストレージから削除:', filePath);
+
+          try {
+            const { error: storageError } = await supabase.storage
+              .from('videos')
+              .remove([filePath]);
+
+            if (storageError) {
+              console.warn('ストレージ削除エラー:', storageError);
+            }
+          } catch (e) {
+            console.warn('ストレージエラー:', e);
+          }
+        }
+      }
+
+      // データベースから動画レコードを削除（直接Supabaseを使用）
+      const { error: deleteError } = await supabase
+        .from('videos')
+        .delete()
+        .eq('id', videoId);
+
+      if (deleteError) {
+        console.error('データベース削除エラー:', deleteError);
+        throw deleteError;
       }
 
       setVideos(prev => prev.filter(v => v.id !== videoId));
@@ -242,227 +266,11 @@ export default function CourseVideosPage() {
 
     if (isReplace) {
       setReplaceFile(file);
-    } else {
-      setVideoFile(file);
-      if (!addForm.title) {
-        const fileName = file.name.split('.').slice(0, -1).join('.');
-        setAddForm(prev => ({ ...prev, title: fileName }));
-      }
     }
   };
 
-  const handleThumbnailFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      alert('画像ファイルを選択してください。');
-      return;
-    }
 
-    if (file.size > 10 * 1024 * 1024) {
-      alert('ファイルサイズは10MB以下にしてください。');
-      return;
-    }
-
-    setThumbnailFile(file);
-  };
-
-  // 動画の長さを取得するヘルパー関数
-  const getVideoDuration = (file: File): Promise<number> => {
-    return new Promise((resolve, reject) => {
-      const video = document.createElement('video');
-      video.preload = 'metadata';
-      video.onloadedmetadata = () => {
-        resolve(Math.round(video.duration));
-      };
-      video.onerror = () => {
-        reject(new Error('動画のメタデータを読み込めませんでした'));
-      };
-      video.src = URL.createObjectURL(file);
-    });
-  };
-
-  const handleAddVideo = async () => {
-    if (!videoFile) {
-      alert('動画ファイルを選択してください');
-      return;
-    }
-
-    if (!addForm.title.trim()) {
-      alert('動画タイトルを入力してください');
-      return;
-    }
-
-    setUploading(true);
-    setUploadProgress(0);
-
-    try {
-      // Check if user is authenticated
-      const { data: { session } } = await supabase.auth.getSession();
-      console.log('Client session:', session ? 'Found' : 'Not found');
-      console.log('User ID:', session?.user?.id);
-      console.log('User email:', session?.user?.email);
-
-      if (!session) {
-        throw new Error('認証が必要です。再度ログインしてください。');
-      }
-
-      // プロフィールを確認
-      const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .single();
-      console.log('User profile:', profile);
-
-      // 動画の長さを取得
-      let videoDuration = 0;
-      try {
-        videoDuration = await getVideoDuration(videoFile);
-      } catch (durationError) {
-        console.warn('動画の長さを取得できませんでした:', durationError);
-        // 継続してアップロードを行う（長さは0のまま）
-      }
-
-      // すべての動画をAPIエンドポイント経由でアップロード
-      const formData = new FormData();
-      formData.append('video', videoFile);
-      if (thumbnailFile) {
-        formData.append('thumbnail', thumbnailFile);
-      }
-      formData.append('title', addForm.title.trim());
-      formData.append('description', addForm.description.trim());
-      formData.append('duration', videoDuration.toString());
-      formData.append('order_index', addForm.order_index.toString());
-
-      // ファイルサイズを表示
-      const fileSizeMB = (videoFile.size / 1024 / 1024).toFixed(1);
-      console.log(`Uploading ${fileSizeMB}MB video file...`);
-
-      // XMLHttpRequestを使用してプログレスを追跡
-      const xhr = new XMLHttpRequest();
-      
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          const percentComplete = (e.loaded / e.total) * 100;
-          setUploadProgress(Math.round(percentComplete));
-        }
-      });
-
-      const uploadPromise = new Promise((resolve, reject) => {
-        xhr.onload = () => {
-          if (xhr.status === 200) {
-            try {
-              const result = JSON.parse(xhr.responseText);
-              resolve(result);
-            } catch (e) {
-              reject(new Error('サーバーからの応答が不正です'));
-            }
-          } else {
-            try {
-              const response = JSON.parse(xhr.responseText);
-              reject(new Error(response.error || 'アップロードに失敗しました'));
-            } catch (e) {
-              reject(new Error(`アップロードに失敗しました (ステータス: ${xhr.status})`));
-            }
-          }
-        };
-
-        xhr.onerror = () => {
-          reject(new Error('ネットワークエラーが発生しました'));
-        };
-
-        xhr.ontimeout = () => {
-          reject(new Error('アップロードがタイムアウトしました'));
-        };
-
-        xhr.open('POST', `/api/courses/${courseId}/videos`);
-        xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
-        xhr.timeout = 600000; // 10分のタイムアウト（大きなファイル対応）
-        xhr.send(formData);
-      });
-
-      const result = await uploadPromise as any;
-      console.log('Upload result:', result);
-
-      // リソースを追加
-      if (resourcesToAdd.length > 0 && result.data) {
-        const videoId = result.data.id;
-
-        for (const resource of resourcesToAdd) {
-          try {
-            let fileUrl = null;
-            let fileName = null;
-            let fileSize = null;
-            let fileType = null;
-
-            // ファイルがある場合はアップロード
-            if (resource.file) {
-              const filePath = `resources/${videoId}/${Date.now()}_${resource.file.name}`;
-              const { error: uploadError } = await supabase.storage
-                .from('videos')
-                .upload(filePath, resource.file);
-
-              if (!uploadError) {
-                const { data: { publicUrl } } = supabase.storage
-                  .from('videos')
-                  .getPublicUrl(filePath);
-                fileUrl = publicUrl;
-                fileName = resource.file.name;
-                fileSize = resource.file.size;
-                fileType = resource.file.type;
-              }
-            }
-
-            // リソースをデータベースに保存
-            const resourceData = {
-              video_id: videoId,
-              resource_type: resource.type,
-              title: resource.title,
-              description: resource.description,
-              content: resource.content,
-              file_url: fileUrl,
-              file_name: fileName,
-              file_size: fileSize,
-              file_type: fileType,
-              is_required: resource.is_required || false,
-              display_order: resourcesToAdd.indexOf(resource)
-            };
-
-            await fetch(`/api/videos/${videoId}/resources`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(resourceData)
-            });
-          } catch (error) {
-            console.error('リソース追加エラー:', error);
-          }
-        }
-      }
-
-      // フォームをリセット
-      setAddForm({
-        title: '',
-        description: '',
-        order_index: 1,
-        status: 'active'
-      });
-      setVideoFile(null);
-      setThumbnailFile(null);
-      setResourcesToAdd([]);
-      setActiveAddTab('basic');
-      setShowAddModal(false);
-      await fetchVideos();
-      alert('動画とリソースが正常にアップロードされました');
-    } catch (error) {
-      console.error('動画追加エラー:', error);
-      alert(`動画の追加に失敗しました: ${(error as Error).message}`);
-    } finally {
-      setUploading(false);
-      setUploadProgress(0);
-    }
-  };
 
   const handleReplaceVideo = async (videoId: string) => {
     if (!replaceFile) {
@@ -607,11 +415,11 @@ export default function CourseVideosPage() {
   };
 
   const formatDuration = (seconds: number) => {
-    if (seconds === 0) return '未設定';
+    if (!seconds || seconds === 0) return '時間が未設定';
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const remainingSeconds = seconds % 60;
-    
+
     if (hours > 0) {
       return `${hours}時間${minutes}分${remainingSeconds}秒`;
     } else if (minutes > 0) {
@@ -855,7 +663,7 @@ export default function CourseVideosPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                           <div className="flex items-center">
                             <ClockIcon className="h-4 w-4 mr-1" />
-                            {formatDuration(video.duration)}
+                            {formatDuration(video.duration || 0)}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -920,11 +728,6 @@ export default function CourseVideosPage() {
                     <button
                       onClick={() => {
                         setShowAddModal(false);
-                        setAddForm({ title: '', description: '', order_index: 1, status: 'active' });
-                        setVideoFile(null);
-                        setThumbnailFile(null);
-                        setResourcesToAdd([]);
-                        setActiveAddTab('basic');
                       }}
                       className="text-gray-400 hover:text-gray-600 dark:text-gray-400"
                     >
@@ -935,364 +738,19 @@ export default function CourseVideosPage() {
                   </div>
                 </div>
 
-                {/* Tabs */}
-                <div className="border-b border-gray-200 dark:border-gray-700 px-6">
-                  <nav className="-mb-px flex space-x-8">
-                    <button
-                      onClick={() => setActiveAddTab('basic')}
-                      className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
-                        activeAddTab === 'basic'
-                          ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                      }`}
-                    >
-                      基本情報
-                    </button>
-                    <button
-                      onClick={() => setActiveAddTab('resources')}
-                      className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
-                        activeAddTab === 'resources'
-                          ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                      }`}
-                    >
-                      リソース ({resourcesToAdd.length})
-                    </button>
-                  </nav>
-                </div>
-
+                {/* 3GB Video Uploader */}
                 <div className="p-6 overflow-y-auto max-h-[60vh]">
-                  {activeAddTab === 'basic' ? (
-                    <div className="space-y-4">
-                      {/* Video File Upload */}
-                      <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        動画ファイル <span className="text-red-500">*</span>
-                      </label>
-                      <div 
-                        className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center hover:border-gray-400 transition-colors"
-                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-blue-500'); }}
-                        onDragLeave={(e) => { e.currentTarget.classList.remove('border-blue-500'); }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          e.currentTarget.classList.remove('border-blue-500');
-                          const file = e.dataTransfer.files[0];
-                          if (file && file.type.startsWith('video/')) {
-                            const validation = validateVideoFile(file);
-                            if (validation.valid) {
-                              setVideoFile(file);
-                              if (!addForm.title) {
-                                const fileName = file.name.split('.').slice(0, -1).join('.');
-                                setAddForm(prev => ({ ...prev, title: fileName }));
-                              }
-                            } else {
-                              alert(validation.error);
-                            }
-                          }
-                        }}
-                      >
-                        <input
-                          type="file"
-                          accept="video/*"
-                          onChange={(e) => handleVideoFileChange(e)}
-                          className="hidden"
-                          id="video-upload"
-                        />
-                        <label htmlFor="video-upload" className="cursor-pointer">
-                          <ArrowUpTrayIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                          {videoFile ? (
-                            <div>
-                              <p className="text-sm font-medium text-gray-900 dark:text-white">{videoFile.name}</p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                {formatFileSize(videoFile.size)} · {videoFile.type}
-                              </p>
-                            </div>
-                          ) : (
-                            <div>
-                              <p className="text-sm font-medium text-gray-900 dark:text-white">クリックまたはドラッグ&ドロップで動画を選択</p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                MP4, WebM, MOV, AVI など (最大3GB)
-                              </p>
-                            </div>
-                          )}
-                        </label>
-                      </div>
-                    </div>
-
-                    {/* Thumbnail Upload */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        サムネイル画像
-                      </label>
-                      <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 text-center hover:border-gray-400 transition-colors">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleThumbnailFileChange}
-                          className="hidden"
-                          id="thumbnail-upload"
-                        />
-                        <label htmlFor="thumbnail-upload" className="cursor-pointer">
-                          {thumbnailFile ? (
-                            <div>
-                              <p className="text-sm font-medium text-gray-900 dark:text-white">{thumbnailFile.name}</p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                {formatFileSize(thumbnailFile.size)}
-                              </p>
-                            </div>
-                          ) : (
-                            <div>
-                              <p className="text-sm text-gray-600 dark:text-gray-400">サムネイル画像を選択</p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                JPEG, PNG, WebP (最大10MB)
-                              </p>
-                            </div>
-                          )}
-                        </label>
-                      </div>
-                    </div>
-
-                    {/* Video Title */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        動画タイトル <span className="text-red-500">*</span>
-                      </label>
-                      <Input
-                        value={addForm.title}
-                        onChange={(e) => setAddForm({ ...addForm, title: e.target.value })}
-                        placeholder="動画のタイトルを入力..."
-                        required
-                      />
-                    </div>
-
-                    {/* Video Description */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        動画の説明
-                      </label>
-                      <textarea
-                        rows={3}
-                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
-                        value={addForm.description}
-                        onChange={(e) => setAddForm({ ...addForm, description: e.target.value })}
-                        placeholder="動画の説明を入力..."
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Order Index */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          表示順序
-                        </label>
-                        <input
-                          type="number"
-                          className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
-                          value={addForm.order_index}
-                          onChange={(e) => setAddForm({ ...addForm, order_index: parseInt(e.target.value) || 1 })}
-                          min="1"
-                        />
-                      </div>
-
-                      {/* Status */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          ステータス
-                        </label>
-                        <select
-                          className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
-                          value={addForm.status}
-                          onChange={(e) => setAddForm({ ...addForm, status: e.target.value as any })}
-                        >
-                          <option value="active">公開</option>
-                          <option value="inactive">非公開</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Upload Progress */}
-                    {uploading && uploadProgress > 0 && (
-                      <div className="mt-4">
-                        <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400 mb-1">
-                          <span>アップロード中...</span>
-                          <span>{uploadProgress}%</span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
-                            className="bg-blue-50 dark:bg-blue-900/200 h-2 rounded-full transition-all duration-300"
-                            style={{ width: `${uploadProgress}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
-                    </div>
-                  ) : (
-                    // Resources Tab
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-lg font-medium">リソースを追加</h3>
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            const newResource: ResourceToAdd = {
-                              type: 'material',
-                              title: '',
-                              description: '',
-                              content: ''
-                            };
-                            setResourcesToAdd([...resourcesToAdd, newResource]);
-                          }}
-                        >
-                          <PlusIcon className="h-4 w-4 mr-2" />
-                          リソースを追加
-                        </Button>
-                      </div>
-
-                      {resourcesToAdd.length === 0 ? (
-                        <p className="text-gray-500 dark:text-gray-400 text-center py-8">
-                          リソースがまだ追加されていません。上のボタンからリソースを追加してください。
-                        </p>
-                      ) : (
-                        <div className="space-y-4">
-                          {resourcesToAdd.map((resource, index) => (
-                            <div key={index} className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
-                              <div className="flex justify-between items-start mb-3">
-                                <h4 className="font-medium">リソース #{index + 1}</h4>
-                                <button
-                                  onClick={() => {
-                                    const newResources = [...resourcesToAdd];
-                                    newResources.splice(index, 1);
-                                    setResourcesToAdd(newResources);
-                                  }}
-                                  className="text-red-600 hover:text-red-700"
-                                >
-                                  <TrashIcon className="h-4 w-4" />
-                                </button>
-                              </div>
-
-                              <div className="space-y-3">
-                                {/* Resource Type */}
-                                <div>
-                                  <label className="block text-sm font-medium mb-1">種類</label>
-                                  <select
-                                    value={resource.type}
-                                    onChange={(e) => {
-                                      const newResources = [...resourcesToAdd];
-                                      newResources[index].type = e.target.value as any;
-                                      setResourcesToAdd(newResources);
-                                    }}
-                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800"
-                                  >
-                                    <option value="material">配布資料</option>
-                                    <option value="assignment">課題</option>
-                                    <option value="reference">参考資料</option>
-                                    <option value="explanation">解説</option>
-                                  </select>
-                                </div>
-
-                                {/* Title */}
-                                <div>
-                                  <label className="block text-sm font-medium mb-1">タイトル</label>
-                                  <input
-                                    type="text"
-                                    value={resource.title}
-                                    onChange={(e) => {
-                                      const newResources = [...resourcesToAdd];
-                                      newResources[index].title = e.target.value;
-                                      setResourcesToAdd(newResources);
-                                    }}
-                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800"
-                                    placeholder="リソースのタイトル"
-                                  />
-                                </div>
-
-                                {/* Description */}
-                                <div>
-                                  <label className="block text-sm font-medium mb-1">説明</label>
-                                  <textarea
-                                    value={resource.description || ''}
-                                    onChange={(e) => {
-                                      const newResources = [...resourcesToAdd];
-                                      newResources[index].description = e.target.value;
-                                      setResourcesToAdd(newResources);
-                                    }}
-                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800"
-                                    rows={2}
-                                    placeholder="リソースの説明（オプション）"
-                                  />
-                                </div>
-
-                                {/* Content for explanations and assignments */}
-                                {(resource.type === 'explanation' || resource.type === 'assignment') && (
-                                  <div>
-                                    <label className="block text-sm font-medium mb-1">
-                                      {resource.type === 'explanation' ? '解説内容' : '課題内容'}
-                                    </label>
-                                    <textarea
-                                      value={resource.content || ''}
-                                      onChange={(e) => {
-                                        const newResources = [...resourcesToAdd];
-                                        newResources[index].content = e.target.value;
-                                        setResourcesToAdd(newResources);
-                                      }}
-                                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800"
-                                      rows={4}
-                                      placeholder={resource.type === 'explanation' ? '動画の補足説明を入力' : '課題の詳細を入力'}
-                                    />
-                                  </div>
-                                )}
-
-                                {/* File upload for materials and references */}
-                                {(resource.type === 'material' || resource.type === 'reference') && (
-                                  <div>
-                                    <label className="block text-sm font-medium mb-1">ファイル</label>
-                                    <input
-                                      type="file"
-                                      onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (file) {
-                                          const newResources = [...resourcesToAdd];
-                                          newResources[index].file = file;
-                                          setResourcesToAdd(newResources);
-                                        }
-                                      }}
-                                      className="w-full"
-                                      accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.jpg,.jpeg,.png,.gif"
-                                    />
-                                    {resource.file && (
-                                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                                        選択: {resource.file.name}
-                                      </p>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Required flag for assignments */}
-                                {resource.type === 'assignment' && (
-                                  <div className="flex items-center">
-                                    <input
-                                      type="checkbox"
-                                      id={`required-${index}`}
-                                      checked={resource.is_required || false}
-                                      onChange={(e) => {
-                                        const newResources = [...resourcesToAdd];
-                                        newResources[index].is_required = e.target.checked;
-                                        setResourcesToAdd(newResources);
-                                      }}
-                                      className="mr-2"
-                                    />
-                                    <label htmlFor={`required-${index}`} className="text-sm">
-                                      必須課題にする
-                                    </label>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  <VideoUploader3GB
+                    courseId={parseInt(courseId)}
+                    onSuccess={() => {
+                      setShowAddModal(false);
+                      fetchVideos();
+                    }}
+                    onError={(error) => {
+                      console.error('動画アップロードエラー:', error);
+                      alert(`動画のアップロードに失敗しました: ${error.message}`);
+                    }}
+                  />
                 </div>
                 
                 <div className="p-6 border-t border-gray-200 dark:border-neutral-800 flex justify-end space-x-3">
@@ -1300,22 +758,9 @@ export default function CourseVideosPage() {
                     variant="outline"
                     onClick={() => {
                       setShowAddModal(false);
-                      setAddForm({ title: '', description: '', order_index: 1, status: 'active' });
-                      setVideoFile(null);
-                      setThumbnailFile(null);
-                      setResourcesToAdd([]);
-                      setActiveAddTab('basic');
                     }}
-                    disabled={uploading}
                   >
-                    キャンセル
-                  </Button>
-                  <Button
-                    onClick={handleAddVideo}
-                    disabled={!videoFile || !addForm.title.trim() || uploading}
-                    loading={uploading}
-                  >
-                    {uploading ? 'アップロード中...' : '動画を追加'}
+                    閉じる
                   </Button>
                 </div>
               </div>
