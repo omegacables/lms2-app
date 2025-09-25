@@ -17,7 +17,7 @@ interface VideoUploaderProps {
   onError?: (error: Error) => void;
 }
 
-const MAX_FILE_SIZE = 3 * 1024 * 1024 * 1024; // 3GB
+const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB（安定性のため制限）
 
 export function VideoUploader({ courseId, onSuccess, onError }: VideoUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
@@ -67,7 +67,7 @@ export function VideoUploader({ courseId, onSuccess, onError }: VideoUploaderPro
 
     // ファイルサイズチェック
     if (selectedFile.size > MAX_FILE_SIZE) {
-      setError(`ファイルサイズが大きすぎます。最大3GBまでアップロード可能です。`);
+      setError(`ファイルサイズが大きすぎます。最大500MBまでアップロード可能です。`);
       return;
     }
 
@@ -123,16 +123,43 @@ export function VideoUploader({ courseId, onSuccess, onError }: VideoUploaderPro
       console.log('アップロード開始:', filePath);
 
       // Supabaseストレージにアップロード
+      console.log('アップロード開始:', {
+        fileName: file.name,
+        fileSize: formatFileSize(file.size),
+        filePath: filePath
+      });
+
+      // プログレスを模擬的に更新（実際のプログレスは取得できないため）
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => Math.min(prev + 10, 90));
+      }, 1000);
+
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('videos')
         .upload(filePath, file, {
           cacheControl: '3600',
           upsert: false,
+          duplex: 'half', // より安定した接続のため
         });
+
+      clearInterval(progressInterval);
 
       if (uploadError) {
         console.error('アップロードエラー:', uploadError);
-        throw new Error(`アップロードに失敗しました: ${uploadError.message}`);
+
+        // エラーメッセージをより分かりやすく
+        let errorMessage = 'アップロードに失敗しました';
+        if (uploadError.message?.includes('timeout')) {
+          errorMessage = 'アップロードがタイムアウトしました。ファイルサイズが大きすぎるか、ネットワーク接続が不安定です。';
+        } else if (uploadError.message?.includes('413')) {
+          errorMessage = 'ファイルサイズが大きすぎます。500MB以下のファイルを選択してください。';
+        } else if (uploadError.message?.includes('network')) {
+          errorMessage = 'ネットワークエラーが発生しました。接続を確認してください。';
+        } else {
+          errorMessage = `アップロードに失敗しました: ${uploadError.message}`;
+        }
+
+        throw new Error(errorMessage);
       }
 
       console.log('アップロード成功:', uploadData);
@@ -259,7 +286,7 @@ export function VideoUploader({ courseId, onSuccess, onError }: VideoUploaderPro
                 クリックまたはドラッグ＆ドロップで動画を選択
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                最大3GBまでアップロード可能
+                最大500MBまでアップロード可能（安定性優先）
               </p>
             </div>
           )}

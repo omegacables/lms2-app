@@ -42,7 +42,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       console.log('[Supabase Fetch]', url, options.method || 'GET');
       
       // より長いタイムアウトと詳細なエラーハンドリング
-      const timeout = 45000; // 45秒のタイムアウト
+      // アップロード用に十分長いタイムアウトを設定
+      const isUploadRequest = url.includes('/storage/') && (options.method === 'POST' || options.method === 'PUT');
+      const timeout = isUploadRequest ? 600000 : 45000; // アップロードは10分、それ以外は45秒
       const controller = new AbortController();
       
       const timeoutId = setTimeout(() => {
