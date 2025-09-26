@@ -59,8 +59,9 @@ export function CourseCertificate({
 
         if (data) {
           setExistingCertificate(data);
-        } else if (isEligibleForCertificate) {
+        } else if (isEligibleForCertificate && !existingCertificate) {
           // 証明書が存在せず、コース完了条件を満たしている場合は自動生成
+          console.log('Auto-generating certificate for completed course');
           await generateCertificate();
         }
       } catch (err) {
@@ -71,7 +72,7 @@ export function CourseCertificate({
     };
 
     checkAndGenerateCertificate();
-  }, [user, course, completionRate]);
+  }, [user?.id, course?.id, progress.completedVideos, progress.totalVideos]);
 
   // 証明書データの準備
   const prepareCertificateData = (): CertificateData => {

@@ -71,11 +71,21 @@ export default function StudentsManagePage() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [exportingCSV, setExportingCSV] = useState(false);
   const [importingCSV, setImportingCSV] = useState(false);
+  const [groupByCompany, setGroupByCompany] = useState(true);
+  const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchStudents();
     fetchCourses();
   }, []);
+
+  // 初期表示時に全ての会社を展開
+  useEffect(() => {
+    if (students.length > 0) {
+      const companies = new Set(students.map(s => s.company || '個人'));
+      setExpandedCompanies(companies);
+    }
+  }, [students]);
 
   const fetchStudents = async () => {
     try {
@@ -553,35 +563,57 @@ export default function StudentsManagePage() {
   };
 
   const filteredStudents = students.filter(student => {
-    const matchesSearch = 
+    const matchesSearch =
       student.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.department?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesFilter = 
-      filterStatus === 'all' || 
+
+    const matchesFilter =
+      filterStatus === 'all' ||
       (filterStatus === 'active' && student.is_active) ||
       (filterStatus === 'inactive' && !student.is_active);
 
     return matchesSearch && matchesFilter;
   }).sort((a, b) => {
     let compareValue = 0;
-    
+
     switch (sortBy) {
       case 'name':
         compareValue = a.display_name.localeCompare(b.display_name);
         break;
       case 'company':
-        compareValue = (a.company || '').localeCompare(b.company || '');
+        compareValue = (a.company || '個人').localeCompare(b.company || '個人');
         break;
       case 'created':
         compareValue = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
         break;
     }
-    
+
     return sortOrder === 'asc' ? compareValue : -compareValue;
   });
+
+  // 会社名別にグループ化
+  const groupedStudents = groupByCompany
+    ? filteredStudents.reduce((groups, student) => {
+        const company = student.company || '個人';
+        if (!groups[company]) {
+          groups[company] = [];
+        }
+        groups[company].push(student);
+        return groups;
+      }, {} as Record<string, Student[]>)
+    : { '全て': filteredStudents };
+
+  const toggleCompanyExpanded = (company: string) => {
+    const newExpanded = new Set(expandedCompanies);
+    if (newExpanded.has(company)) {
+      newExpanded.delete(company);
+    } else {
+      newExpanded.add(company);
+    }
+    setExpandedCompanies(newExpanded);
+  };
 
   // Removed filteredLogs - now in separate page
 
@@ -716,6 +748,17 @@ export default function StudentsManagePage() {
                         {sortOrder === 'asc' ? '↑' : '↓'}
                       </button>
                     </div>
+                    <div className="flex items-center space-x-2">
+                      <label className="flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={groupByCompany}
+                          onChange={(e) => setGroupByCompany(e.target.checked)}
+                          className="h-4 w-4 text-indigo-600 border-gray-300 dark:border-gray-600 rounded focus:ring-indigo-500"
+                        />
+                        <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">会社別表示</span>
+                      </label>
+                    </div>
                   </div>
                 )}
               </div>
@@ -723,24 +766,58 @@ export default function StudentsManagePage() {
 
             {/* Content */}
             <div className="p-6">
-              <div className="space-y-4">
-                  {filteredStudents.length === 0 ? (
-                    <div className="text-center py-12">
-                      <UserGroupIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                        {searchTerm ? '検索結果がありません' : '生徒がまだ登録されていません'}
-                      </h3>
-                      <p className="text-gray-600 dark:text-gray-400 mb-6">
-                        {searchTerm ? '別のキーワードで検索してみてください' : '最初の生徒を追加しましょう'}
-                      </p>
-                      {!searchTerm && (
-                        <Link href="/admin/users/new">
-                          <Button>生徒を追加</Button>
-                        </Link>
+              {filteredStudents.length === 0 ? (
+                <div className="text-center py-12">
+                  <UserGroupIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                    {searchTerm ? '検索結果がありません' : '生徒がまだ登録されていません'}
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400 mb-6">
+                    {searchTerm ? '別のキーワードで検索してみてください' : '最初の生徒を追加しましょう'}
+                  </p>
+                  {!searchTerm && (
+                    <Link href="/admin/users/new">
+                      <Button>生徒を追加</Button>
+                    </Link>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {Object.entries(groupedStudents).map(([company, companyStudents]) => (
+                    <div key={company} className="space-y-4">
+                      {groupByCompany && (
+                        <div className="flex items-center justify-between">
+                          <button
+                            onClick={() => toggleCompanyExpanded(company)}
+                            className="flex items-center space-x-2 text-lg font-semibold text-gray-900 dark:text-white hover:text-indigo-600 transition-colors"
+                          >
+                            {expandedCompanies.has(company) ? (
+                              <ChevronUpIcon className="h-5 w-5" />
+                            ) : (
+                              <ChevronDownIcon className="h-5 w-5" />
+                            )}
+                            <span>{company}</span>
+                            <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
+                              ({companyStudents.length}名)
+                            </span>
+                          </button>
+                          <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
+                            <span>
+                              完了率: {Math.round(
+                                companyStudents.reduce((sum, s) => sum + s.courseStats.completionRate, 0) / companyStudents.length
+                              )}%
+                            </span>
+                            <span>
+                              総視聴時間: {formatTime(
+                                companyStudents.reduce((sum, s) => sum + s.courseStats.totalWatchTime, 0)
+                              )}
+                            </span>
+                          </div>
+                        </div>
                       )}
-                    </div>
-                  ) : (
-                    filteredStudents.map((student) => (
+                      {(!groupByCompany || expandedCompanies.has(company)) && (
+                        <div className="space-y-4">
+                          {companyStudents.map((student) => (
                       <div key={student.id} className="border border-gray-200 dark:border-neutral-800 rounded-lg p-6">
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
@@ -911,9 +988,13 @@ export default function StudentsManagePage() {
                           </div>
                         )}
                       </div>
-                    ))
-                  )}
+                    ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
+              )}
             </div>
           </div>
         </div>
