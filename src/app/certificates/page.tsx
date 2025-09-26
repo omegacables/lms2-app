@@ -7,6 +7,7 @@ import { useAuth } from '@/stores/auth';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/database/supabase';
+import { certificatesClient } from '@/lib/database/supabase-no-cache';
 import {
   AcademicCapIcon,
   DocumentTextIcon,
@@ -74,11 +75,9 @@ export default function CertificatesPage() {
 
     try {
       setLoading(true);
-      // まずすべての証明書を取得（デバッグ用）
-      const { data: allCerts } = await supabase
-        .from('certificates')
-        .select('*')
-        .eq('user_id', user.id);
+      // デバッグ用: 証明書専用クライアントを使用
+      const { data: allCerts } = await certificatesClient
+        .select(user.id);
 
       console.log('All certificates for user:', allCerts);
 

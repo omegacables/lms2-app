@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { generateCertificatePDF, type CertificateData } from '@/lib/utils/certificatePDF';
 import { supabase } from '@/lib/database/supabase';
+import { certificatesClient } from '@/lib/database/supabase-no-cache';
 import { generateCertificateId } from '@/lib/utils';
 import type { Course, UserProfile } from '@/types';
 
@@ -41,13 +42,10 @@ export function CourseCertificate({
       if (!user || !course) return;
 
       try {
-        // certificate_numberを除外して選択
-        const { data, error } = await supabase
-          .from('certificates')
-          .select('id, user_id, course_id, user_name, course_title, completion_date, pdf_url, is_active, created_at')
-          .eq('user_id', user.id)
-          .eq('course_id', course.id)
-          .maybeSingle();
+        // 証明書専用クライアントを使用
+        const { data, error } = await certificatesClient
+          .select(user.id, course.id)
+          .then(query => query.maybeSingle());
 
         console.log('Checking existing certificate:', {
           userId: user.id,
@@ -128,22 +126,17 @@ export function CourseCertificate({
 
       console.log('Inserting certificate data:', insertData);
 
-      const { data: newCertificate, error: dbError } = await supabase
-        .from('certificates')
+      const { data: newCertificate, error: dbError } = await certificatesClient
         .insert(insertData)
-        .select('id, user_id, course_id, user_name, course_title, completion_date, pdf_url, is_active, created_at')
-        .single();
+        .then(result => result.single());
 
       if (dbError) {
         console.error('Certificate save error:', dbError);
         // 重複エラーの場合は既存の証明書を取得
         if (dbError.code === '23505' || dbError.message?.includes('duplicate')) {
-          const { data: existingData } = await supabase
-            .from('certificates')
-            .select('id, user_id, course_id, user_name, course_title, completion_date, pdf_url, is_active, created_at')
-            .eq('user_id', user.id)
-            .eq('course_id', course.id)
-            .maybeSingle();
+          const { data: existingData } = await certificatesClient
+            .select(user.id, course.id)
+            .then(query => query.maybeSingle());
 
           if (existingData) {
             setExistingCertificate(existingData);
