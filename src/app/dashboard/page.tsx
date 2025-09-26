@@ -91,7 +91,7 @@ export default function DashboardPage() {
       }
 
       // 割り当てられたコースの詳細を取得
-      let userCourses = [];
+      let userCourses: any[] = [];
       if (assignments && assignments.length > 0) {
         const courseIds = assignments.map((a) => a.course_id);
         const { data: coursesData } = await supabase
@@ -241,7 +241,8 @@ export default function DashboardPage() {
       // 割り当てられたコースのリストを作成（進捗情報付き）
       const assignedCourses = await Promise.all(
         (userCourses?.slice(0, 4) || []).map(async (uc) => {
-          const course = uc.courses;
+          // uc自体がコースデータ
+          const course = uc;
           if (!course) return null;
 
           // 動画数を取得（全体の動画数）
@@ -272,8 +273,9 @@ export default function DashboardPage() {
           return {
             ...course,
             progress,
-            totalWatchedTime,
-            videoCount: videoCount || 0,
+            totalWatchedTime: course.totalWatchedTime || totalWatchedTime,
+            totalDuration: course.totalDuration || 0,
+            videoCount: course.videoCount || videoCount || 0,
             status:
               progress === 100
                 ? "completed"

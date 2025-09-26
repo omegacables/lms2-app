@@ -31,12 +31,13 @@ export function CourseCertificate({
   const [existingCertificate, setExistingCertificate] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // すべての動画を視聴したかチェック
-  const isEligibleForCertificate = progress.completedVideos === progress.totalVideos;
+  // すべての動画を視聴したかチェック（90%以上で証明書発行可能）
+  const completionRate = progress.totalVideos > 0 ? (progress.completedVideos / progress.totalVideos) * 100 : 0;
+  const isEligibleForCertificate = completionRate >= 90;
 
-  // 既存の証明書をチェック
+  // 既存の証明書をチェックし、完了時に自動生成
   useEffect(() => {
-    const checkExistingCertificate = async () => {
+    const checkAndGenerateCertificate = async () => {
       if (!user || !course) return;
 
       try {
@@ -47,8 +48,20 @@ export function CourseCertificate({
           .eq('course_id', course.id)
           .maybeSingle();
 
+        console.log('Checking existing certificate:', {
+          userId: user.id,
+          courseId: course.id,
+          found: !!data,
+          error,
+          completionRate,
+          isEligible: isEligibleForCertificate
+        });
+
         if (data) {
           setExistingCertificate(data);
+        } else if (isEligibleForCertificate) {
+          // 証明書が存在せず、コース完了条件を満たしている場合は自動生成
+          await generateCertificate();
         }
       } catch (err) {
         console.error('Error checking certificate:', err);
@@ -57,8 +70,8 @@ export function CourseCertificate({
       }
     };
 
-    checkExistingCertificate();
-  }, [user, course]);
+    checkAndGenerateCertificate();
+  }, [user, course, completionRate]);
 
   // 証明書データの準備
   const prepareCertificateData = (): CertificateData => {
@@ -76,9 +89,76 @@ export function CourseCertificate({
     };
   };
 
+  // 証明書生成共通ロジック
+  const generateCertificate = async () => {
+    if (!isEligibleForCertificate) {
+      console.log('Not eligible for certificate:', { completionRate });
+      return null;
+    }
+
+    try {
+      const certificateId = generateCertificateId();
+      const certificateData = {
+        certificateId,
+        courseName: course.title,
+        userName: user.display_name || user.email,
+        completionDate: format(completionDate, 'yyyy年MM月dd日', { locale: ja }),
+        issueDate: format(new Date(), 'yyyy年MM月dd日', { locale: ja }),
+        totalVideos: progress.totalVideos,
+        totalWatchTime: Math.round(progress.totalWatchTime / 60),
+        courseDescription: course.description || '',
+        organization: '企業研修LMS',
+        company: user.company_name || undefined,
+      };
+
+      // データベースに保存
+      const { data: newCertificate, error: dbError } = await supabase
+        .from('certificates')
+        .insert({
+          id: certificateId,
+          user_id: user.id,
+          course_id: course.id,
+          user_name: user.display_name || user.email || 'ユーザー',
+          course_title: course.title,
+          completion_date: completionDate.toISOString(),
+          pdf_url: null,
+          is_active: true,
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (dbError) {
+        console.error('Certificate save error:', dbError);
+        // 重複エラーの場合は既存の証明書を取得
+        if (dbError.code === '23505' || dbError.message?.includes('duplicate')) {
+          const { data: existingData } = await supabase
+            .from('certificates')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('course_id', course.id)
+            .maybeSingle();
+
+          if (existingData) {
+            setExistingCertificate(existingData);
+            return existingData;
+          }
+        }
+        throw dbError;
+      }
+
+      setExistingCertificate(newCertificate);
+      console.log('Certificate auto-generated:', newCertificate);
+      return newCertificate;
+    } catch (err) {
+      console.error('Certificate generation error:', err);
+      return null;
+    }
+  };
+
   const handleDownloadCertificate = async () => {
     if (!isEligibleForCertificate) {
-      setError('すべての動画を視聴完了してから修了証を発行してください。');
+      setError(`コースの90%以上を完了してください。（現在: ${Math.round(completionRate)}%）`);
       return;
     }
 
@@ -88,58 +168,19 @@ export function CourseCertificate({
     try {
       const certificateData = prepareCertificateData();
 
-      // 既存の証明書がない場合は新規作成
-      if (!existingCertificate) {
-        // 証明書IDを生成
-        const certificateId = generateCertificateId();
-        certificateData.certificateId = certificateId;
-
-        // データベースに保存
-        const { data: newCertificate, error: dbError } = await supabase
-          .from('certificates')
-          .insert({
-            id: certificateId,
-            user_id: user.id,
-            course_id: course.id,
-            user_name: user.display_name || user.email || 'ユーザー',
-            course_title: course.title,
-            completion_date: completionDate.toISOString(),
-            pdf_url: null, // PDFは保存しない（動的生成）
-            is_active: true,
-            created_at: new Date().toISOString()
-          })
-          .select()
-          .single();
-
-        if (dbError) {
-          console.error('Certificate save error:', dbError);
-          // 重複エラーの場合は既存の証明書を取得
-          if (dbError.code === '23505' || dbError.message?.includes('duplicate')) {
-            const { data: existingData } = await supabase
-              .from('certificates')
-              .select('*')
-              .eq('user_id', user.id)
-              .eq('course_id', course.id)
-              .maybeSingle();
-
-            if (existingData) {
-              setExistingCertificate(existingData);
-              certificateData.certificateId = existingData.id;
-              await generateCertificatePDF(certificateData);
-              console.log('Using existing certificate');
-              return;
-            }
-          }
-          // その他のエラーの場合はPDF生成のみ実行
-          await generateCertificatePDF(certificateData);
-          setError('証明書は生成されましたが、データベースへの保存に失敗しました。');
-        } else {
-          setExistingCertificate(newCertificate);
-          // PDF生成
-          await generateCertificatePDF(certificateData);
+      // 既存の証明書がない場合は生成
+      let certificate = existingCertificate;
+      if (!certificate) {
+        certificate = await generateCertificate();
+        if (!certificate) {
+          setError('証明書の生成に失敗しました。');
+          return;
         }
-      } else {
-        // 既存の証明書を再ダウンロード
+      }
+
+      // PDFダウンロード
+      if (certificate) {
+        certificateData.certificateId = certificate.id;
         await generateCertificatePDF(certificateData);
       }
 
@@ -225,7 +266,7 @@ export function CourseCertificate({
                 : 'bg-blue-600'
             }`}
             style={{
-              width: `${(progress.completedVideos / progress.totalVideos) * 100}%`
+              width: `${completionRate}%`
             }}
           />
         </div>

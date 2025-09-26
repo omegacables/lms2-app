@@ -74,6 +74,15 @@ export default function CertificatesPage() {
 
     try {
       setLoading(true);
+      // まずすべての証明書を取得（デバッグ用）
+      const { data: allCerts } = await supabase
+        .from('certificates')
+        .select('*')
+        .eq('user_id', user.id);
+
+      console.log('All certificates for user:', allCerts);
+
+      // アクティブな証明書をコース情報付きで取得
       const { data, error } = await supabase
         .from('certificates')
         .select(`
@@ -94,6 +103,7 @@ export default function CertificatesPage() {
         return;
       }
 
+      console.log('Active certificates with courses:', data);
       setCertificates(data || []);
     } catch (error) {
       console.error('証明書取得エラー:', error);
