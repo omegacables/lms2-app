@@ -150,7 +150,19 @@ export default function SupportMessages() {
 
   const fetchMessages = async (conversationId: number) => {
     try {
-      // まずメッセージを取得
+      // まず会話に関連する生徒のIDを取得
+      const { data: conversation } = await supabase
+        .from('support_conversations')
+        .select('student_id')
+        .eq('id', conversationId)
+        .single();
+
+      if (!conversation) {
+        console.error('会話が見つかりません');
+        return;
+      }
+
+      // メッセージを取得
       const { data: messagesData, error } = await supabase
         .from('support_messages')
         .select('*')
@@ -162,6 +174,38 @@ export default function SupportMessages() {
         throw error;
       }
 
+      // 管理者からの未読メッセージを特定
+      const adminUnreadMessages = messagesData?.filter(msg =>
+        msg.sender_type === 'admin' && msg.is_read === false
+      ) || [];
+
+      console.log('管理者からの未読メッセージ:', adminUnreadMessages.length, '件');
+
+      // 既読にする処理（生徒がメッセージを見た場合）
+      if (adminUnreadMessages.length > 0 && user?.id === conversation.student_id) {
+        console.log(`既読処理開始: 会話ID=${conversationId}, ${adminUnreadMessages.length}件の未読メッセージ`);
+
+        // 各メッセージを個別に更新
+        for (const msg of adminUnreadMessages) {
+          const { error: updateError } = await supabase
+            .from('support_messages')
+            .update({ is_read: true, read_at: new Date().toISOString() })
+            .eq('id', msg.id);
+
+          if (updateError) {
+            console.error('メッセージ既読更新エラー:', msg.id, updateError);
+          } else {
+            console.log('メッセージ既読成功:', msg.id);
+          }
+        }
+
+        // 既読になったらイベントを発火してMainLayoutの通知を更新
+        setTimeout(() => {
+          console.log('message-read イベント発火');
+          messageEvents.emit('message-read');
+        }, 500);
+      }
+
       // 各メッセージの送信者情報を取得
       const data = await Promise.all(
         (messagesData || []).map(async (msg) => {
@@ -170,7 +214,7 @@ export default function SupportMessages() {
             .select('display_name')
             .eq('id', msg.sender_id)
             .single();
-          
+
           return {
             ...msg,
             sender: userData
@@ -190,36 +234,6 @@ export default function SupportMessages() {
       })) || [];
 
       setMessages(formattedMessages);
-
-      // 管理者からの未読メッセージを既読にする
-      const unreadMessages = formattedMessages.filter(msg =>
-        msg.senderType === 'admin' && !msg.isRead
-      );
-
-      if (unreadMessages.length > 0) {
-        console.log(`既読処理開始: ${unreadMessages.length}件の未読メッセージ`);
-
-        const { data: updatedData, error: updateError } = await supabase
-          .from('support_messages')
-          .update({ is_read: true, read_at: new Date().toISOString() })
-          .eq('conversation_id', conversationId)
-          .eq('sender_type', 'admin')
-          .eq('is_read', false)
-          .select();
-
-        if (!updateError) {
-          console.log('既読処理成功:', updatedData?.length, '件更新');
-          // 既読になったらイベントを発火してMainLayoutの通知を更新
-          setTimeout(() => {
-            console.log('message-read イベント発火');
-            messageEvents.emit('message-read');
-          }, 100);
-        } else {
-          console.error('既読更新エラー:', updateError);
-        }
-      } else {
-        console.log('未読メッセージなし');
-      }
 
       // 選択中の会話の未読数を0にリセット
       setConversations(prevConversations =>
