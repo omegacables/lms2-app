@@ -82,11 +82,19 @@ export default function CertificatesPage() {
 
       console.log('All certificates for user:', allCerts);
 
-      // アクティブな証明書をコース情報付きで取得
+      // アクティブな証明書をコース情報付きで取得（certificate_numberを除外）
       const { data, error } = await supabase
         .from('certificates')
         .select(`
-          *,
+          id,
+          user_id,
+          course_id,
+          user_name,
+          course_title,
+          completion_date,
+          pdf_url,
+          is_active,
+          created_at,
           courses (
             id,
             title,

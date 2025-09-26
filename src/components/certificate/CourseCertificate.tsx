@@ -41,9 +41,10 @@ export function CourseCertificate({
       if (!user || !course) return;
 
       try {
+        // certificate_numberを除外して選択
         const { data, error } = await supabase
           .from('certificates')
-          .select('*')
+          .select('id, user_id, course_id, user_name, course_title, completion_date, pdf_url, is_active, created_at')
           .eq('user_id', user.id)
           .eq('course_id', course.id)
           .maybeSingle();
@@ -112,21 +113,25 @@ export function CourseCertificate({
         company: user.company_name || undefined,
       };
 
-      // データベースに保存
+      // データベースに保存（certificate_numberを除外）
+      const insertData = {
+        id: certificateId,
+        user_id: user.id,
+        course_id: course.id,
+        user_name: user.display_name || user.email || 'ユーザー',
+        course_title: course.title,
+        completion_date: completionDate.toISOString(),
+        pdf_url: null,
+        is_active: true,
+        created_at: new Date().toISOString()
+      };
+
+      console.log('Inserting certificate data:', insertData);
+
       const { data: newCertificate, error: dbError } = await supabase
         .from('certificates')
-        .insert({
-          id: certificateId,
-          user_id: user.id,
-          course_id: course.id,
-          user_name: user.display_name || user.email || 'ユーザー',
-          course_title: course.title,
-          completion_date: completionDate.toISOString(),
-          pdf_url: null,
-          is_active: true,
-          created_at: new Date().toISOString()
-        })
-        .select()
+        .insert(insertData)
+        .select('id, user_id, course_id, user_name, course_title, completion_date, pdf_url, is_active, created_at')
         .single();
 
       if (dbError) {
@@ -135,7 +140,7 @@ export function CourseCertificate({
         if (dbError.code === '23505' || dbError.message?.includes('duplicate')) {
           const { data: existingData } = await supabase
             .from('certificates')
-            .select('*')
+            .select('id, user_id, course_id, user_name, course_title, completion_date, pdf_url, is_active, created_at')
             .eq('user_id', user.id)
             .eq('course_id', course.id)
             .maybeSingle();

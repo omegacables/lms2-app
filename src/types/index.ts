@@ -91,13 +91,15 @@ export interface Certificate {
   user_name: string;
   course_title: string;
   completion_date: string;
+  pdf_url?: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string;
+  // 以下のフィールドは将来の拡張用（現在は使用しない）
   certificate_number?: string;
   verification_code?: string;
   issued_at?: string;
   expires_at?: string;
-  pdf_url?: string;
-  is_active: boolean;
-  created_at: string;
 }
 
 export interface SystemLog {
