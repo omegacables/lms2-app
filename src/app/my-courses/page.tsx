@@ -179,61 +179,60 @@ export default function MyCoursesPage() {
     }
 
     try {
-      // First check if a certificate already exists
-      const { data: existingCert, error: checkError } = await supabase
-        .from('certificates')
-        .select('*')
-        .eq('user_id', user!.id)
-        .eq('course_id', course.id)
-        .single();
+      // APIルートを使用して証明書を生成
+      const response = await fetch('/api/certificates/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user!.id,
+          courseId: course.id
+        })
+      });
 
-      let certificate;
+      const result = await response.json();
 
-      if (existingCert) {
-        certificate = existingCert;
-      } else {
-        // Generate a new certificate
-        const certificateNumber = `CERT-${Date.now()}`;
-        const verificationCode = Math.random().toString(36).substring(2, 15).toUpperCase();
+      if (!response.ok) {
+        console.error('証明書生成エラー:', result);
+        alert(result.error || '証明書の生成に失敗しました。');
+        return;
+      }
 
-        const { data: newCert, error: insertError } = await supabase
+      if (result.success) {
+        // 証明書を取得
+        const { data: certificate, error: fetchError } = await supabase
           .from('certificates')
-          .insert({
-            user_id: user!.id,
-            course_id: course.id,
-            certificate_number: certificateNumber,
-            issued_at: new Date().toISOString(),
-            is_active: true,
-            verification_code: verificationCode
-          })
-          .select()
+          .select('*')
+          .eq('user_id', user!.id)
+          .eq('course_id', course.id)
           .single();
 
-        if (insertError) {
-          console.error('証明書生成エラー:', insertError);
-          alert('証明書の生成に失敗しました。');
+        if (fetchError || !certificate) {
+          console.error('証明書取得エラー:', fetchError);
+          alert('証明書の取得に失敗しました。');
           return;
         }
 
-        certificate = newCert;
+        // Generate and download PDF
+        const certWithCourse = {
+          ...certificate,
+          courses: {
+            title: course.title,
+            category_id: course.category_id
+          }
+        };
+
+        const userName = user?.profile?.display_name || user?.email || '受講者名';
+        const company = user?.profile?.company;
+
+        const doc = generateCertificatePDF(certWithCourse, userName, company);
+        doc.save(`certificate_${certificate.id}.pdf`);
+
+        alert('証明書をダウンロードしました！');
+      } else {
+        alert(result.error || '証明書の生成に失敗しました。');
       }
-
-      // Generate and download PDF
-      const certWithCourse = {
-        ...certificate,
-        courses: {
-          title: course.title,
-          category_id: course.category_id
-        }
-      };
-
-      const userName = user?.profile?.display_name || user?.email || '受講者名';
-      const company = user?.profile?.company;
-
-      const doc = generateCertificatePDF(certWithCourse, userName, company);
-      doc.save(`certificate_${certificate.certificate_number}.pdf`);
-
-      alert('証明書をダウンロードしました！');
     } catch (error) {
       console.error('証明書取得エラー:', error);
       alert('証明書の取得に失敗しました。');

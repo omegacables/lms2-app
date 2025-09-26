@@ -8,7 +8,6 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/database/supabase';
 import { certificatesClient } from '@/lib/database/supabase-no-cache';
-import { fetchAllCertificatesAdmin } from '@/lib/database/test-certificates';
 import {
   AcademicCapIcon,
   DocumentTextIcon,
