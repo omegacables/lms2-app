@@ -430,16 +430,17 @@ export default function SupportMessages() {
               </div>
               <Button
                 onClick={() => setShowNewConversationModal(true)}
-                className="flex items-center"
+                className="flex items-center px-4 py-2 sm:px-3 sm:py-2"
               >
                 <PlusIcon className="h-4 w-4 mr-2" />
-                新しい問い合わせ
+                <span className="hidden sm:inline">新しい問い合わせ</span>
+                <span className="sm:hidden">新規</span>
               </Button>
             </div>
           </div>
 
           {/* チャット画面 */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[600px]">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[600px] mb-6">
             {/* 会話一覧 */}
             <div className="lg:col-span-1 bg-white dark:bg-neutral-900 dark:bg-neutral-900 rounded-lg border flex flex-col">
               <div className="p-4 border-b border-gray-200 dark:border-neutral-800">
@@ -585,7 +586,7 @@ export default function SupportMessages() {
                     <p className="text-gray-600 dark:text-gray-400 mb-4">左側から確認したい問い合わせを選択してください。</p>
                     <Button
                       onClick={() => setShowNewConversationModal(true)}
-                      className="flex items-center mx-auto"
+                      className="flex items-center mx-auto px-4 py-2"
                     >
                       <PlusIcon className="h-4 w-4 mr-2" />
                       新しい問い合わせを作成
@@ -668,7 +669,8 @@ export default function SupportMessages() {
           )}
 
           {/* Help Information */}
-          <div className="mt-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-xl p-6">
+          {/* サポート機能の説明 - スマホでは非表示 */}
+          <div className="mt-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-xl p-6 hidden lg:block">
             <div className="flex items-start">
               <ExclamationTriangleIcon className="h-6 w-6 text-blue-600 mr-3 flex-shrink-0 mt-0.5" />
               <div>
