@@ -1,22 +1,39 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Service Role Keyを使用したクライアント（RLSを回避）
-export const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
+// 環境変数が設定されていない場合はnullを返す
+function createAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    console.warn('Admin client not available: Missing environment variables');
+    return null;
+  }
+
+  return createClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false
     }
-  }
-);
+  });
+}
+
+export const supabaseAdmin = createAdminClient();
 
 /**
  * 証明書データを管理者権限で取得（デバッグ用）
  */
 export async function fetchAllCertificatesAdmin(userId?: string) {
   try {
+    if (!supabaseAdmin) {
+      return {
+        success: false,
+        error: 'Admin client not available',
+        data: null
+      };
+    }
+
     let query = supabaseAdmin
       .from('certificates')
       .select(`
@@ -58,6 +75,14 @@ export async function forceCreateCertificate(
   courseTitle: string
 ) {
   try {
+    if (!supabaseAdmin) {
+      return {
+        success: false,
+        error: 'Admin client not available',
+        data: null
+      };
+    }
+
     const certificateId = `CERT-${Date.now()}-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
 
     const { data, error } = await supabaseAdmin

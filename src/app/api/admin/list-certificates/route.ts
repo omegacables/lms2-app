@@ -2,18 +2,34 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 // Service Role Keyを使用して全証明書を取得
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    return null;
+  }
+
+  return createClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false
     }
-  }
-);
+  });
+}
+
+const supabaseAdmin = getSupabaseAdmin();
 
 export async function GET(request: NextRequest) {
+  // supabaseAdminが利用できない場合はエラーを返す
+  if (!supabaseAdmin) {
+    return NextResponse.json({
+      success: false,
+      error: 'Service configuration error',
+      message: 'Admin functions are not available in this environment.'
+    }, { status: 503 });
+  }
+
   try {
     console.log('全証明書を取得中...');
 

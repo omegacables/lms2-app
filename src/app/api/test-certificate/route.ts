@@ -1,22 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// Service Role Keyを使用
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
+// Service Role Keyを使用（環境変数が無い場合はエラーを返す）
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    return null;
+  }
+
+  return createClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false
     }
-  }
-);
+  });
+}
+
+const supabaseAdmin = getSupabaseAdmin();
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get('user_id');
   const action = searchParams.get('action');
+
+  // supabaseAdminが利用できない場合はエラーを返す
+  if (!supabaseAdmin) {
+    return NextResponse.json({
+      success: false,
+      error: 'Service configuration error. Admin functions are not available in this environment.',
+      message: 'This endpoint requires server-side configuration that is not available.'
+    }, { status: 503 });
+  }
 
   try {
     // 証明書の確認
