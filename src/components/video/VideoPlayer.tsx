@@ -68,9 +68,12 @@ export default function VideoPlayer({
     }
   };
 
-  // 進捗更新処理（非同期で実行）
+  // 進捗更新処理（動画に影響を与えない）
   const updateProgress = () => {
     if (!videoRef.current || !onProgressUpdate) return;
+
+    // 動画がシーク中またはバッファリング中はスキップ
+    if (videoRef.current.seeking || videoRef.current.readyState < 3) return;
 
     const currentTime = videoRef.current.currentTime;
     const videoDuration = videoRef.current.duration;
@@ -78,19 +81,18 @@ export default function VideoPlayer({
     if (videoDuration > 0) {
       const progressPercent = Math.min(Math.round((currentTime / videoDuration) * 100), 100);
 
-      // 視聴時間の累計計算（前回の更新から経過した時間を追加）
+      // 視聴時間の累計計算
       const now = Date.now();
       if (lastUpdateTime > 0 && !videoRef.current.paused) {
-        const elapsed = (now - lastUpdateTime) / 1000; // 秒に変換
+        const elapsed = (now - lastUpdateTime) / 1000;
         setTotalWatchedTime(prev => prev + elapsed);
       }
       setLastUpdateTime(now);
 
-      // 進捗をサーバーに送信（非同期で実行）
-      // Promiseを使用してバックグラウンドで実行
-      Promise.resolve().then(() => {
+      // 完全に非同期で実行
+      setTimeout(() => {
         onProgressUpdate(currentTime, totalWatchedTime, progressPercent);
-      });
+      }, 0);
     }
   };
 
@@ -139,17 +141,13 @@ export default function VideoPlayer({
     setIsPlaying(true);
     hideControlsAfterDelay();
 
-    // 10秒ごとに進捗を更新（以前は5秒）
-    // バックグラウンドで実行するため動画に影響しない
+    // 30秒ごとに進捗を更新
     progressUpdateRef.current = setInterval(() => {
-      // requestIdleCallbackを使用してアイドル時に実行
-      if ('requestIdleCallback' in window) {
-        window.requestIdleCallback(() => updateProgress(), { timeout: 1000 });
-      } else {
-        // requestIdleCallbackがサポートされていない場合はsetTimeoutで代用
-        setTimeout(() => updateProgress(), 100);
+      // 動画が再生中でシーク中でない場合のみ更新
+      if (videoRef.current && !videoRef.current.paused && !videoRef.current.seeking) {
+        setTimeout(() => updateProgress(), 0);
       }
-    }, 10000); // 10秒ごと
+    }, 30000); // 30秒ごと
   };
 
   // 動画の一時停止時

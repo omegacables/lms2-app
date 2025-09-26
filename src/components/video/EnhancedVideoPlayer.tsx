@@ -51,16 +51,13 @@ export function EnhancedVideoPlayer({
   const [showControls, setShowControls] = useState(true);
   const hideControlsTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // 初期位置を設定
+  // 初期位置を設定（初回マウント時のみ）
   useEffect(() => {
-    if (currentPosition > 0) {
+    if (currentPosition > 0 && !videoRef.current) {
       setCurrentTime(currentPosition);
       setMaxWatchedTime(currentPosition);
-      if (videoRef.current) {
-        videoRef.current.currentTime = currentPosition;
-      }
     }
-  }, [currentPosition]);
+  }, []); // 依存配列を空にして初回のみ実行
 
   // 警告ダイアログの承認
   const handleAcceptWarning = () => {
@@ -80,31 +77,22 @@ export function EnhancedVideoPlayer({
     }
   };
 
-  // 進捗更新（15秒ごと、バックグラウンドで実行）
+  // 進捗更新（30秒ごと、Web Workerのように完全非同期で実行）
   useEffect(() => {
-    if (!isPlaying) return;
+    if (!isPlaying || !onProgressUpdate) return;
 
     const interval = setInterval(() => {
-      // requestIdleCallbackを使用してアイドル時に実行
-      const updateFunc = () => {
-        if (videoRef.current && onProgressUpdate) {
-          const currentPos = videoRef.current.currentTime;
-          const progressPercent = duration > 0 ? Math.floor((currentPos / duration) * 100) : 0;
+      // 動画の現在位置を取得（読み取りのみ、変更しない）
+      if (videoRef.current && !videoRef.current.paused && !videoRef.current.seeking) {
+        const currentPos = videoRef.current.currentTime;
+        const progressPercent = duration > 0 ? Math.floor((currentPos / duration) * 100) : 0;
 
-          // 非同期で進捗更新を呼び出し
-          Promise.resolve().then(() => {
-            onProgressUpdate(currentPos, duration, progressPercent);
-          });
-        }
-      };
-
-      if ('requestIdleCallback' in window) {
-        window.requestIdleCallback(updateFunc, { timeout: 2000 });
-      } else {
-        // requestIdleCallbackがサポートされていない場合
-        setTimeout(updateFunc, 100);
+        // setTimeoutで完全に別スレッドのように実行
+        setTimeout(() => {
+          onProgressUpdate(currentPos, duration, progressPercent);
+        }, 0);
       }
-    }, 15000); // 15秒ごとに更新
+    }, 30000); // 30秒ごとに更新（長くして影響を減らす）
 
     return () => clearInterval(interval);
   }, [isPlaying, duration, onProgressUpdate]);
@@ -113,8 +101,9 @@ export function EnhancedVideoPlayer({
   const handleLoadedMetadata = () => {
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
-      if (currentTime > 0) {
-        videoRef.current.currentTime = currentTime;
+      // 初回のみ、保存された位置から再開
+      if (currentPosition > 0 && videoRef.current.currentTime === 0) {
+        videoRef.current.currentTime = currentPosition;
       }
     }
   };
@@ -125,13 +114,8 @@ export function EnhancedVideoPlayer({
       const current = videoRef.current.currentTime;
       setCurrentTime(current);
 
-      // スキップ防止: 最大視聴時間を超えた場合は戻す（完了していない動画でスキップ防止が有効時のみ）
-      if (!isCompleted && enableSkipPrevention && current > maxWatchedTime + 1) {
-        videoRef.current.currentTime = maxWatchedTime;
-        alert('スキップはできません。順番に視聴してください。');
-      } else {
-        setMaxWatchedTime(Math.max(maxWatchedTime, current));
-      }
+      // 最大視聴時間を更新（スキップ防止はシークバーで制御）
+      setMaxWatchedTime(prev => Math.max(prev, current));
 
       const progressPercent = duration > 0 ? (current / duration) * 100 : 0;
       setProgress(progressPercent);
