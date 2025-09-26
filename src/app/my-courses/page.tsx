@@ -215,19 +215,19 @@ export default function MyCoursesPage() {
         }
 
         // Generate and download PDF
-        const certWithCourse = {
-          ...certificate,
-          courses: {
-            title: course.title,
-            category_id: course.category_id
-          }
+        const certificateData = {
+          certificateId: certificate.id,
+          courseName: course.title,
+          userName: user?.profile?.display_name || user?.email || '受講者名',
+          completionDate: certificate.completion_date ? new Date(certificate.completion_date).toLocaleDateString('ja-JP') : new Date().toLocaleDateString('ja-JP'),
+          issueDate: new Date().toLocaleDateString('ja-JP'),
+          totalVideos: course.total_videos || 0,
+          totalWatchTime: course.total_watch_time || 0,
+          courseDescription: course.description || '',
+          company: user?.profile?.company || undefined
         };
 
-        const userName = user?.profile?.display_name || user?.email || '受講者名';
-        const company = user?.profile?.company;
-
-        const doc = generateCertificatePDF(certWithCourse, userName, company);
-        doc.save(`certificate_${certificate.id}.pdf`);
+        await generateCertificatePDF(certificateData);
 
         alert('証明書をダウンロードしました！');
       } else {

@@ -62,7 +62,7 @@ export async function generateCertificatePDF(certificateData: CertificateData) {
   // 受講者名
   ctx.font = 'bold 120px "Noto Sans JP", sans-serif';
   ctx.fillStyle = '#323232';
-  ctx.fillText(certificateData.userName, canvas.width / 2, 800);
+  ctx.fillText(certificateData.userName || 'ユーザー', canvas.width / 2, 800);
 
   // 会社名
   if (certificateData.company) {
@@ -79,12 +79,12 @@ export async function generateCertificatePDF(certificateData: CertificateData) {
   // コース名
   ctx.font = 'bold 90px "Noto Sans JP", sans-serif';
   ctx.fillStyle = '#1e5ab4';
-  ctx.fillText(certificateData.courseName, canvas.width / 2, 1300);
+  ctx.fillText(certificateData.courseName || 'コース名', canvas.width / 2, 1300);
 
   // 発行日
   ctx.font = '45px "Noto Sans JP", sans-serif';
   ctx.fillStyle = '#505050';
-  ctx.fillText(`発行日: ${certificateData.issueDate}`, canvas.width / 2, 1500);
+  ctx.fillText(`発行日: ${certificateData.issueDate || new Date().toLocaleDateString('ja-JP')}`, canvas.width / 2, 1500);
 
   // 証明書番号
   ctx.font = '40px "Noto Sans JP", sans-serif';
@@ -156,7 +156,8 @@ export async function generateCertificatePDF(certificateData: CertificateData) {
   doc.addImage(imgData, 'PNG', 0, 0, 297, 210);
 
   // PDFをダウンロード
-  const fileName = `certificate_${certificateData.courseName.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.pdf`;
+  const safeCourseName = (certificateData.courseName || 'certificate').replace(/[^a-zA-Z0-9]/g, '_');
+  const fileName = `certificate_${safeCourseName}_${Date.now()}.pdf`;
   doc.save(fileName);
 
   // 証明書情報を返す（データベースへの保存用）
