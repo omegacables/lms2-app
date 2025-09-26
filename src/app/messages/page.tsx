@@ -197,21 +197,28 @@ export default function SupportMessages() {
       );
 
       if (unreadMessages.length > 0) {
-        const { error: updateError } = await supabase
+        console.log(`既読処理開始: ${unreadMessages.length}件の未読メッセージ`);
+
+        const { data: updatedData, error: updateError } = await supabase
           .from('support_messages')
           .update({ is_read: true, read_at: new Date().toISOString() })
           .eq('conversation_id', conversationId)
           .eq('sender_type', 'admin')
-          .eq('is_read', false);
+          .eq('is_read', false)
+          .select();
 
         if (!updateError) {
+          console.log('既読処理成功:', updatedData?.length, '件更新');
           // 既読になったらイベントを発火してMainLayoutの通知を更新
           setTimeout(() => {
+            console.log('message-read イベント発火');
             messageEvents.emit('message-read');
           }, 100);
         } else {
           console.error('既読更新エラー:', updateError);
         }
+      } else {
+        console.log('未読メッセージなし');
       }
 
       // 選択中の会話の未読数を0にリセット
