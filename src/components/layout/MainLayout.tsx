@@ -153,22 +153,27 @@ export function MainLayout({ children }: MainLayoutProps) {
         
         setUnreadMessages(count || 0);
       } else {
-        // 生徒の場合：管理者からの未読メッセージ数
-        const { count } = await supabase
-          .from('support_messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('sender_type', 'admin')
-          .eq('is_read', false)
-          .in('conversation_id', 
-            // 自分の会話IDのみを対象とする
-            await supabase
-              .from('support_conversations')
-              .select('id')
-              .eq('student_id', user.id)
-              .then(({ data }) => data?.map(conv => conv.id) || [])
-          );
-        
-        setUnreadMessages(count || 0);
+        // 生徒の場合：まず自分の会話を取得
+        const { data: conversations } = await supabase
+          .from('support_conversations')
+          .select('id')
+          .eq('student_id', user.id);
+
+        if (conversations && conversations.length > 0) {
+          const conversationIds = conversations.map(conv => conv.id);
+
+          // 管理者からの未読メッセージ数を取得
+          const { count } = await supabase
+            .from('support_messages')
+            .select('*', { count: 'exact', head: true })
+            .eq('sender_type', 'admin')
+            .eq('is_read', false)
+            .in('conversation_id', conversationIds);
+
+          setUnreadMessages(count || 0);
+        } else {
+          setUnreadMessages(0);
+        }
       }
     } catch (error) {
       console.error('未読メッセージ数取得エラー:', error);

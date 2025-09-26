@@ -56,6 +56,10 @@ export default function SupportMessages() {
   useEffect(() => {
     if (user) {
       fetchConversations();
+      // 初回ロード時にメッセージを選択している場合、既読にする
+      if (selectedConversation) {
+        fetchMessages(selectedConversation.id);
+      }
     }
   }, [user]);
 
@@ -130,6 +134,13 @@ export default function SupportMessages() {
       );
 
       setConversations(conversationsWithDetails);
+
+      // 未読がある会話があれば自動的に選択
+      const conversationWithUnread = conversationsWithDetails.find(conv => conv.unreadCount > 0);
+      if (conversationWithUnread && !selectedConversation) {
+        setSelectedConversation(conversationWithUnread);
+        await fetchMessages(conversationWithUnread.id);
+      }
     } catch (error) {
       console.error('会話一覧の取得エラー:', error);
     } finally {
@@ -181,16 +192,26 @@ export default function SupportMessages() {
       setMessages(formattedMessages);
 
       // 管理者からの未読メッセージを既読にする
-      const { error: updateError } = await supabase
-        .from('support_messages')
-        .update({ is_read: true, read_at: new Date().toISOString() })
-        .eq('conversation_id', conversationId)
-        .eq('sender_type', 'admin')
-        .eq('is_read', false);
+      const unreadMessages = formattedMessages.filter(msg =>
+        msg.senderType === 'admin' && !msg.isRead
+      );
 
-      if (!updateError) {
-        // 既読になったらイベントを発火してMainLayoutの通知を更新
-        messageEvents.emit('message-read');
+      if (unreadMessages.length > 0) {
+        const { error: updateError } = await supabase
+          .from('support_messages')
+          .update({ is_read: true, read_at: new Date().toISOString() })
+          .eq('conversation_id', conversationId)
+          .eq('sender_type', 'admin')
+          .eq('is_read', false);
+
+        if (!updateError) {
+          // 既読になったらイベントを発火してMainLayoutの通知を更新
+          setTimeout(() => {
+            messageEvents.emit('message-read');
+          }, 100);
+        } else {
+          console.error('既読更新エラー:', updateError);
+        }
       }
 
       // 選択中の会話の未読数を0にリセット
