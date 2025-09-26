@@ -68,7 +68,7 @@ export default function VideoPlayer({
     }
   };
 
-  // 進捗更新処理
+  // 進捗更新処理（非同期で実行）
   const updateProgress = () => {
     if (!videoRef.current || !onProgressUpdate) return;
 
@@ -86,8 +86,11 @@ export default function VideoPlayer({
       }
       setLastUpdateTime(now);
 
-      // 進捗をサーバーに送信
-      onProgressUpdate(currentTime, totalWatchedTime, progressPercent);
+      // 進捗をサーバーに送信（非同期で実行）
+      // Promiseを使用してバックグラウンドで実行
+      Promise.resolve().then(() => {
+        onProgressUpdate(currentTime, totalWatchedTime, progressPercent);
+      });
     }
   };
 
@@ -136,8 +139,17 @@ export default function VideoPlayer({
     setIsPlaying(true);
     hideControlsAfterDelay();
 
-    // 5秒ごとに進捗を更新
-    progressUpdateRef.current = setInterval(updateProgress, 5000);
+    // 10秒ごとに進捗を更新（以前は5秒）
+    // バックグラウンドで実行するため動画に影響しない
+    progressUpdateRef.current = setInterval(() => {
+      // requestIdleCallbackを使用してアイドル時に実行
+      if ('requestIdleCallback' in window) {
+        window.requestIdleCallback(() => updateProgress(), { timeout: 1000 });
+      } else {
+        // requestIdleCallbackがサポートされていない場合はsetTimeoutで代用
+        setTimeout(() => updateProgress(), 100);
+      }
+    }, 10000); // 10秒ごと
   };
 
   // 動画の一時停止時

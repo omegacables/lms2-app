@@ -80,17 +80,31 @@ export function EnhancedVideoPlayer({
     }
   };
 
-  // 進捗更新（10秒ごと）
+  // 進捗更新（15秒ごと、バックグラウンドで実行）
   useEffect(() => {
     if (!isPlaying) return;
 
     const interval = setInterval(() => {
-      if (videoRef.current && onProgressUpdate) {
-        const currentPos = videoRef.current.currentTime;
-        const progressPercent = duration > 0 ? Math.floor((currentPos / duration) * 100) : 0;
-        onProgressUpdate(currentPos, duration, progressPercent);
+      // requestIdleCallbackを使用してアイドル時に実行
+      const updateFunc = () => {
+        if (videoRef.current && onProgressUpdate) {
+          const currentPos = videoRef.current.currentTime;
+          const progressPercent = duration > 0 ? Math.floor((currentPos / duration) * 100) : 0;
+
+          // 非同期で進捗更新を呼び出し
+          Promise.resolve().then(() => {
+            onProgressUpdate(currentPos, duration, progressPercent);
+          });
+        }
+      };
+
+      if ('requestIdleCallback' in window) {
+        window.requestIdleCallback(updateFunc, { timeout: 2000 });
+      } else {
+        // requestIdleCallbackがサポートされていない場合
+        setTimeout(updateFunc, 100);
       }
-    }, 10000);
+    }, 15000); // 15秒ごとに更新
 
     return () => clearInterval(interval);
   }, [isPlaying, duration, onProgressUpdate]);
@@ -372,6 +386,8 @@ export function EnhancedVideoPlayer({
         }}
         controlsList="nodownload"
         disablePictureInPicture={!isCompleted}
+        preload="auto"
+        playsInline
       />
 
       {/* カスタムコントロール */}

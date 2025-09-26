@@ -59,6 +59,8 @@ export default function VideoPlayerPage() {
   const [error, setError] = useState<string | null>(null);
 
   const sessionId = useRef<string>(crypto.randomUUID());
+  const progressUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingUpdateRef = useRef<{ position: number; videoDuration: number; progressPercent: number } | null>(null);
 
   // ファイルダウンロード関数
   const handleDownload = async (fileUrl: string, fileName: string) => {
@@ -215,23 +217,31 @@ export default function VideoPlayerPage() {
     }
   };
 
-  const updateProgress = async (position: number, videoDuration: number, progressPercent: number) => {
+  // デバウンス用のタイマーを格納
+  const progressUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingUpdateRef = useRef<{ position: number; videoDuration: number; progressPercent: number } | null>(null);
+
+  // 実際の進捗保存処理（バックグラウンドで実行）
+  const saveProgressToDatabase = async (position: number, videoDuration: number, progressPercent: number) => {
     if (!user || !video) return;
 
     const isCompleted = progressPercent >= (course?.completion_threshold || 95);
 
     try {
-      // まず既存のログを確認
-      const { data: existingLog, error: checkError } = await supabase
-        .from('video_view_logs')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('video_id', videoId)
-        .single();
+      // 既存のログをキャッシュから取得または確認
+      let existingLog = viewLog;
 
-      if (checkError && checkError.code !== 'PGRST116') {
-        console.error('既存ログ確認エラー:', checkError);
-        return;
+      if (!existingLog) {
+        const { data, error } = await supabase
+          .from('video_view_logs')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('video_id', videoId)
+          .single();
+
+        if (!error || error.code === 'PGRST116') {
+          existingLog = data;
+        }
       }
 
       const updateData: any = {
@@ -242,56 +252,73 @@ export default function VideoPlayerPage() {
         last_updated: new Date().toISOString(),
       };
 
-      if (isCompleted && (!existingLog || existingLog.status !== 'completed')) {
+      if (isCompleted && (!existingLog || existingLog?.status !== 'completed')) {
         updateData.completed_at = new Date().toISOString();
-
         // 動画完了時にコース全体の完了状態を確認
         setTimeout(async () => {
           await checkCourseCompletionAndGenerateCertificate();
-        }, 1000); // 1秒待ってから確認
+        }, 2000);
       }
 
-      // 既存のログがある場合はIDで更新、なければ新規作成
       if (existingLog) {
         // 総視聴時間を累積
-        updateData.total_watched_time = (existingLog.total_watched_time || 0) + 5; // 5秒ごとに更新と仮定
+        updateData.total_watched_time = (existingLog.total_watched_time || 0) + 10; // 10秒ごとに更新
 
-        const { error } = await supabase
+        await supabase
           .from('video_view_logs')
           .update(updateData)
           .eq('id', existingLog.id);
 
-        if (error) {
-          console.error('進捗更新エラー:', error);
-        } else {
-          // ローカル状態を更新
-          setViewLog({ ...existingLog, ...updateData });
-        }
+        // ローカルステートを更新
+        setViewLog({ ...existingLog, ...updateData });
       } else {
-        // 新規作成（通常はstartViewingSessionで作成されるはず）
+        // 新規作成
         const insertData = {
           ...updateData,
           user_id: user.id,
           video_id: videoId,
           course_id: courseId,
-          total_watched_time: 5,
+          total_watched_time: 10,
         };
 
-        const { data: newLog, error } = await supabase
+        const { data: newLog } = await supabase
           .from('video_view_logs')
           .insert(insertData)
           .select()
           .single();
 
-        if (error) {
-          console.error('進捗作成エラー:', error);
-        } else if (newLog) {
+        if (newLog) {
           setViewLog(newLog);
         }
       }
     } catch (err) {
-      console.error('進捗更新エラー:', err);
+      // エラーが発生しても動画再生を妨げない
+      console.error('進捗保存エラー:', err);
     }
+  };
+
+  // デバウンスされた進捗更新（動画に影響を与えない）
+  const updateProgress = async (position: number, videoDuration: number, progressPercent: number) => {
+    if (!user || !video) return;
+
+    // 最新の値を保存
+    pendingUpdateRef.current = { position, videoDuration, progressPercent };
+
+    // 既存のタイマーをクリア
+    if (progressUpdateTimerRef.current) {
+      clearTimeout(progressUpdateTimerRef.current);
+    }
+
+    // 2秒後に実際の保存処理を実行（デバウンス）
+    progressUpdateTimerRef.current = setTimeout(() => {
+      if (pendingUpdateRef.current) {
+        const { position, videoDuration, progressPercent } = pendingUpdateRef.current;
+        // バックグラウンドで非同期実行
+        requestAnimationFrame(() => {
+          saveProgressToDatabase(position, videoDuration, progressPercent);
+        });
+      }
+    }, 2000); // 2秒のデバウンス
   };
 
   const handleVideoComplete = () => {
