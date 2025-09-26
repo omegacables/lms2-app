@@ -115,10 +115,10 @@ export default function DashboardPage() {
             // 動画の数
             const videoCount = videos?.length || 0;
 
-            // ユーザーの視聴時間を取得
+            // ユーザーの視聴ログを取得
             const { data: userViewLogs } = await supabase
               .from("video_view_logs")
-              .select("total_watched_time")
+              .select("total_watched_time, status")
               .eq("user_id", user.id)
               .eq("course_id", course.id);
 
