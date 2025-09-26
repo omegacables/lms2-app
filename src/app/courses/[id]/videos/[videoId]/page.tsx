@@ -217,9 +217,6 @@ export default function VideoPlayerPage() {
     }
   };
 
-  // デバウンス用のタイマーを格納
-  const progressUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const pendingUpdateRef = useRef<{ position: number; videoDuration: number; progressPercent: number } | null>(null);
 
   // 実際の進捗保存処理（バックグラウンドで実行）
   const saveProgressToDatabase = async (position: number, videoDuration: number, progressPercent: number) => {
