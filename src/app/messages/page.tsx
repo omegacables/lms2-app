@@ -174,36 +174,38 @@ export default function SupportMessages() {
         throw error;
       }
 
-      // 管理者からの未読メッセージを特定
-      const adminUnreadMessages = messagesData?.filter(msg =>
-        msg.sender_type === 'admin' && msg.is_read === false
-      ) || [];
+      // 生徒がメッセージを見た場合、APIを使って既読処理
+      if (user?.id === conversation.student_id) {
+        console.log(`APIで既読処理を実行: 会話ID=${conversationId}`);
 
-      console.log('管理者からの未読メッセージ:', adminUnreadMessages.length, '件');
+        try {
+          const response = await fetch('/api/messages/mark-read', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              conversationId,
+              userId: user.id
+            })
+          });
 
-      // 既読にする処理（生徒がメッセージを見た場合）
-      if (adminUnreadMessages.length > 0 && user?.id === conversation.student_id) {
-        console.log(`既読処理開始: 会話ID=${conversationId}, ${adminUnreadMessages.length}件の未読メッセージ`);
+          const result = await response.json();
 
-        // 各メッセージを個別に更新
-        for (const msg of adminUnreadMessages) {
-          const { error: updateError } = await supabase
-            .from('support_messages')
-            .update({ is_read: true, read_at: new Date().toISOString() })
-            .eq('id', msg.id);
+          if (result.success && result.updatedCount > 0) {
+            console.log(`既読処理成功: ${result.updatedCount}件のメッセージを既読に`);
 
-          if (updateError) {
-            console.error('メッセージ既読更新エラー:', msg.id, updateError);
+            // 既読になったらイベントを発火してMainLayoutの通知を更新
+            setTimeout(() => {
+              console.log('message-read イベント発火');
+              messageEvents.emit('message-read');
+            }, 500);
           } else {
-            console.log('メッセージ既読成功:', msg.id);
+            console.log('既読処理結果:', result.message);
           }
+        } catch (error) {
+          console.error('既読処理APIエラー:', error);
         }
-
-        // 既読になったらイベントを発火してMainLayoutの通知を更新
-        setTimeout(() => {
-          console.log('message-read イベント発火');
-          messageEvents.emit('message-read');
-        }, 500);
       }
 
       // 各メッセージの送信者情報を取得

@@ -159,20 +159,17 @@ export function MainLayout({ children }: MainLayoutProps) {
           .select('id')
           .eq('student_id', user.id);
 
-        console.log('生徒の会話ID:', conversations);
-
         if (conversations && conversations.length > 0) {
           const conversationIds = conversations.map(conv => conv.id);
 
           // 管理者からの未読メッセージ数を取得
-          const { count, error } = await supabase
+          const { count } = await supabase
             .from('support_messages')
             .select('*', { count: 'exact', head: true })
             .eq('sender_type', 'admin')
             .eq('is_read', false)
             .in('conversation_id', conversationIds);
 
-          console.log('生徒の未読メッセージ数:', count, 'エラー:', error);
           setUnreadMessages(count || 0);
         } else {
           setUnreadMessages(0);
@@ -191,7 +188,6 @@ export function MainLayout({ children }: MainLayoutProps) {
 
     // メッセージ既読イベントをリッスン
     const handleMessageRead = () => {
-      console.log('message-read イベント受信、未読数を更新');
       fetchUnreadMessages();
     };
     messageEvents.on('message-read', handleMessageRead);
