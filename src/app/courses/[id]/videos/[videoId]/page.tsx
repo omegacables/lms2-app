@@ -251,8 +251,11 @@ export default function VideoPlayerPage() {
 
       if (isCompleted && (!existingLog || existingLog?.status !== 'completed')) {
         updateData.completed_at = new Date().toISOString();
+        console.log('動画完了を検出！ 動画ID:', videoId, '進捗:', progressPercent, '%');
+
         // 動画完了時にコース全体の完了状態を確認
         setTimeout(async () => {
+          console.log('証明書生成チェックを開始...');
           await checkCourseCompletionAndGenerateCertificate();
         }, 2000);
       }
@@ -362,13 +365,21 @@ export default function VideoPlayerPage() {
 
       // すべての動画が完了した場合、証明書を生成
       if (completedVideos >= totalVideos) {
+        console.log('コース完了を検出！証明書を生成中...');
+        console.log(`コースID: ${courseId}, ユーザーID: ${user.id}`);
+
         const result = await checkAndGenerateCertificate(user.id, parseInt(courseId));
+        console.log('証明書生成結果:', result);
 
         if (result.hasNewCertificate) {
-          console.log('証明書が自動生成されました:', result.certificateId);
-          // ユーザーに通知（オプション）
-          alert('おめでとうございます！\nコースを完了し、証明書が発行されました。');
+          console.log('✅ 証明書が正常に生成されました:', result.certificateId);
+          // ユーザーに通知
+          alert('おめでとうございます！\nコースを完了し、証明書が発行されました。\n\n「証明書」ページからダウンロードできます。');
+        } else {
+          console.log('⚠️ 証明書はすでに存在しています');
         }
+      } else {
+        console.log(`コース未完了: ${completedVideos}/${totalVideos} 動画完了`);
       }
     } catch (err) {
       console.error('コース完了確認エラー:', err);

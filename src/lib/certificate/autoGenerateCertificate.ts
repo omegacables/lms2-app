@@ -8,6 +8,10 @@ export async function autoGenerateCertificate(
   userId: string,
   courseId: number
 ): Promise<{ success: boolean; certificateId?: string; error?: string }> {
+  console.log('✨ autoGenerateCertificate 開始');
+  console.log(`  ユーザーID: ${userId}`);
+  console.log(`  コースID: ${courseId}`);
+
   try {
     // 1. 既存の証明書をチェック
     const { data: existingCert } = await supabase
@@ -18,9 +22,10 @@ export async function autoGenerateCertificate(
       .maybeSingle();
 
     if (existingCert) {
-      console.log('Certificate already exists for this course');
+      console.log('⚠️ 証明書はすでに存在します:', existingCert.id);
       return { success: true, certificateId: existingCert.id };
     }
+    console.log('✅ 既存の証明書なし、新規作成を続行');
 
     // 2. コース情報を取得
     const { data: course, error: courseError } = await supabase
@@ -76,13 +81,15 @@ export async function autoGenerateCertificate(
     const completedVideos = completedLogs?.length || 0;
 
     // 6. すべての動画が完了していない場合は証明書を生成しない
+    console.log(`進捗確認: ${completedVideos}/${totalVideos} 動画完了`);
     if (completedVideos < totalVideos) {
-      console.log(`Course not completed: ${completedVideos}/${totalVideos} videos completed`);
+      console.log(`❌ コース未完了のため、証明書を生成しません`);
       return {
         success: false,
         error: `コースが完了していません (${completedVideos}/${totalVideos} 動画完了)`
       };
     }
+    console.log('✅ コース完了確認！証明書を生成します...');
 
     // 7. 証明書を生成
     const certificateId = generateCertificateId();
@@ -120,7 +127,10 @@ export async function autoGenerateCertificate(
       return { success: false, error: '証明書の作成に失敗しました' };
     }
 
-    console.log('Certificate created successfully:', certificateId);
+    console.log('🎉 証明書が正常に作成されました！');
+    console.log('  証明書ID:', certificateId);
+    console.log('  コース名:', course.title);
+    console.log('  ユーザー名:', userProfile.display_name || userProfile.email);
     return { success: true, certificateId: newCertificate.id };
 
   } catch (error) {
