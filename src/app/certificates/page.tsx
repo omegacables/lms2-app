@@ -8,6 +8,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/database/supabase';
 import { certificatesClient } from '@/lib/database/supabase-no-cache';
+import { fetchAllCertificatesAdmin } from '@/lib/database/test-certificates';
 import {
   AcademicCapIcon,
   DocumentTextIcon,
@@ -45,6 +46,7 @@ export default function CertificatesPage() {
   const [selectedYear, setSelectedYear] = useState<string>('all');
   const [userProfile, setUserProfile] = useState<any>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
 
   const fetchUserProfile = async () => {
     if (!user) return;
@@ -75,25 +77,24 @@ export default function CertificatesPage() {
 
     try {
       setLoading(true);
-      // デバッグ用: 証明書専用クライアントを使用
-      const { data: allCerts } = await certificatesClient
-        .select(user.id);
+      console.log('証明書を取得中... ユーザーID:', user.id);
 
-      console.log('All certificates for user:', allCerts);
+      // まず管理者権限でデータを確認（デバッグ用）
+      if (process.env.NODE_ENV === 'development') {
+        const adminResult = await fetchAllCertificatesAdmin(user.id);
+        console.log('Admin権限での取得結果:', adminResult);
+        setDebugInfo({
+          adminFetch: adminResult,
+          userId: user.id,
+          timestamp: new Date().toISOString()
+        });
+      }
 
-      // アクティブな証明書をコース情報付きで取得（certificate_numberを除外）
+      // シンプルな直接クエリで証明書を取得
       const { data, error } = await supabase
         .from('certificates')
         .select(`
-          id,
-          user_id,
-          course_id,
-          user_name,
-          course_title,
-          completion_date,
-          pdf_url,
-          is_active,
-          created_at,
+          *,
           courses (
             id,
             title,
@@ -107,13 +108,76 @@ export default function CertificatesPage() {
 
       if (error) {
         console.error('証明書取得エラー:', error);
-        return;
-      }
+        setDebugInfo((prev: any) => ({
+          ...prev,
+          normalFetchError: error,
+          errorMessage: error.message,
+          errorCode: error.code
+        }));
 
-      console.log('Active certificates with courses:', data);
-      setCertificates(data || []);
+        // エラー時は別の方法で試す
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('certificates')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .order('completion_date', { ascending: false });
+
+        if (fallbackError) {
+          console.error('フォールバッククエリも失敗:', fallbackError);
+          setCertificates([]);
+        } else if (fallbackData) {
+          console.log('フォールバッククエリで取得:', fallbackData);
+
+          // コース情報を個別に取得
+          const certificatesWithCourses = await Promise.all(
+            fallbackData.map(async (cert) => {
+              const { data: courseData } = await supabase
+                .from('courses')
+                .select('id, title, description, thumbnail_url')
+                .eq('id', cert.course_id)
+                .single();
+
+              return {
+                ...cert,
+                courses: courseData
+              };
+            })
+          );
+
+          setCertificates(certificatesWithCourses);
+          console.log('証明書データ（フォールバック）:', certificatesWithCourses);
+        }
+      } else {
+        console.log('取得した証明書:', data);
+        setCertificates(data || []);
+        setDebugInfo((prev: any) => ({
+          ...prev,
+          normalFetchSuccess: true,
+          certificateCount: data?.length || 0
+        }));
+
+        // データがない場合、デバッグ用に全証明書を確認
+        if (!data || data.length === 0) {
+          const { data: allCerts } = await supabase
+            .from('certificates')
+            .select('user_id, course_id, is_active')
+            .eq('user_id', user.id);
+
+          console.log('該当ユーザーの全証明書（デバッグ）:', allCerts);
+          setDebugInfo((prev: any) => ({
+            ...prev,
+            allUserCertificates: allCerts
+          }));
+        }
+      }
     } catch (error) {
-      console.error('証明書取得エラー:', error);
+      console.error('予期しないエラー:', error);
+      setCertificates([]);
+      setDebugInfo((prev: any) => ({
+        ...prev,
+        unexpectedError: error
+      }));
     } finally {
       setLoading(false);
     }
@@ -284,6 +348,16 @@ export default function CertificatesPage() {
               </div>
             </div>
           </div>
+
+          {/* デバッグ情報（開発環境のみ） */}
+          {process.env.NODE_ENV === 'development' && debugInfo && (
+            <div className="mb-8 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-lg">
+              <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-300 mb-2">デバッグ情報</h3>
+              <pre className="text-xs text-gray-600 dark:text-gray-400 overflow-x-auto">
+                {JSON.stringify(debugInfo, null, 2)}
+              </pre>
+            </div>
+          )}
 
           {/* 証明書リスト */}
           {filteredCertificates.length === 0 ? (
