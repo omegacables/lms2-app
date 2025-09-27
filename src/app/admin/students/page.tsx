@@ -34,6 +34,7 @@ interface Student {
   email: string;
   company: string;
   department: string;
+  role: 'admin' | 'instructor' | 'student';
   last_login_at: string;
   is_active: boolean;
   created_at: string;
@@ -91,10 +92,10 @@ export default function StudentsManagePage() {
     try {
       setLoading(true);
       
+      // 全ユーザーを取得（管理者を含む）
       const { data: studentsData, error: studentsError } = await supabase
         .from('user_profiles')
         .select('*')
-        .eq('role', 'student')
         .order('created_at', { ascending: false });
 
       if (studentsError) {
@@ -826,12 +827,22 @@ export default function StudentsManagePage() {
                                 {student.display_name}
                               </h3>
                               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                student.is_active 
-                                  ? 'bg-green-100 text-green-800' 
+                                student.is_active
+                                  ? 'bg-green-100 text-green-800'
                                   : 'bg-red-100 text-red-800'
                               }`}>
                                 {student.is_active ? 'アクティブ' : '非アクティブ'}
                               </span>
+                              {student.role === 'admin' && (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                  管理者
+                                </span>
+                              )}
+                              {student.role === 'instructor' && (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                  インストラクター
+                                </span>
+                              )}
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                               <div>

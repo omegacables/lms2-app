@@ -60,117 +60,95 @@ export default function AdminUsersPage() {
     );
   }
 
-  // モックユーザーデータ
-  const mockUsers: UserProfile[] = [
-    {
-      id: '1',
-      display_name: '田中太郎',
-      company: '株式会社サンプル',
-      department: '営業部',
-      role: 'student',
-      avatar_url: null,
-      last_login_at: '2024-01-20T10:30:00Z',
-      password_changed_at: '2024-01-15T09:00:00Z',
-      is_active: true,
-      bio: null,
-      created_at: '2024-01-10T10:00:00Z',
-      updated_at: '2024-01-20T10:30:00Z',
-      email: 'tanaka@sample.com',
-      courseProgress: {
-        totalCourses: 5,
-        completedCourses: 2,
-        totalWatchTime: 3600
-      }
-    },
-    {
-      id: '2',
-      display_name: '佐藤花子',
-      company: '株式会社テスト',
-      department: '人事部',
-      role: 'instructor',
-      avatar_url: null,
-      last_login_at: '2024-01-19T14:15:00Z',
-      password_changed_at: '2024-01-12T11:30:00Z',
-      is_active: true,
-      bio: null,
-      created_at: '2024-01-08T14:00:00Z',
-      updated_at: '2024-01-19T14:15:00Z',
-      email: 'sato@test.com',
-      courseProgress: {
-        totalCourses: 3,
-        completedCourses: 3,
-        totalWatchTime: 5400
-      }
-    },
-    {
-      id: '3',
-      display_name: '山田次郎',
-      company: '株式会社デモ',
-      department: 'IT部',
-      role: 'admin',
-      avatar_url: null,
-      last_login_at: '2024-01-20T16:45:00Z',
-      password_changed_at: '2024-01-01T10:00:00Z',
-      is_active: true,
-      bio: null,
-      created_at: '2024-01-01T10:00:00Z',
-      updated_at: '2024-01-20T16:45:00Z',
-      email: 'yamada@demo.com',
-      courseProgress: {
-        totalCourses: 8,
-        completedCourses: 1,
-        totalWatchTime: 1800
-      }
-    },
-    {
-      id: '4',
-      display_name: '鈴木三郎',
-      company: '株式会社例',
-      department: '技術部',
-      role: 'student',
-      avatar_url: null,
-      last_login_at: '2024-01-15T13:20:00Z',
-      password_changed_at: '2024-01-10T15:30:00Z',
-      is_active: false,
-      bio: null,
-      created_at: '2024-01-05T11:00:00Z',
-      updated_at: '2024-01-15T13:20:00Z',
-      email: 'suzuki@example.com',
-      courseProgress: {
-        totalCourses: 2,
-        completedCourses: 0,
-        totalWatchTime: 900
-      }
-    },
-  ];
-
   useEffect(() => {
-    // モックデータを使用
-    setUsers(mockUsers);
-    setLoading(false);
+    fetchUsers();
   }, []);
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      
-      // 実際のデータベースからユーザー取得（実装予定）
-      const { data: profiles, error } = await supabase
+
+      // 全ユーザーを取得
+      const { data: usersData, error } = await supabase
         .from('user_profiles')
-        .select(`
-          *,
-          auth.users(email)
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('ユーザー取得エラー:', error);
+        console.error('ユーザーデータ取得エラー:', error);
         return;
       }
 
-      // setUsers(profiles || []);
+      // emailがない場合はauth.usersから取得
+      const usersWithEmail = await Promise.all(
+        (usersData || []).map(async (user) => {
+          if (!user.email) {
+            const { data: authData } = await supabase
+              .from('auth.users')
+              .select('email')
+              .eq('id', user.id)
+              .single();
+
+            if (authData?.email) {
+              // user_profilesにemailを更新
+              await supabase
+                .from('user_profiles')
+                .update({ email: authData.email })
+                .eq('id', user.id);
+
+              return { ...user, email: authData.email };
+            }
+          }
+          return user;
+        })
+      );
+
+      // 各ユーザーの学習統計を取得
+      const usersWithStats = await Promise.all(
+        usersWithEmail.map(async (user) => {
+          try {
+            // 割り当てられたコースを取得
+            const { data: assignedCoursesData } = await supabase
+              .from('user_course_assignments')
+              .select('course_id')
+              .eq('user_id', user.id);
+
+            const assignedCourses = assignedCoursesData?.map(a => a.course_id) || [];
+
+            const { data: progressData } = await supabase
+              .from('video_view_logs')
+              .select('*')
+              .eq('user_id', user.id);
+
+            const totalCourses = assignedCourses.length;
+            const completedCourses = progressData?.filter(p => p.status === 'completed').length || 0;
+            const totalWatchTime = progressData?.reduce((sum, p) => sum + (p.total_watched_time || 0), 0) || 0;
+
+            return {
+              ...user,
+              courseProgress: {
+                totalCourses,
+                completedCourses,
+                totalWatchTime
+              }
+            };
+          } catch (err) {
+            console.error('統計取得エラー:', err);
+            return {
+              ...user,
+              courseProgress: {
+                totalCourses: 0,
+                completedCourses: 0,
+                totalWatchTime: 0
+              }
+            };
+          }
+        })
+      );
+
+      setUsers(usersWithStats);
     } catch (error) {
-      console.error('ユーザー取得エラー:', error);
+      console.error('ユーザーデータ取得エラー:', error);
     } finally {
       setLoading(false);
     }
@@ -194,6 +172,42 @@ export default function AdminUsersPage() {
       ));
     } catch (error) {
       console.error('ユーザーステータス更新エラー:', error);
+    }
+  };
+
+  const handleDeleteUser = async (userId: string, userName: string) => {
+    if (!confirm(`本当に「${userName}」を削除しますか？\nこの操作は取り消せません。`)) {
+      return;
+    }
+
+    try {
+      // Supabaseセッションからトークンを取得
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const response = await fetch(`/api/admin/users/${userId}/delete`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
+        },
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        if (data.partialSuccess) {
+          alert(`ユーザーデータは削除されましたが、認証情報の削除には手動操作が必要です。\n\n${data.error || data.message}`);
+        } else {
+          alert('ユーザーが正常に削除されました。');
+        }
+        // リストを更新
+        await fetchUsers();
+      } else {
+        alert(`削除に失敗しました: ${data.error || 'エラーが発生しました'}`);
+      }
+    } catch (error) {
+      console.error('削除エラー:', error);
+      alert('削除中にエラーが発生しました。');
     }
   };
 
@@ -538,6 +552,14 @@ export default function AdminUsersPage() {
                               <PencilIcon className="h-4 w-4" />
                             </Button>
                           </Link>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteUser(user.id, user.display_name || user.email || '')}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </Button>
                         </div>
                       </td>
                     </tr>
