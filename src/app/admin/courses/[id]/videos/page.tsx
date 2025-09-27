@@ -26,7 +26,9 @@ import {
   ArrowsUpDownIcon,
   ArrowUpTrayIcon,
   DocumentDuplicateIcon,
-  DocumentTextIcon
+  DocumentTextIcon,
+  FolderIcon,
+  FolderPlusIcon
 } from '@heroicons/react/24/outline';
 
 interface Course {
@@ -48,6 +50,15 @@ interface Video {
   status: 'active' | 'inactive';
   created_at: string;
   file_path?: string;
+  chapter_id?: string | null;
+}
+
+interface Chapter {
+  id: string;
+  title: string;
+  course_id: string;
+  display_order: number;
+  videos?: Video[];
 }
 
 
@@ -59,8 +70,13 @@ export default function CourseVideosPage() {
   
   const [course, setCourse] = useState<Course | null>(null);
   const [videos, setVideos] = useState<Video[]>([]);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showChapterModal, setShowChapterModal] = useState(false);
+  const [newChapterTitle, setNewChapterTitle] = useState('');
+  const [editingChapter, setEditingChapter] = useState<string | null>(null);
+  const [editChapterTitle, setEditChapterTitle] = useState('');
   const [editingVideo, setEditingVideo] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
     title: '',
@@ -86,6 +102,7 @@ export default function CourseVideosPage() {
     if (courseId) {
       fetchCourse();
       fetchVideos();
+      fetchChapters();
     }
   }, [courseId]);
 
@@ -132,6 +149,119 @@ export default function CourseVideosPage() {
       console.error('動画取得エラー:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchChapters = async () => {
+    try {
+      const response = await fetch(`/api/courses/${courseId}/chapters`);
+      if (!response.ok) {
+        throw new Error('チャプター取得に失敗しました');
+      }
+      const data = await response.json();
+      setChapters(data.chapters || []);
+    } catch (error) {
+      console.error('チャプター取得エラー:', error);
+    }
+  };
+
+  const handleAddChapter = async () => {
+    if (!newChapterTitle.trim()) {
+      alert('チャプタータイトルを入力してください');
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/courses/${courseId}/chapters`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ title: newChapterTitle }),
+      });
+
+      if (!response.ok) {
+        throw new Error('チャプターの追加に失敗しました');
+      }
+
+      await fetchChapters();
+      setNewChapterTitle('');
+      setShowChapterModal(false);
+      alert('チャプターが追加されました');
+    } catch (error) {
+      console.error('チャプター追加エラー:', error);
+      alert('チャプターの追加に失敗しました');
+    }
+  };
+
+  const handleUpdateChapter = async (chapterId: string) => {
+    if (!editChapterTitle.trim()) {
+      alert('チャプタータイトルを入力してください');
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ title: editChapterTitle }),
+      });
+
+      if (!response.ok) {
+        throw new Error('チャプターの更新に失敗しました');
+      }
+
+      await fetchChapters();
+      setEditingChapter(null);
+      setEditChapterTitle('');
+      alert('チャプターが更新されました');
+    } catch (error) {
+      console.error('チャプター更新エラー:', error);
+      alert('チャプターの更新に失敗しました');
+    }
+  };
+
+  const handleDeleteChapter = async (chapterId: string) => {
+    if (!confirm('このチャプターを削除してもよろしいですか？\n章に含まれる動画は削除されません。')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('チャプターの削除に失敗しました');
+      }
+
+      await fetchChapters();
+      await fetchVideos();
+      alert('チャプターが削除されました');
+    } catch (error) {
+      console.error('チャプター削除エラー:', error);
+      alert('チャプターの削除に失敗しました');
+    }
+  };
+
+  const handleAssignVideoToChapter = async (videoId: string, chapterId: string | null) => {
+    try {
+      const { error } = await supabase
+        .from('videos')
+        .update({ chapter_id: chapterId })
+        .eq('id', videoId);
+
+      if (error) {
+        throw error;
+      }
+
+      await fetchVideos();
+      await fetchChapters();
+    } catch (error) {
+      console.error('動画のチャプター割り当てエラー:', error);
+      alert('動画のチャプター割り当てに失敗しました');
     }
   };
 
@@ -505,10 +635,16 @@ export default function CourseVideosPage() {
                   </p>
                 </div>
               </div>
-              <Button onClick={() => setShowAddModal(true)}>
-                <PlusIcon className="h-4 w-4 mr-2" />
-                動画を追加
-              </Button>
+              <div className="flex space-x-2">
+                <Button variant="outline" onClick={() => setShowChapterModal(true)}>
+                  <FolderPlusIcon className="h-4 w-4 mr-2" />
+                  チャプター追加
+                </Button>
+                <Button onClick={() => setShowAddModal(true)}>
+                  <PlusIcon className="h-4 w-4 mr-2" />
+                  動画を追加
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -545,6 +681,82 @@ export default function CourseVideosPage() {
             </div>
           </div>
 
+          {/* Chapters List */}
+          {chapters.length > 0 && (
+            <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 mb-6">
+              <div className="p-6">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                  チャプター管理
+                </h2>
+                <div className="space-y-3">
+                  {chapters.map((chapter, index) => (
+                    <div
+                      key={chapter.id}
+                      className="flex items-center justify-between p-4 bg-gray-50 dark:bg-neutral-800 rounded-lg"
+                    >
+                      {editingChapter === chapter.id ? (
+                        <div className="flex items-center space-x-3 flex-1">
+                          <FolderIcon className="h-5 w-5 text-gray-400" />
+                          <Input
+                            value={editChapterTitle}
+                            onChange={(e) => setEditChapterTitle(e.target.value)}
+                            className="flex-1"
+                            placeholder="チャプタータイトル"
+                          />
+                          <Button
+                            size="sm"
+                            onClick={() => handleUpdateChapter(chapter.id)}
+                          >
+                            保存
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setEditingChapter(null);
+                              setEditChapterTitle('');
+                            }}
+                          >
+                            キャンセル
+                          </Button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center space-x-3">
+                            <FolderIcon className="h-5 w-5 text-gray-400" />
+                            <span className="text-sm font-medium text-gray-900 dark:text-white">
+                              第{chapter.display_order + 1}章: {chapter.title}
+                            </span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              ({chapter.videos?.length || 0}個の動画)
+                            </span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => {
+                                setEditingChapter(chapter.id);
+                                setEditChapterTitle(chapter.title);
+                              }}
+                              className="text-indigo-600 hover:text-indigo-900"
+                            >
+                              <PencilIcon className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteChapter(chapter.id)}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Videos List */}
           <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800">
             {filteredVideos.length === 0 ? (
@@ -577,6 +789,9 @@ export default function CourseVideosPage() {
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         動画情報
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        チャプター
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         時間
@@ -698,6 +913,20 @@ export default function CourseVideosPage() {
                             </div>
                           )}
                         </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <select
+                            className="text-sm border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
+                            value={video.chapter_id || ''}
+                            onChange={(e) => handleAssignVideoToChapter(video.id, e.target.value || null)}
+                          >
+                            <option value="">チャプターなし</option>
+                            {chapters.map((chapter) => (
+                              <option key={chapter.id} value={chapter.id}>
+                                第{chapter.display_order + 1}章: {chapter.title}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                           <div className="flex items-center">
                             <ClockIcon className="h-4 w-4 mr-1" />
@@ -800,6 +1029,39 @@ export default function CourseVideosPage() {
                   >
                     閉じる
                   </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Chapter Modal */}
+          {showChapterModal && (
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+              <div className="bg-white dark:bg-neutral-900 rounded-xl max-w-md w-full mx-4">
+                <div className="p-6 border-b border-gray-200 dark:border-neutral-800">
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">新しいチャプターを追加</h2>
+                </div>
+                <div className="p-6">
+                  <Input
+                    value={newChapterTitle}
+                    onChange={(e) => setNewChapterTitle(e.target.value)}
+                    placeholder="チャプタータイトル (例: 第1章 基礎知識)"
+                    className="mb-4"
+                  />
+                  <div className="flex justify-end space-x-3">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setShowChapterModal(false);
+                        setNewChapterTitle('');
+                      }}
+                    >
+                      キャンセル
+                    </Button>
+                    <Button onClick={handleAddChapter}>
+                      追加
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>

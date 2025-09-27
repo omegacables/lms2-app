@@ -20,7 +20,7 @@ export async function GET(
           display_order
         )
       `)
-      .eq('course_id', courseId)
+      .eq('course_id', parseInt(courseId, 10)) // 数値に変換
       .order('display_order', { ascending: true });
 
     if (error) {
@@ -32,7 +32,7 @@ export async function GET(
     const { data: unassignedVideos, error: videosError } = await supabase
       .from('videos')
       .select('id, title, display_order')
-      .eq('course_id', courseId)
+      .eq('course_id', parseInt(courseId, 10)) // 数値に変換
       .is('chapter_id', null)
       .order('display_order', { ascending: true });
 
@@ -61,24 +61,31 @@ export async function POST(
   try {
     const supabase = createServerComponentClient({ cookies });
     const courseId = params.id;
+    console.log('POST /api/courses/[id]/chapters - courseId:', courseId);
+
     const body = await request.json();
     const { title } = body;
+    console.log('Creating chapter with title:', title);
 
     // 現在の最大display_orderを取得
     const { data: maxOrderData, error: maxOrderError } = await supabase
       .from('chapters')
       .select('display_order')
-      .eq('course_id', courseId)
+      .eq('course_id', parseInt(courseId, 10)) // 数値に変換
       .order('display_order', { ascending: false })
-      .limit(1)
-      .single();
+      .limit(1);
 
-    const nextOrder = maxOrderData ? maxOrderData.display_order + 1 : 0;
+    console.log('Max order data:', maxOrderData, 'Error:', maxOrderError);
+
+    // single()を使わず、配列として処理
+    const nextOrder = (maxOrderData && maxOrderData.length > 0)
+      ? maxOrderData[0].display_order + 1
+      : 0;
 
     const { data, error } = await supabase
       .from('chapters')
       .insert({
-        course_id: courseId,
+        course_id: parseInt(courseId, 10), // 数値に変換
         title,
         display_order: nextOrder
       })
