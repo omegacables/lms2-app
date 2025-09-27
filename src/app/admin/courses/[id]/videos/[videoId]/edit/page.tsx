@@ -589,7 +589,7 @@ export default function EditVideoPage() {
                           type="file"
                           onChange={(e) => setResourceFile(e.target.files?.[0] || null)}
                           className="flex-1"
-                          accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.jpg,.jpeg,.png,.gif"
+                          accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.zip,.jpg,.jpeg,.png,.gif"
                         />
                         {resourceFile && (
                           <button
@@ -601,7 +601,7 @@ export default function EditVideoPage() {
                         )}
                       </div>
                       <p className="text-xs text-gray-500 mt-1">
-                        対応形式: PDF, Word, Excel, PowerPoint, テキスト, 画像, ZIP
+                        対応形式: PDF, Word, Excel, CSV, PowerPoint, テキスト, 画像, ZIP
                       </p>
                     </div>
                   )}
