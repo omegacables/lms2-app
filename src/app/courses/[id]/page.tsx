@@ -9,10 +9,22 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { supabase } from '@/lib/database/supabase';
 import { useAuth } from '@/stores/auth';
 import type { Tables } from '@/lib/database/supabase';
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  BookOpenIcon
+} from '@heroicons/react/24/outline';
 
 type Course = Tables<'courses'>;
 type Video = Tables<'videos'>;
 type VideoViewLog = Tables<'video_view_logs'>;
+
+interface Chapter {
+  id: string;
+  title: string;
+  display_order: number;
+  videos?: Video[];
+}
 
 export default function CourseDetailPage() {
   const params = useParams();
@@ -22,9 +34,12 @@ export default function CourseDetailPage() {
 
   const [course, setCourse] = useState<Course | null>(null);
   const [videos, setVideos] = useState<Video[]>([]);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [unassignedVideos, setUnassignedVideos] = useState<Video[]>([]);
   const [viewLogs, setViewLogs] = useState<VideoViewLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (courseId && user) {
@@ -64,6 +79,21 @@ export default function CourseDetailPage() {
       }
 
       setVideos(videosData || []);
+
+      // 章データを取得
+      try {
+        const response = await fetch(`/api/courses/${courseId}/chapters`);
+        if (response.ok) {
+          const data = await response.json();
+          setChapters(data.chapters || []);
+          setUnassignedVideos(data.unassignedVideos || []);
+          // 初期状態で全章を展開
+          setExpandedChapters(new Set(data.chapters?.map((c: Chapter) => c.id) || []));
+        }
+      } catch (err) {
+        console.error('章データ取得エラー:', err);
+        // 章データが取得できなくても動画は表示する
+      }
 
       // ユーザーの視聴ログを取得
       const { data: logsData, error: logsError } = await supabase
@@ -316,7 +346,7 @@ export default function CourseDetailPage() {
           {/* 動画一覧 */}
           <div className="space-y-4">
             <h2 className="text-xl font-semibold mb-4">レッスン一覧</h2>
-            
+
             {videos.length === 0 ? (
               <div className="text-center py-8 bg-muted rounded-lg">
                 <p className="text-muted-foreground">
@@ -324,7 +354,41 @@ export default function CourseDetailPage() {
                 </p>
               </div>
             ) : (
-              videos.map((video, index) => {
+              <>
+                {/* 章ごとの動画表示 */}
+                {chapters.length > 0 && chapters.map((chapter, chapterIndex) => (
+                  <div key={chapter.id} className="mb-6">
+                    <div
+                      className="flex items-center gap-2 mb-3 p-3 bg-gray-100 dark:bg-neutral-800 rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-neutral-700"
+                      onClick={() => {
+                        setExpandedChapters(prev => {
+                          const newSet = new Set(prev);
+                          if (newSet.has(chapter.id)) {
+                            newSet.delete(chapter.id);
+                          } else {
+                            newSet.add(chapter.id);
+                          }
+                          return newSet;
+                        });
+                      }}
+                    >
+                      {expandedChapters.has(chapter.id) ? (
+                        <ChevronDownIcon className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                      ) : (
+                        <ChevronRightIcon className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                      )}
+                      <BookOpenIcon className="h-5 w-5 text-blue-500" />
+                      <h3 className="font-semibold text-gray-900 dark:text-white">
+                        第{chapterIndex + 1}章: {chapter.title}
+                      </h3>
+                      <span className="ml-auto text-sm text-gray-500 dark:text-gray-400">
+                        {chapter.videos?.length || 0} 本の動画
+                      </span>
+                    </div>
+
+                    {expandedChapters.has(chapter.id) && (
+                      <div className="ml-8 space-y-4">
+                        {chapter.videos?.map((video, videoIndex) => {
                 const progress = getVideoProgress(video.id);
                 const status = getVideoStatus(video.id);
                 
@@ -419,8 +483,225 @@ export default function CourseDetailPage() {
                       </div>
                     </div>
                   </div>
-                );
-              })
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* 未割り当ての動画 */}
+                {unassignedVideos.length > 0 && (
+                  <div className="mb-6">
+                    <div className="flex items-center gap-2 mb-3 p-3 bg-gray-50 dark:bg-neutral-900 rounded-lg">
+                      <h3 className="font-medium text-gray-700 dark:text-gray-300">
+                        その他の動画
+                      </h3>
+                      <span className="ml-auto text-sm text-gray-500 dark:text-gray-400">
+                        {unassignedVideos.length} 本の動画
+                      </span>
+                    </div>
+                    <div className="ml-8 space-y-4">
+                      {unassignedVideos.map((video, index) => {
+                        const progress = getVideoProgress(video.id);
+                        const status = getVideoStatus(video.id);
+
+                        return (
+                          <div
+                            key={video.id}
+                            className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-6 hover:shadow-lg dark:shadow-gray-900/50 hover:border-blue-300 transition-all duration-200"
+                          >
+                            <div className="flex items-start gap-6">
+                              <div className="flex-shrink-0">
+                                <div className="relative">
+                                  {getStatusIcon(status)}
+                                  <span className="absolute -top-1 -right-1 bg-blue-100 text-blue-800 text-xs font-bold px-2 py-0.5 rounded-full">
+                                    {chapters.reduce((sum, ch) => sum + (ch.videos?.length || 0), 0) + index + 1}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-start justify-between gap-4 mb-3">
+                                  <div>
+                                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
+                                      {video.title}
+                                    </h3>
+                                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                                      <div className="flex items-center gap-1">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        {formatDuration(video.duration)}
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                        </svg>
+                                        {progress > 0 ? `${progress}% 完了` : '未開始'}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <Link href={`/courses/${courseId}/videos/${video.id}`}>
+                                    <Button size="sm" className={
+                                      status === 'completed' ? 'bg-green-600 hover:bg-green-700' :
+                                      status === 'in_progress' ? 'bg-blue-600 hover:bg-blue-700' :
+                                      'bg-gray-600 hover:bg-gray-700'
+                                    }>
+                                      {status === 'completed' ? (
+                                        <>
+                                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                          </svg>
+                                          再視聴
+                                        </>
+                                      ) : status === 'in_progress' ? (
+                                        <>
+                                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.586a1 1 0 01.707.293l2.414 2.414a1 1 0 00.707.293H15M9 10v4a2 2 0 002 2h2a2 2 0 002-2v-4m-6 0V9a2 2 0 012-2h2a2 0 012 2v1" />
+                                          </svg>
+                                          続きを見る
+                                        </>
+                                      ) : (
+                                        <>
+                                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.586a1 1 0 01.707.293l2.414 2.414a1 1 0 00.707.293H15" />
+                                          </svg>
+                                          視聴開始
+                                        </>
+                                      )}
+                                    </Button>
+                                  </Link>
+                                </div>
+
+                                {video.description && (
+                                  <p className="text-muted-foreground text-sm mb-4 leading-relaxed">
+                                    {video.description}
+                                  </p>
+                                )}
+
+                                {/* 進捗バー */}
+                                <div className="space-y-2">
+                                  <div className="w-full bg-gray-200 rounded-full h-2">
+                                    <div
+                                      className={`h-2 rounded-full transition-all duration-300 ${
+                                        progress === 100 ? 'bg-gradient-to-r from-green-500 to-green-600' :
+                                        progress > 0 ? 'bg-gradient-to-r from-blue-500 to-blue-600' :
+                                        'bg-gray-300'
+                                      }`}
+                                      style={{ width: `${progress}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 章がない場合は全動画を表示 */}
+                {chapters.length === 0 && videos.map((video, index) => {
+                  const progress = getVideoProgress(video.id);
+                  const status = getVideoStatus(video.id);
+
+                  return (
+                    <div
+                      key={video.id}
+                      className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-6 hover:shadow-lg dark:shadow-gray-900/50 hover:border-blue-300 transition-all duration-200"
+                    >
+                      <div className="flex items-start gap-6">
+                        <div className="flex-shrink-0">
+                          <div className="relative">
+                            {getStatusIcon(status)}
+                            <span className="absolute -top-1 -right-1 bg-blue-100 text-blue-800 text-xs font-bold px-2 py-0.5 rounded-full">
+                              {index + 1}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-4 mb-3">
+                            <div>
+                              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
+                                {video.title}
+                              </h3>
+                              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                                <div className="flex items-center gap-1">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  {formatDuration(video.duration)}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                  </svg>
+                                  {progress > 0 ? `${progress}% 完了` : '未開始'}
+                                </div>
+                              </div>
+                            </div>
+
+                            <Link href={`/courses/${courseId}/videos/${video.id}`}>
+                              <Button size="sm" className={
+                                status === 'completed' ? 'bg-green-600 hover:bg-green-700' :
+                                status === 'in_progress' ? 'bg-blue-600 hover:bg-blue-700' :
+                                'bg-gray-600 hover:bg-gray-700'
+                              }>
+                                {status === 'completed' ? (
+                                  <>
+                                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    再視聴
+                                  </>
+                                ) : status === 'in_progress' ? (
+                                  <>
+                                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.586a1 1 0 01.707.293l2.414 2.414a1 1 0 00.707.293H15M9 10v4a2 2 0 002 2h2a2 2 0 002-2v-4m-6 0V9a2 2 0 012-2h2a2 2 0 012 2v1" />
+                                    </svg>
+                                    続きを見る
+                                  </>
+                                ) : (
+                                  <>
+                                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.586a1 1 0 01.707.293l2.414 2.414a1 1 0 00.707.293H15" />
+                                    </svg>
+                                    視聴開始
+                                  </>
+                                )}
+                              </Button>
+                            </Link>
+                          </div>
+
+                          {video.description && (
+                            <p className="text-muted-foreground text-sm mb-4 leading-relaxed">
+                              {video.description}
+                            </p>
+                          )}
+
+                          {/* 進捗バー */}
+                          <div className="space-y-2">
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                              <div
+                                className={`h-2 rounded-full transition-all duration-300 ${
+                                  progress === 100 ? 'bg-gradient-to-r from-green-500 to-green-600' :
+                                  progress > 0 ? 'bg-gradient-to-r from-blue-500 to-blue-600' :
+                                  'bg-gray-300'
+                                }`}
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
             )}
           </div>
 

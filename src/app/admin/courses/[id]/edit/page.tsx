@@ -17,8 +17,10 @@ import {
   TrashIcon,
   PencilIcon,
   PhotoIcon,
-  CloudArrowUpIcon
+  CloudArrowUpIcon,
+  BookOpenIcon
 } from '@heroicons/react/24/outline';
+import { ChapterManager } from '@/components/admin/ChapterManager';
 
 interface Course {
   id: string;
@@ -487,6 +489,11 @@ export default function EditCoursePage() {
                   </Button>
                 </div>
               </form>
+
+              {/* Chapters Management */}
+              <div className="mt-8">
+                <ChapterManager courseId={courseId} />
+              </div>
             </div>
 
             {/* Sidebar */}
