@@ -9,6 +9,13 @@ export async function PUT(
   try {
     const supabase = createServerComponentClient({ cookies });
     const { chapterId } = params;
+
+    // 認証チェック
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { title } = body;
 
@@ -41,6 +48,12 @@ export async function DELETE(
   try {
     const supabase = createServerComponentClient({ cookies });
     const { chapterId } = params;
+
+    // 認証チェック
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     // 章に属する動画のchapter_idをnullに設定
     const { error: updateError } = await supabase

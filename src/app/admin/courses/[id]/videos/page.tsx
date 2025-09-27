@@ -154,14 +154,27 @@ export default function CourseVideosPage() {
 
   const fetchChapters = async () => {
     try {
-      const response = await fetch(`/api/courses/${courseId}/chapters`);
+      // 認証セッションを取得
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const response = await fetch(`/api/courses/${courseId}/chapters`, {
+        headers: {
+          ...(session?.access_token && { 'Authorization': `Bearer ${session.access_token}` })
+        }
+      });
+
       if (!response.ok) {
-        throw new Error('チャプター取得に失敗しました');
+        const errorData = await response.json();
+        console.error('Chapter fetch failed:', errorData);
+        throw new Error(errorData.error || 'チャプター取得に失敗しました');
       }
+
       const data = await response.json();
       setChapters(data.chapters || []);
     } catch (error) {
       console.error('チャプター取得エラー:', error);
+      // エラーがあってもアプリケーションは続行
+      setChapters([]);
     }
   };
 
@@ -172,16 +185,22 @@ export default function CourseVideosPage() {
     }
 
     try {
+      // 認証セッションを取得
+      const { data: { session } } = await supabase.auth.getSession();
+
       const response = await fetch(`/api/courses/${courseId}/chapters`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(session?.access_token && { 'Authorization': `Bearer ${session.access_token}` })
         },
         body: JSON.stringify({ title: newChapterTitle }),
       });
 
       if (!response.ok) {
-        throw new Error('チャプターの追加に失敗しました');
+        const errorData = await response.json();
+        console.error('Chapter creation failed:', errorData);
+        throw new Error(errorData.error || 'チャプターの追加に失敗しました');
       }
 
       await fetchChapters();
@@ -201,16 +220,22 @@ export default function CourseVideosPage() {
     }
 
     try {
+      // 認証セッションを取得
+      const { data: { session } } = await supabase.auth.getSession();
+
       const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          ...(session?.access_token && { 'Authorization': `Bearer ${session.access_token}` })
         },
         body: JSON.stringify({ title: editChapterTitle }),
       });
 
       if (!response.ok) {
-        throw new Error('チャプターの更新に失敗しました');
+        const errorData = await response.json();
+        console.error('Chapter update failed:', errorData);
+        throw new Error(errorData.error || 'チャプターの更新に失敗しました');
       }
 
       await fetchChapters();
@@ -229,12 +254,20 @@ export default function CourseVideosPage() {
     }
 
     try {
+      // 認証セッションを取得
+      const { data: { session } } = await supabase.auth.getSession();
+
       const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}`, {
         method: 'DELETE',
+        headers: {
+          ...(session?.access_token && { 'Authorization': `Bearer ${session.access_token}` })
+        }
       });
 
       if (!response.ok) {
-        throw new Error('チャプターの削除に失敗しました');
+        const errorData = await response.json();
+        console.error('Chapter deletion failed:', errorData);
+        throw new Error(errorData.error || 'チャプターの削除に失敗しました');
       }
 
       await fetchChapters();

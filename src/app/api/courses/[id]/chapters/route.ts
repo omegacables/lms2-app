@@ -10,6 +10,13 @@ export async function GET(
     const supabase = createServerComponentClient({ cookies });
     const courseId = params.id;
 
+    // 認証チェック
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.error('GET chapters - No session found');
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { data: chapters, error } = await supabase
       .from('chapters')
       .select(`
@@ -63,9 +70,20 @@ export async function POST(
     const courseId = params.id;
     console.log('POST /api/courses/[id]/chapters - courseId:', courseId);
 
+    // 認証チェック
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.error('No session found');
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { title } = body;
-    console.log('Creating chapter with title:', title);
+    console.log('Creating chapter with title:', title, 'by user:', session.user.email);
+
+    if (!title || title.trim() === '') {
+      return NextResponse.json({ error: 'Title is required' }, { status: 400 });
+    }
 
     // 現在の最大display_orderを取得
     const { data: maxOrderData, error: maxOrderError } = await supabase
@@ -82,11 +100,13 @@ export async function POST(
       ? maxOrderData[0].display_order + 1
       : 0;
 
+    console.log('Inserting chapter with order:', nextOrder);
+
     const { data, error } = await supabase
       .from('chapters')
       .insert({
         course_id: parseInt(courseId, 10), // 数値に変換
-        title,
+        title: title.trim(),
         display_order: nextOrder
       })
       .select()
@@ -94,14 +114,28 @@ export async function POST(
 
     if (error) {
       console.error('Error creating chapter:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error('Error details:', {
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        message: error.message
+      });
+      return NextResponse.json({
+        error: error.message,
+        details: error.details,
+        hint: error.hint
+      }, { status: 500 });
     }
 
+    console.log('Chapter created successfully:', data);
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Unexpected error in POST chapters:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }
