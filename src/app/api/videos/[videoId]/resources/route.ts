@@ -9,19 +9,27 @@ export async function GET(
     const { videoId: videoIdParam } = await params;
     const videoId = parseInt(videoIdParam);
 
+    console.log('\u30eaソース取得リクエスト - videoId:', videoId);
+
     const { data, error } = await supabase
       .from('video_resources')
       .select('*')
       .eq('video_id', videoId)
       .order('display_order', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase\u30a8ラー:', error);
+      throw error;
+    }
+
+    console.log('\u53d6得\u3057\u305f\u30ea\u30bd\u30fc\u30b9\u6570:', data?.length || 0);
+    console.log('\u30ea\u30bd\u30fc\u30b9\u306e\u7a2e\u985e:', data?.map(r => r.resource_type));
 
     return NextResponse.json({ data });
   } catch (error) {
-    console.error('リソース取得エラー:', error);
+    console.error('\u30ea\u30bd\u30fc\u30b9\u53d6\u5f97\u30a8\u30e9\u30fc:', error);
     return NextResponse.json(
-      { error: 'リソースの取得に失敗しました' },
+      { error: '\u30ea\u30bd\u30fc\u30b9\u306e\u53d6\u5f97\u306b\u5931\u6557\u3057\u307e\u3057\u305f' },
       { status: 500 }
     );
   }

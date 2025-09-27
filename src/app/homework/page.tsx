@@ -66,7 +66,7 @@ export default function HomeworkPage() {
 
       if (!user) return;
 
-      // video_resourcesテーブルから課題（homework）を取得
+      // video_resourcesテーブルから課題（assignment）を取得
       const { data: homeworkResources, error } = await supabase
         .from('video_resources')
         .select(`
@@ -81,7 +81,7 @@ export default function HomeworkPage() {
             )
           )
         `)
-        .eq('resource_type', 'homework')
+        .eq('resource_type', 'assignment')
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -91,7 +91,8 @@ export default function HomeworkPage() {
         return;
       }
 
-      console.log('取得した課題リソース:', homeworkResources);
+      console.log('取得した課題リソース数:', homeworkResources?.length || 0);
+      console.log('課題リソース詳細:', homeworkResources);
 
       // video_resourcesデータをAssignment形式に変換
       const assignments: Assignment[] = (homeworkResources || []).map(resource => {

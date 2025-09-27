@@ -147,7 +147,12 @@ export default function VideoPlayerPage() {
         const response = await fetch(`/api/videos/${videoId}/resources`);
         if (response.ok) {
           const { data: resourcesData } = await response.json();
+          console.log('取得したリソース:', resourcesData);
+          console.log('参考資料:', resourcesData?.filter(r => r.resource_type === 'reference'));
+          console.log('課題:', resourcesData?.filter(r => r.resource_type === 'assignment'));
           setResources(resourcesData || []);
+        } else {
+          console.error('リソース取得失敗:', response.status, response.statusText);
         }
       } catch (err) {
         console.error('リソース取得エラー:', err);
@@ -584,7 +589,7 @@ export default function VideoPlayerPage() {
                               <div>
                                 <h4 className="font-medium text-gray-900 dark:text-gray-100">{resource.title}</h4>
                                 {resource.description && (
-                                  <p className="text-sm text-gray-500 dark:text-gray-400">{resource.description}</p>
+                                  <p className="text-sm text-gray-500 dark:text-gray-400 whitespace-pre-wrap">{resource.description}</p>
                                 )}
                               </div>
                             </div>
@@ -620,7 +625,7 @@ export default function VideoPlayerPage() {
                                   )}
                                 </h4>
                                 {resource.description && (
-                                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{resource.description}</p>
+                                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 whitespace-pre-wrap">{resource.description}</p>
                                 )}
                                 {resource.content && (
                                   <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap mb-3">
@@ -654,7 +659,7 @@ export default function VideoPlayerPage() {
                               <div>
                                 <h4 className="font-medium text-gray-900 dark:text-gray-100">{resource.title}</h4>
                                 {resource.description && (
-                                  <p className="text-sm text-gray-500 dark:text-gray-400">{resource.description}</p>
+                                  <p className="text-sm text-gray-500 dark:text-gray-400 whitespace-pre-wrap">{resource.description}</p>
                                 )}
                               </div>
                             </div>

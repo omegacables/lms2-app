@@ -480,12 +480,12 @@ export default function EditVideoPage() {
                               )}
                             </h4>
                             {resource.description && (
-                              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 whitespace-pre-wrap">
                                 {resource.description}
                               </p>
                             )}
                             {resource.content && (
-                              <p className="text-sm text-gray-700 dark:text-gray-300 mt-2 line-clamp-3">
+                              <p className="text-sm text-gray-700 dark:text-gray-300 mt-2 line-clamp-3 whitespace-pre-wrap">
                                 {resource.content}
                               </p>
                             )}
