@@ -45,7 +45,7 @@ type VideoResource = {
 export default function VideoPlayerPage() {
   const params = useParams();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const courseId = parseInt(params.id as string);
   const videoId = parseInt(params.videoId as string);
 
@@ -459,7 +459,7 @@ export default function VideoPlayerPage() {
               currentPosition={viewLog?.current_position || 0}
               onProgressUpdate={updateProgress}
               onComplete={handleVideoComplete}
-              enableSkipPrevention={true}
+              enableSkipPrevention={!isAdmin} // 管理者の場合はスキップ防止を無効化
               completionThreshold={course?.completion_threshold || 95}
               isCompleted={viewLog?.status === 'completed'}
             />

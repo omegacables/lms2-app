@@ -373,11 +373,11 @@ export default function CoursesPage() {
                     {/* Actions */}
                     <div className="flex items-center justify-between pt-4 border-t border-gray-100">
                       <div className="flex space-x-2">
-                        <Link href={`/admin/courses/${course.id}`}>
-                          <button 
+                        <Link href={`/courses/${course.id}`}>
+                          <button
                             onClick={(e) => e.stopPropagation()}
-                            className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors" 
-                            title="詳細表示"
+                            className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                            title="詳細表示（生徒ビュー）"
                           >
                             <EyeIcon className="h-4 w-4" />
                           </button>

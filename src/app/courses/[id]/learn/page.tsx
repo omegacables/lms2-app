@@ -30,7 +30,7 @@ const COMPLETION_THRESHOLD = 90;
 export default function CourseLearnPage() {
   const params = useParams();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const courseId = parseInt(params.id as string);
 
   // コースと動画の状態
