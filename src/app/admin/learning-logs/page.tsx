@@ -473,7 +473,7 @@ export default function LearningLogsPage() {
           compareValue = (a.company || '').localeCompare(b.company || '');
           break;
         case 'course_title':
-          compareValue = (a.course_title || '').localeCompare(b.course_title || '', 'ja-JP');
+          compareValue = (a.course_title || '').localeCompare(b.course_title || '', 'ja');
           break;
         case 'video_title':
           compareValue = a.video_title.localeCompare(b.video_title);
@@ -785,7 +785,8 @@ export default function LearningLogsPage() {
                               month: '2-digit',
                               day: '2-digit',
                               hour: '2-digit',
-                              minute: '2-digit'
+                              minute: '2-digit',
+                              second: '2-digit'
                             }) : '-'}
                           </td>
                           <td className="px-3 py-4 text-sm text-gray-900 dark:text-white">
@@ -793,7 +794,8 @@ export default function LearningLogsPage() {
                               month: '2-digit',
                               day: '2-digit',
                               hour: '2-digit',
-                              minute: '2-digit'
+                              minute: '2-digit',
+                              second: '2-digit'
                             }) : '-'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
