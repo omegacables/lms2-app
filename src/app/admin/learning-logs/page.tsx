@@ -473,7 +473,7 @@ export default function LearningLogsPage() {
           compareValue = (a.company || '').localeCompare(b.company || '');
           break;
         case 'course_title':
-          compareValue = a.course_title.localeCompare(b.course_title);
+          compareValue = (a.course_title || '').localeCompare(b.course_title || '', 'ja-JP');
           break;
         case 'video_title':
           compareValue = a.video_title.localeCompare(b.video_title);
@@ -675,17 +675,6 @@ export default function LearningLogsPage() {
                       <tr>
                         <th 
                           className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
-                          onClick={() => handleSort('created_at')}
-                        >
-                          <div className="flex items-center">
-                            記録日時
-                            {sortField === 'created_at' && (
-                              sortOrder === 'asc' ? <ArrowUpIcon className="h-3 w-3 ml-1" /> : <ArrowDownIcon className="h-3 w-3 ml-1" />
-                            )}
-                          </div>
-                        </th>
-                        <th 
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
                           onClick={() => handleSort('user_name')}
                         >
                           <div className="flex items-center">
@@ -706,8 +695,8 @@ export default function LearningLogsPage() {
                             )}
                           </div>
                         </th>
-                        <th 
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
+                        <th
+                          className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
                           onClick={() => handleSort('course_title')}
                         >
                           <div className="flex items-center">
@@ -717,8 +706,8 @@ export default function LearningLogsPage() {
                             )}
                           </div>
                         </th>
-                        <th 
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
+                        <th
+                          className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
                           onClick={() => handleSort('video_title')}
                         >
                           <div className="flex items-center">
@@ -728,10 +717,10 @@ export default function LearningLogsPage() {
                             )}
                           </div>
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           開始時刻
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           終了時刻
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -759,15 +748,6 @@ export default function LearningLogsPage() {
                     <tbody className="bg-white dark:bg-neutral-900 divide-y divide-gray-200 dark:divide-neutral-800">
                       {paginatedLogs.map((log) => (
                         <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                            {new Date(log.created_at).toLocaleString('ja-JP', {
-                              year: 'numeric',
-                              month: '2-digit',
-                              day: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div>
                               <div className="text-sm font-medium text-gray-900 dark:text-white">
@@ -790,34 +770,30 @@ export default function LearningLogsPage() {
                               )}
                             </div>
                           </td>
-                          <td className="px-6 py-4">
-                            <div className="text-sm text-gray-900 dark:text-white max-w-xs truncate">
+                          <td className="px-4 py-4">
+                            <div className="text-sm text-gray-900 dark:text-white max-w-[180px] break-words">
                               {log.course_title}
                             </div>
                           </td>
-                          <td className="px-6 py-4">
-                            <div className="text-sm text-gray-900 dark:text-white max-w-xs truncate">
+                          <td className="px-4 py-4">
+                            <div className="text-sm text-gray-900 dark:text-white max-w-[200px] break-words">
                               {log.video_title}
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                          <td className="px-3 py-4 text-sm text-gray-900 dark:text-white">
                             {log.start_time ? new Date(log.start_time).toLocaleString('ja-JP', {
-                              year: 'numeric',
                               month: '2-digit',
                               day: '2-digit',
                               hour: '2-digit',
-                              minute: '2-digit',
-                              second: '2-digit'
+                              minute: '2-digit'
                             }) : '-'}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                          <td className="px-3 py-4 text-sm text-gray-900 dark:text-white">
                             {log.end_time ? new Date(log.end_time).toLocaleString('ja-JP', {
-                              year: 'numeric',
-                              month: '2-digit', 
+                              month: '2-digit',
                               day: '2-digit',
                               hour: '2-digit',
-                              minute: '2-digit',
-                              second: '2-digit'
+                              minute: '2-digit'
                             }) : '-'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
