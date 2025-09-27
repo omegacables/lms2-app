@@ -77,6 +77,7 @@ export default function CourseVideosPage() {
   const [newChapterTitle, setNewChapterTitle] = useState('');
   const [editingChapter, setEditingChapter] = useState<string | null>(null);
   const [editChapterTitle, setEditChapterTitle] = useState('');
+  const [chapterTableWarning, setChapterTableWarning] = useState<string | null>(null);
   const [editingVideo, setEditingVideo] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
     title: '',
@@ -171,6 +172,14 @@ export default function CourseVideosPage() {
 
       const data = await response.json();
       setChapters(data.chapters || []);
+
+      // 警告メッセージがある場合は表示
+      if (data.warning) {
+        console.warn(data.warning);
+        setChapterTableWarning(data.warning);
+      } else {
+        setChapterTableWarning(null);
+      }
     } catch (error) {
       console.error('チャプター取得エラー:', error);
       // エラーがあってもアプリケーションは続行
@@ -209,7 +218,14 @@ export default function CourseVideosPage() {
       alert('チャプターが追加されました');
     } catch (error) {
       console.error('チャプター追加エラー:', error);
-      alert('チャプターの追加に失敗しました');
+      const errorMessage = error instanceof Error ? error.message : 'チャプターの追加に失敗しました';
+
+      // チャプターテーブルが存在しない場合の特別なエラーハンドリング
+      if (errorMessage.includes('Chapters table does not exist')) {
+        alert('チャプターテーブルが存在しません。\n\n/admin/setup-chapters で初期設定を行ってください。');
+      } else {
+        alert(errorMessage);
+      }
     }
   };
 
@@ -244,7 +260,14 @@ export default function CourseVideosPage() {
       alert('チャプターが更新されました');
     } catch (error) {
       console.error('チャプター更新エラー:', error);
-      alert('チャプターの更新に失敗しました');
+      const errorMessage = error instanceof Error ? error.message : 'チャプターの更新に失敗しました';
+
+      // チャプターテーブルが存在しない場合の特別なエラーハンドリング
+      if (errorMessage.includes('Chapters table does not exist')) {
+        alert('チャプターテーブルが存在しません。\n\n/admin/setup-chapters で初期設定を行ってください。');
+      } else {
+        alert(errorMessage);
+      }
     }
   };
 
@@ -275,7 +298,14 @@ export default function CourseVideosPage() {
       alert('チャプターが削除されました');
     } catch (error) {
       console.error('チャプター削除エラー:', error);
-      alert('チャプターの削除に失敗しました');
+      const errorMessage = error instanceof Error ? error.message : 'チャプターの削除に失敗しました';
+
+      // チャプターテーブルが存在しない場合の特別なエラーハンドリング
+      if (errorMessage.includes('Chapters table does not exist')) {
+        alert('チャプターテーブルが存在しません。\n\n/admin/setup-chapters で初期設定を行ってください。');
+      } else {
+        alert(errorMessage);
+      }
     }
   };
 
@@ -754,6 +784,39 @@ export default function CourseVideosPage() {
               </div>
             </div>
           </div>
+
+          {/* Warning for missing chapters table */}
+          {chapterTableWarning && (
+            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mb-6">
+              <div className="flex items-start">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-yellow-600 dark:text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                    チャプター機能が利用できません
+                  </h3>
+                  <div className="mt-2 text-sm text-yellow-700 dark:text-yellow-300">
+                    <p>チャプターテーブルが存在しません。チャプター機能を使用するには、以下の手順で設定を行ってください：</p>
+                    <ol className="list-decimal list-inside mt-2 space-y-1">
+                      <li>
+                        <Link
+                          href="/admin/setup-chapters"
+                          className="underline hover:text-yellow-800 dark:hover:text-yellow-100"
+                        >
+                          /admin/setup-chapters
+                        </Link> にアクセス
+                      </li>
+                      <li>表示されるSQLコマンドをSupabaseダッシュボードで実行</li>
+                      <li>このページをリロードして確認</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Search and Stats */}
           <div className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-6 mb-6">

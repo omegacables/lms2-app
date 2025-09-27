@@ -17,11 +17,25 @@ export async function GET(
       .select('id')
       .limit(1);
 
-    if (tableCheckError && tableCheckError.message.includes('does not exist')) {
-      console.log('Chapters table does not exist');
+    // テーブルが存在しない場合は空の配列を返す
+    if (tableCheckError && (
+      tableCheckError.message.includes('does not exist') ||
+      tableCheckError.message.includes('relation') ||
+      tableCheckError.code === '42P01'
+    )) {
+      console.log('Chapters table does not exist - returning empty arrays');
+
+      // 全ての動画を未割り当てとして返す
+      const { data: allVideos, error: videosError } = await supabase
+        .from('videos')
+        .select('id, title, display_order')
+        .eq('course_id', parseInt(courseId, 10))
+        .order('display_order', { ascending: true });
+
       return NextResponse.json({
         chapters: [],
-        unassignedVideos: []
+        unassignedVideos: allVideos || [],
+        warning: 'チャプターテーブルが存在しません。/admin/setup-chapters で設定してください。'
       });
     }
 
@@ -85,12 +99,32 @@ export async function POST(
       .select('id')
       .limit(1);
 
-    if (tableCheckError && tableCheckError.message.includes('does not exist')) {
-      console.error('Chapters table does not exist');
+    console.log('Chapter table check:', {
+      exists: !tableCheckError,
+      error: tableCheckError?.message,
+      data: chaptersExist
+    });
+
+    if (tableCheckError) {
+      console.error('Chapters table error:', tableCheckError.message);
+
+      // テーブルが存在しない場合の詳細なレスポンス
+      if (tableCheckError.message.includes('does not exist') ||
+          tableCheckError.message.includes('relation') ||
+          tableCheckError.code === '42P01') {
+        return NextResponse.json({
+          error: 'Chapters table does not exist',
+          message: 'チャプターテーブルが存在しません。Supabaseダッシュボードでテーブルを作成してください。',
+          instructions: '/admin/setup-chapters にアクセスして手順を確認してください',
+          sqlHint: 'CREATE TABLE chapters (id uuid primary key default gen_random_uuid(), course_id integer references courses(id), title text, display_order integer default 0, created_at timestamptz default now(), updated_at timestamptz default now())'
+        }, { status: 400 });
+      }
+
+      // その他のエラー
       return NextResponse.json({
-        error: 'Chapters table does not exist',
-        message: 'Please create the chapters table first'
-      }, { status: 400 });
+        error: 'Database error',
+        message: tableCheckError.message
+      }, { status: 500 });
     }
 
     const body = await request.json();
