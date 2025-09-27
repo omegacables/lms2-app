@@ -149,8 +149,12 @@ export default function EditVideoPage() {
       const fileName = `${Date.now()}_${file.name}`;
       const filePath = `resources/${videoId}/${fileName}`;
 
+      // ファイルタイプによってバケットを切り替え
+      const isVideo = file.type.startsWith('video/');
+      const bucketName = isVideo ? 'videos' : 'attachments';
+
       const { data, error } = await supabase.storage
-        .from('videos')
+        .from(bucketName)
         .upload(filePath, file, {
           cacheControl: '3600',
           upsert: false
@@ -160,7 +164,7 @@ export default function EditVideoPage() {
 
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
-        .from('videos')
+        .from(bucketName)
         .getPublicUrl(filePath);
 
       return publicUrl;
