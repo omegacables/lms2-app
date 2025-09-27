@@ -465,6 +465,21 @@ export default function CourseVideosPage() {
       return;
     }
 
+    // ファイルサイズチェック（100MB以上の場合警告）
+    const maxSize = 100 * 1024 * 1024; // 100MB
+    if (file.size > maxSize) {
+      const sizeMB = Math.round(file.size / (1024 * 1024));
+      const proceed = confirm(
+        `選択されたファイル（${sizeMB}MB）は大きいため、アップロードに時間がかかる場合があります。\n` +
+        `続行しますか？\n\n` +
+        `推奨: 動画を圧縮してからアップロードしてください。`
+      );
+      if (!proceed) {
+        e.target.value = ''; // ファイル選択をリセット
+        return;
+      }
+    }
+
     if (isReplace) {
       setReplaceFile(file);
     }
@@ -484,7 +499,7 @@ export default function CourseVideosPage() {
 
     setUploading(true);
     setUploadProgress(0);
-    
+
     try {
       // Check if user is authenticated
       const { data: { session } } = await supabase.auth.getSession();
@@ -492,60 +507,119 @@ export default function CourseVideosPage() {
         throw new Error('認証が必要です。再度ログインしてください。');
       }
 
-      // APIエンドポイント経由で動画を置き換え
-      const formData = new FormData();
-      formData.append('video', replaceFile);
-      formData.append('title', video.title);
-      formData.append('description', video.description || '');
-      formData.append('duration', video.duration?.toString() || '0');
-      formData.append('order_index', video.order_index.toString());
-      formData.append('video_id', videoId); // 置き換え対象のID
+      // ファイルサイズが100MB未満の場合は通常のAPIルートを使用
+      const maxApiSize = 100 * 1024 * 1024; // 100MB
 
-      // XMLHttpRequestを使用してプログレスを追跡
-      const xhr = new XMLHttpRequest();
-      
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          const percentComplete = (e.loaded / e.total) * 100;
-          setUploadProgress(Math.round(percentComplete));
-        }
-      });
+      if (replaceFile.size < maxApiSize) {
+        // 従来のAPIルートを使用
+        const formData = new FormData();
+        formData.append('video', replaceFile);
+        formData.append('title', video.title);
+        formData.append('description', video.description || '');
+        formData.append('duration', video.duration?.toString() || '0');
+        formData.append('order_index', video.order_index.toString());
+        formData.append('video_id', videoId);
 
-      const uploadPromise = new Promise((resolve, reject) => {
-        xhr.onload = () => {
-          if (xhr.status === 200) {
-            try {
-              const result = JSON.parse(xhr.responseText);
-              resolve(result);
-            } catch (e) {
-              reject(new Error('サーバーからの応答が不正です'));
-            }
-          } else {
-            try {
-              const response = JSON.parse(xhr.responseText);
-              reject(new Error(response.error || '置き換えに失敗しました'));
-            } catch (e) {
-              reject(new Error(`置き換えに失敗しました (ステータス: ${xhr.status})`));
-            }
+        const xhr = new XMLHttpRequest();
+
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const percentComplete = (e.loaded / e.total) * 100;
+            setUploadProgress(Math.round(percentComplete));
           }
-        };
+        });
 
-        xhr.onerror = () => {
-          reject(new Error('ネットワークエラーが発生しました'));
-        };
+        const uploadPromise = new Promise((resolve, reject) => {
+          xhr.onload = () => {
+            if (xhr.status === 200) {
+              try {
+                const result = JSON.parse(xhr.responseText);
+                resolve(result);
+              } catch (e) {
+                reject(new Error('サーバーからの応答が不正です'));
+              }
+            } else {
+              try {
+                const response = JSON.parse(xhr.responseText);
+                reject(new Error(response.error || '置き換えに失敗しました'));
+              } catch (e) {
+                reject(new Error(`置き換えに失敗しました (ステータス: ${xhr.status})`));
+              }
+            }
+          };
 
-        xhr.ontimeout = () => {
-          reject(new Error('アップロードがタイムアウトしました'));
-        };
+          xhr.onerror = () => {
+            reject(new Error('ネットワークエラーが発生しました'));
+          };
 
-        // PUT メソッドで置き換えリクエストを送信
-        xhr.open('PUT', `/api/courses/${courseId}/videos/${videoId}`);
-        xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
-        xhr.timeout = 600000; // 10分のタイムアウト（大きなファイル対応）
-        xhr.send(formData);
-      });
+          xhr.ontimeout = () => {
+            reject(new Error('アップロードがタイムアウトしました'));
+          };
 
-      await uploadPromise;
+          xhr.open('PUT', `/api/courses/${courseId}/videos/${videoId}`);
+          xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
+          xhr.timeout = 600000;
+          xhr.send(formData);
+        });
+
+        await uploadPromise;
+      } else {
+        // 大きなファイルの場合は直接Supabase Storageを使用
+        console.log('大きなファイルのため、直接Supabase Storageを使用します');
+
+        // 古いファイルのパスを取得
+        let oldFilePath = video.file_path;
+        if (!oldFilePath && video.file_url) {
+          const urlParts = video.file_url.split('/storage/v1/object/public/videos/');
+          if (urlParts.length > 1) {
+            oldFilePath = decodeURIComponent(urlParts[1]);
+          }
+        }
+
+        // 新しいファイルをアップロード
+        const fileName = `course_${courseId}/video_${Date.now()}_${replaceFile.name}`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('videos')
+          .upload(fileName, replaceFile, {
+            cacheControl: '3600',
+            upsert: false
+          });
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        // 公開URLを取得
+        const { data: { publicUrl } } = supabase.storage
+          .from('videos')
+          .getPublicUrl(fileName);
+
+        // データベースを更新
+        const { error: dbError } = await supabase
+          .from('videos')
+          .update({
+            file_url: publicUrl,
+            file_path: fileName,
+            file_size: replaceFile.size,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId);
+
+        if (dbError) {
+          // アップロードしたファイルを削除
+          await supabase.storage.from('videos').remove([fileName]);
+          throw dbError;
+        }
+
+        // 古いファイルを削除
+        if (oldFilePath) {
+          try {
+            await supabase.storage.from('videos').remove([oldFilePath]);
+          } catch (e) {
+            console.error('古いファイルの削除に失敗:', e);
+          }
+        }
+      }
 
       setReplacingVideo(null);
       setReplaceFile(null);
@@ -916,13 +990,13 @@ export default function CourseVideosPage() {
                                 </label>
                               </div>
                               <div className="flex space-x-2">
-                                <Button 
-                                  size="sm" 
+                                <Button
+                                  size="sm"
                                   onClick={() => handleReplaceVideo(video.id)}
                                   disabled={!replaceFile || uploading}
                                   loading={uploading}
                                 >
-                                  置き換え
+                                  {uploading ? `${uploadProgress}%` : '置き換え'}
                                 </Button>
                                 <Button 
                                   size="sm" 

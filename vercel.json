@@ -1,7 +1,13 @@
 {
   "functions": {
-    "app/api/courses/[id]/videos/route.ts": {
-      "maxDuration": 60
+    "src/app/api/courses/[id]/videos/route.ts": {
+      "maxDuration": 600
+    },
+    "src/app/api/courses/[id]/videos/[videoId]/route.ts": {
+      "maxDuration": 600
+    },
+    "src/app/api/upload/video/route.ts": {
+      "maxDuration": 600
     }
   }
 }

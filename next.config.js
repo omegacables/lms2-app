@@ -12,6 +12,13 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
 
+  // APIルートのボディサイズ制限を増やす
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '500mb',
+    },
+  },
+
   // 開発環境での Fast Refresh を調整
   webpack: (config, { dev, isServer }) => {
     if (dev && !isServer) {
