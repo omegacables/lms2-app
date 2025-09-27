@@ -36,6 +36,7 @@ export default function NewUserPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [isIndividual, setIsIndividual] = useState(false);
   const [formData, setFormData] = useState<NewUserForm>({
     email: '',
     password: '',
@@ -297,26 +298,56 @@ export default function NewUserPage() {
 
             {/* Organization Information */}
             <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-6">
-              <div className="flex items-center mb-6">
-                <BuildingOfficeIcon className="h-5 w-5 text-blue-600 mr-2" />
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">所属情報</h2>
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center">
+                  <BuildingOfficeIcon className="h-5 w-5 text-blue-600 mr-2" />
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">所属情報</h2>
+                </div>
+                <div className="flex items-center">
+                  <input
+                    id="is_individual"
+                    type="checkbox"
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded"
+                    checked={isIndividual}
+                    onChange={(e) => {
+                      setIsIndividual(e.target.checked);
+                      if (e.target.checked) {
+                        setFormData({ ...formData, company: '', department: '' });
+                      }
+                    }}
+                  />
+                  <label htmlFor="is_individual" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                    個人
+                  </label>
+                </div>
               </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input
-                  label="会社名"
-                  value={formData.company}
-                  onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                  placeholder="株式会社サンプル"
-                />
 
-                <Input
-                  label="部署名"
-                  value={formData.department}
-                  onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                  placeholder="システム開発部"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className={isIndividual ? 'opacity-50' : ''}>
+                  <Input
+                    label="会社名"
+                    value={formData.company}
+                    onChange={(e) => !isIndividual && setFormData({ ...formData, company: e.target.value })}
+                    placeholder={isIndividual ? '個人のため入力不要' : '株式会社サンプル'}
+                    disabled={isIndividual}
+                  />
+                </div>
+
+                <div className={isIndividual ? 'opacity-50' : ''}>
+                  <Input
+                    label="部署名"
+                    value={formData.department}
+                    onChange={(e) => !isIndividual && setFormData({ ...formData, department: e.target.value })}
+                    placeholder={isIndividual ? '個人のため入力不要' : 'システム開発部'}
+                    disabled={isIndividual}
+                  />
+                </div>
               </div>
+              {isIndividual && (
+                <p className="text-sm text-blue-600 dark:text-blue-400 mt-3">
+                  ※ 個人として登録されます。会社名・部署名は入力不要です。
+                </p>
+              )}
             </div>
 
             {/* Role and Permissions */}
