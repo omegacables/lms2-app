@@ -11,12 +11,18 @@ export async function PUT(
     const supabase = createServerSupabaseClient(cookieStore);
     const { chapterId } = params;
 
-    // 認証チェック - 一時的にスキップ（デバッグ用）
-    const { data: { session }, error: authError } = await supabase.auth.getSession();
-    console.log('Chapter operation - Session check:', { hasSession: !!session, authError });
-    // if (!session || authError) {
-    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    // }
+    // チャプターテーブルが存在するか確認
+    const { data: chaptersExist, error: tableCheckError } = await supabase
+      .from('chapters')
+      .select('id')
+      .limit(1);
+
+    if (tableCheckError && tableCheckError.message.includes('does not exist')) {
+      return NextResponse.json({
+        error: 'Chapters table does not exist',
+        message: 'Please create the chapters table first'
+      }, { status: 400 });
+    }
 
     const body = await request.json();
     const { title } = body;
@@ -52,12 +58,18 @@ export async function DELETE(
     const supabase = createServerSupabaseClient(cookieStore);
     const { chapterId } = params;
 
-    // 認証チェック - 一時的にスキップ（デバッグ用）
-    const { data: { session }, error: authError } = await supabase.auth.getSession();
-    console.log('Chapter operation - Session check:', { hasSession: !!session, authError });
-    // if (!session || authError) {
-    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    // }
+    // チャプターテーブルが存在するか確認
+    const { data: chaptersExist, error: tableCheckError } = await supabase
+      .from('chapters')
+      .select('id')
+      .limit(1);
+
+    if (tableCheckError && tableCheckError.message.includes('does not exist')) {
+      return NextResponse.json({
+        error: 'Chapters table does not exist',
+        message: 'Please create the chapters table first'
+      }, { status: 400 });
+    }
 
     // 章に属する動画のchapter_idをnullに設定
     const { error: updateError } = await supabase

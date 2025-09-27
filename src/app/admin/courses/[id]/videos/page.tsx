@@ -102,7 +102,7 @@ export default function CourseVideosPage() {
     if (courseId) {
       fetchCourse();
       fetchVideos();
-      // fetchChapters(); // 一時的に無効化
+      fetchChapters(); // チャプター機能を再有効化
     }
   }, [courseId]);
 
@@ -742,10 +742,16 @@ export default function CourseVideosPage() {
                   </p>
                 </div>
               </div>
-              <Button onClick={() => setShowAddModal(true)}>
-                <PlusIcon className="h-4 w-4 mr-2" />
-                動画を追加
-              </Button>
+              <div className="flex space-x-2">
+                <Button variant="outline" onClick={() => setShowChapterModal(true)}>
+                  <FolderPlusIcon className="h-4 w-4 mr-2" />
+                  チャプター追加
+                </Button>
+                <Button onClick={() => setShowAddModal(true)}>
+                  <PlusIcon className="h-4 w-4 mr-2" />
+                  動画を追加
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -782,8 +788,8 @@ export default function CourseVideosPage() {
             </div>
           </div>
 
-          {/* Chapters List - 一時的に無効化 */}
-          {false && chapters.length > 0 && (
+          {/* Chapters List */}
+          {chapters.length > 0 && (
             <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 mb-6">
               <div className="p-6">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
@@ -890,6 +896,9 @@ export default function CourseVideosPage() {
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         動画情報
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        チャプター
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         時間
@@ -1011,6 +1020,21 @@ export default function CourseVideosPage() {
                             </div>
                           )}
                         </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <select
+                            className="text-sm border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
+                            value={video.chapter_id || ''}
+                            onChange={(e) => handleAssignVideoToChapter(video.id, e.target.value || null)}
+                            disabled={chapters.length === 0}
+                          >
+                            <option value="">チャプターなし</option>
+                            {chapters.map((chapter) => (
+                              <option key={chapter.id} value={chapter.id}>
+                                第{chapter.display_order + 1}章: {chapter.title}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                           <div className="flex items-center">
                             <ClockIcon className="h-4 w-4 mr-1" />
@@ -1118,8 +1142,8 @@ export default function CourseVideosPage() {
             </div>
           )}
 
-          {/* Chapter Modal - 一時的に無効化 */}
-          {false && showChapterModal && (
+          {/* Chapter Modal */}
+          {showChapterModal && (
             <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
               <div className="bg-white dark:bg-neutral-900 rounded-xl max-w-md w-full mx-4">
                 <div className="p-6 border-b border-gray-200 dark:border-neutral-800">

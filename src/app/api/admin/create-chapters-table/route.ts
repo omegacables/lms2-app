@@ -1,75 +1,58 @@
 import { NextResponse } from 'next/server';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/database/supabase';
 import { cookies } from 'next/headers';
 
 export async function POST() {
   try {
-    const supabase = createServerComponentClient({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createServerSupabaseClient(cookieStore);
+    const adminSupabase = createAdminSupabaseClient();
 
-    // chaptersテーブルを作成
-    const { error: createTableError } = await supabase.rpc('exec_sql', {
-      sql: `
-        CREATE TABLE IF NOT EXISTS chapters (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          course_id UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
-          title VARCHAR(255) NOT NULL,
-          display_order INT NOT NULL DEFAULT 0,
-          created_at TIMESTAMPTZ DEFAULT NOW(),
-          updated_at TIMESTAMPTZ DEFAULT NOW()
-        );
+    // 認証チェック
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-        -- インデックスを作成
-        CREATE INDEX IF NOT EXISTS idx_chapters_course_id ON chapters(course_id);
-        CREATE INDEX IF NOT EXISTS idx_chapters_display_order ON chapters(display_order);
+    // 管理者権限チェック
+    const { data: userProfile } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', session.user.id)
+      .single();
 
-        -- RLSポリシーを設定
-        ALTER TABLE chapters ENABLE ROW LEVEL SECURITY;
+    if (!userProfile || userProfile.role !== 'admin') {
+      return NextResponse.json({ error: 'Admin permission required' }, { status: 403 });
+    }
 
-        -- 全ユーザーが読み取り可能
-        CREATE POLICY "Enable read access for all users" ON chapters
-          FOR SELECT USING (true);
+    // チャプターテーブルが存在するか確認
+    const { data: existingChapters, error: checkError } = await adminSupabase
+      .from('chapters')
+      .select('id')
+      .limit(1);
 
-        -- 管理者とインストラクターのみ作成・更新・削除可能
-        CREATE POLICY "Enable insert for admin and instructors" ON chapters
-          FOR INSERT WITH CHECK (
-            EXISTS (
-              SELECT 1 FROM profiles
-              WHERE profiles.id = auth.uid()
-              AND profiles.role IN ('admin', 'instructor')
-            )
-          );
+    if (checkError) {
+      // テーブルが存在しない場合のエラーメッセージ
+      if (checkError.message.includes('relation') && checkError.message.includes('does not exist')) {
+        return NextResponse.json({
+          error: 'Chapters table does not exist',
+          message: 'Please create the chapters table in Supabase dashboard with the following structure:',
+          structure: {
+            id: 'uuid (primary key, default: gen_random_uuid())',
+            course_id: 'integer (foreign key to courses.id)',
+            title: 'text',
+            display_order: 'integer (default: 0)',
+            created_at: 'timestamptz (default: now())',
+            updated_at: 'timestamptz (default: now())'
+          },
+          note: 'Also add chapter_id column to videos table as: uuid (foreign key to chapters.id, nullable)'
+        }, { status: 400 });
+      }
 
-        CREATE POLICY "Enable update for admin and instructors" ON chapters
-          FOR UPDATE USING (
-            EXISTS (
-              SELECT 1 FROM profiles
-              WHERE profiles.id = auth.uid()
-              AND profiles.role IN ('admin', 'instructor')
-            )
-          );
-
-        CREATE POLICY "Enable delete for admin and instructors" ON chapters
-          FOR DELETE USING (
-            EXISTS (
-              SELECT 1 FROM profiles
-              WHERE profiles.id = auth.uid()
-              AND profiles.role IN ('admin', 'instructor')
-            )
-          );
-
-        -- videosテーブルに chapter_id カラムを追加
-        ALTER TABLE videos
-        ADD COLUMN IF NOT EXISTS chapter_id UUID REFERENCES chapters(id) ON DELETE SET NULL;
-
-        -- インデックスを作成
-        CREATE INDEX IF NOT EXISTS idx_videos_chapter_id ON videos(chapter_id);
-      `
-    });
-
-    if (createTableError) {
-      console.error('Error creating chapters table:', createTableError);
+      // その他のエラー
+      console.error('Error checking chapters table:', checkError);
       return NextResponse.json(
-        { error: 'Failed to create chapters table', details: createTableError.message },
+        { error: 'Failed to check chapters table', details: checkError.message },
         { status: 500 }
       );
     }
