@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createServerClient } from '@/lib/supabase-server';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = await createServerClient();
 
     console.log(`[GET /api/courses/${params.id}/chapters] Fetching chapters`);
 
@@ -88,8 +86,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = await createServerClient();
     const { title } = await request.json();
 
     console.log(`[POST /api/courses/${params.id}/chapters] Creating chapter with title:`, title);
@@ -166,8 +163,7 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = await createServerClient();
     const { chapters } = await request.json();
 
     // metadataを更新（チャプター順序の更新用）

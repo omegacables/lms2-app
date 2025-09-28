@@ -7,7 +7,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const supabase = createServerSupabaseClient(cookieStore);
     const adminSupabase = createAdminSupabaseClient();
 
@@ -123,7 +123,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const supabase = createServerSupabaseClient(cookieStore);
     const adminSupabase = createAdminSupabaseClient();
 

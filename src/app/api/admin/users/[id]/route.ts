@@ -7,7 +7,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const supabase = createServerSupabaseClient(cookieStore);
 
     // 認証チェック
@@ -100,7 +100,7 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const supabase = createServerSupabaseClient(cookieStore);
 
     // 認証チェック
@@ -158,7 +158,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const supabase = createServerSupabaseClient(cookieStore);
     const adminSupabase = createAdminSupabaseClient();
 

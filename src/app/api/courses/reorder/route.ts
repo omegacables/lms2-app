@@ -1,28 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createAdminClient } from '@/lib/supabase-server';
 
 export async function PUT(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const { supabase, error, status } = await createAdminClient();
+
+    if (error || !supabase) {
+      return NextResponse.json({ error }, { status: status || 401 });
+    }
+
     const { courses } = await request.json();
-
-    // 権限チェック
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (profile?.role !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
 
     // 各コースのorder_indexを更新
     const updatePromises = courses.map((course: any) =>

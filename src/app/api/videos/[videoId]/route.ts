@@ -8,7 +8,7 @@ export async function GET(
 ) {
   try {
     const { videoId } = await params;
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const supabase = createServerSupabaseClient(cookieStore);
 
     // 認証チェック
@@ -102,7 +102,7 @@ export async function PATCH(
 ) {
   try {
     const { videoId } = await params;
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const supabase = createServerSupabaseClient(cookieStore);
 
     // 認証チェック

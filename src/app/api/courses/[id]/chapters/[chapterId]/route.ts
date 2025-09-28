@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createServerClient } from '@/lib/supabase-server';
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: { id: string; chapterId: string } }
 ) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = await createServerClient();
     const { title } = await request.json();
 
     // 現在のコース情報を取得
@@ -61,8 +59,7 @@ export async function DELETE(
   { params }: { params: { id: string; chapterId: string } }
 ) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = await createServerClient();
 
     // 現在のコース情報を取得
     const { data: course, error: courseError } = await supabase
