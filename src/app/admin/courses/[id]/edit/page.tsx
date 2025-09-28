@@ -495,14 +495,13 @@ export default function EditCoursePage() {
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                   このコースの章構成を管理します。章の追加、編集、削除、動画の割り当てが可能です。
                 </p>
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => router.push(`/admin/courses/${courseId}/chapters`)}
+                <a
+                  href={`/admin/courses/${courseId}/chapters`}
+                  className="w-full inline-flex items-center justify-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-neutral-900 hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
                   <BookOpenIcon className="h-4 w-4 mr-2" />
                   章を管理
-                </Button>
+                </a>
               </div>
             </div>
 
@@ -535,22 +534,20 @@ export default function EditCoursePage() {
               <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-6">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">アクション</h3>
                 <div className="space-y-3">
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => router.push(`/admin/courses/${courseId}/videos`)}
+                  <a
+                    href={`/admin/courses/${courseId}/videos`}
+                    className="w-full inline-flex items-center justify-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-neutral-900 hover:bg-gray-50 dark:hover:bg-gray-700"
                   >
                     <VideoCameraIcon className="h-4 w-4 mr-2" />
                     動画を管理
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => router.push('/admin/courses')}
+                  </a>
+                  <a
+                    href="/admin/courses"
+                    className="w-full inline-flex items-center justify-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-neutral-900 hover:bg-gray-50 dark:hover:bg-gray-700"
                   >
                     <DocumentIcon className="h-4 w-4 mr-2" />
                     コース一覧に戻る
-                  </Button>
+                  </a>
                 </div>
               </div>
 
@@ -558,12 +555,12 @@ export default function EditCoursePage() {
               <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white">動画一覧</h3>
-                  <Button
-                    size="sm"
-                    onClick={() => router.push(`/admin/courses/${courseId}/videos`)}
+                  <a
+                    href={`/admin/courses/${courseId}/videos`}
+                    className="inline-flex items-center px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-neutral-900 hover:bg-gray-50 dark:hover:bg-gray-700"
                   >
                     動画を管理
-                  </Button>
+                  </a>
                 </div>
                 {videos.length === 0 ? (
                   <p className="text-sm text-gray-500 dark:text-gray-400">動画がまだありません</p>
