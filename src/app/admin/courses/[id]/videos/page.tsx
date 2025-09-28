@@ -81,11 +81,7 @@ export default function CourseVideosPage() {
   const [draggedVideo, setDraggedVideo] = useState<Video | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (!user || user.user_metadata?.role !== 'admin') {
-      router.push('/dashboard');
-    }
-  }, [user, router]);
+  // 権限チェックは削除（AuthGuardで処理されるため）
 
   useEffect(() => {
     if (courseId) {

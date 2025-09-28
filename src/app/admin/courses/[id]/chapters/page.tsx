@@ -33,6 +33,10 @@ export default function ChapterManagementPage() {
       if (response.ok) {
         const data = await response.json();
         setCourse(data);
+      } else {
+        console.error('Failed to fetch course:', response.status, response.statusText);
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Error data:', errorData);
       }
     } catch (error) {
       console.error('Error fetching course:', error);

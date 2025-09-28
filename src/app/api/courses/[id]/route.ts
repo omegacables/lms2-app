@@ -21,7 +21,7 @@ export async function GET(
       .from('courses')
       .select(`
         *,
-        videos!inner(
+        videos(
           id,
           title,
           description,
@@ -32,7 +32,6 @@ export async function GET(
         )
       `)
       .eq('id', params.id)
-      .eq('status', 'active')
       .single();
 
     if (courseError || !course) {
@@ -40,10 +39,14 @@ export async function GET(
       return NextResponse.json({ error: 'コースが見つかりません' }, { status: 404 });
     }
 
-    // 動画を順序でソート
-    course.videos = course.videos
-      .filter((video: any) => video.status === 'active')
-      .sort((a: any, b: any) => a.order_index - b.order_index);
+    // 動画を順序でソート（動画がある場合のみ）
+    if (course.videos && course.videos.length > 0) {
+      course.videos = course.videos
+        .filter((video: any) => video.status === 'active')
+        .sort((a: any, b: any) => a.order_index - b.order_index);
+    } else {
+      course.videos = [];
+    }
 
     // ユーザーの視聴進捗を取得
     if (course.videos.length > 0) {

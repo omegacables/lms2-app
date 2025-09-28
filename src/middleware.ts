@@ -3,19 +3,12 @@ import type { NextRequest } from 'next/server';
 import { createMiddlewareSupabaseClient } from '@/lib/database/supabase';
 
 export async function middleware(req: NextRequest) {
-  // 一時的にミドルウェアを完全に無効化（デバッグ用）
-  return NextResponse.next();
-
-  // 開発環境では一時的にミドルウェアを簡素化
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[Middleware] Development mode - simplified middleware');
-    return NextResponse.next();
-  }
-
-  // デバッグモード：一時的にミドルウェアを無効化
-  const isDebugMode = req.nextUrl.searchParams.get('debug') === 'true';
-  if (isDebugMode) {
-    console.log('[Middleware] Debug mode - bypassing middleware');
+  // APIルートとスタティックファイルはスキップ
+  if (
+    req.nextUrl.pathname.startsWith('/api') ||
+    req.nextUrl.pathname.startsWith('/_next') ||
+    req.nextUrl.pathname.startsWith('/favicon.ico')
+  ) {
     return NextResponse.next();
   }
 
@@ -49,8 +42,8 @@ export async function middleware(req: NextRequest) {
     }
     
     // 保護されたルートのチェック
-    const protectedRoutes = ['/dashboard', '/admin', '/instructor', '/courses'];
-    const isProtectedRoute = protectedRoutes.some(route => 
+    const protectedRoutes = ['/dashboard', '/admin', '/instructor', '/courses', '/profile', '/settings'];
+    const isProtectedRoute = protectedRoutes.some(route =>
       req.nextUrl.pathname.startsWith(route)
     );
 
