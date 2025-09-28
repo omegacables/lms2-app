@@ -1,0 +1,326 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Trash2, Plus, GripVertical } from 'lucide-react';
+
+interface Chapter {
+  id: number;
+  course_id: number;
+  title: string;
+  description?: string;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+  chapter_videos?: any[];
+}
+
+interface Video {
+  id: number;
+  title: string;
+  duration: number;
+  thumbnail_url?: string;
+}
+
+interface SimpleChapterManagerProps {
+  courseId: string;
+  courseTitle: string;
+}
+
+export default function SimpleChapterManager({ courseId, courseTitle }: SimpleChapterManagerProps) {
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [courseVideos, setCourseVideos] = useState<Video[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [newChapterTitle, setNewChapterTitle] = useState('');
+  const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
+
+  useEffect(() => {
+    fetchChapters();
+    fetchCourseVideos();
+  }, [courseId]);
+
+  const fetchChapters = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/chapters?course_id=${courseId}`);
+      const data = await response.json();
+
+      if (response.ok && data.chapters) {
+        setChapters(data.chapters);
+      }
+    } catch (error) {
+      console.error('Error fetching chapters:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchCourseVideos = async () => {
+    try {
+      const response = await fetch(`/api/courses/${courseId}/videos`);
+      const data = await response.json();
+
+      if (response.ok && data.videos) {
+        setCourseVideos(data.videos);
+      }
+    } catch (error) {
+      console.error('Error fetching videos:', error);
+    }
+  };
+
+  const createChapter = async () => {
+    if (!newChapterTitle.trim()) return;
+
+    try {
+      setLoading(true);
+      const response = await fetch('/api/chapters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          course_id: courseId,
+          title: newChapterTitle
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setNewChapterTitle('');
+        await fetchChapters();
+        alert('章を追加しました');
+      } else {
+        alert(`エラー: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Error creating chapter:', error);
+      alert('章の追加に失敗しました');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateChapter = async (chapterId: number, title: string) => {
+    try {
+      const response = await fetch(`/api/chapters/${chapterId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title })
+      });
+
+      if (response.ok) {
+        await fetchChapters();
+      }
+    } catch (error) {
+      console.error('Error updating chapter:', error);
+    }
+  };
+
+  const deleteChapter = async (chapterId: number) => {
+    if (!confirm('この章を削除しますか？')) return;
+
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/chapters/${chapterId}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        await fetchChapters();
+        alert('章を削除しました');
+      } else {
+        alert('削除に失敗しました');
+      }
+    } catch (error) {
+      console.error('Error deleting chapter:', error);
+      alert('削除中にエラーが発生しました');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addVideoToChapter = async (chapterId: number, videoId: number) => {
+    try {
+      const response = await fetch(`/api/chapters/${chapterId}/videos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_id: videoId })
+      });
+
+      if (response.ok) {
+        await fetchChapters();
+        alert('動画を章に追加しました');
+      }
+    } catch (error) {
+      console.error('Error adding video:', error);
+      alert('動画の追加に失敗しました');
+    }
+  };
+
+  const removeVideoFromChapter = async (chapterId: number, videoId: number) => {
+    try {
+      const response = await fetch(`/api/chapters/${chapterId}/videos?video_id=${videoId}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        await fetchChapters();
+      }
+    } catch (error) {
+      console.error('Error removing video:', error);
+    }
+  };
+
+  const getUnassignedVideos = () => {
+    const assignedVideoIds = new Set(
+      chapters.flatMap(ch =>
+        ch.chapter_videos?.map(cv => cv.video_id) || []
+      )
+    );
+    return courseVideos.filter(v => !assignedVideoIds.has(v.id));
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* ヘッダー */}
+      <div className="bg-white p-4 rounded-lg shadow">
+        <h2 className="text-lg font-semibold mb-2">章管理 - {courseTitle}</h2>
+        <p className="text-sm text-gray-600">
+          コースID: {courseId} | 章数: {chapters.length} | 動画数: {courseVideos.length}
+        </p>
+      </div>
+
+      {/* 新規章追加 */}
+      <div className="bg-white p-4 rounded-lg shadow">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newChapterTitle}
+            onChange={(e) => setNewChapterTitle(e.target.value)}
+            placeholder="新しい章のタイトル"
+            className="flex-1 px-3 py-2 border rounded-md"
+            disabled={loading}
+          />
+          <button
+            onClick={createChapter}
+            disabled={loading || !newChapterTitle.trim()}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Plus className="w-5 h-5 inline mr-1" />
+            章を追加
+          </button>
+        </div>
+      </div>
+
+      {/* 章一覧 */}
+      <div className="space-y-4">
+        {loading ? (
+          <div className="text-center py-8">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+          </div>
+        ) : chapters.length === 0 ? (
+          <div className="bg-gray-50 p-8 rounded-lg text-center">
+            <p className="text-gray-500">章がまだありません</p>
+          </div>
+        ) : (
+          chapters.map((chapter) => (
+            <div key={chapter.id} className="bg-white p-4 rounded-lg shadow">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <GripVertical className="w-5 h-5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={chapter.title}
+                    onChange={(e) => updateChapter(chapter.id, e.target.value)}
+                    className="font-medium text-lg border-b border-transparent hover:border-gray-300 focus:border-blue-500 outline-none px-1"
+                  />
+                  <span className="text-sm text-gray-500">
+                    (ID: {chapter.id}, 順序: {chapter.display_order})
+                  </span>
+                </div>
+                <button
+                  onClick={() => deleteChapter(chapter.id)}
+                  className="text-red-500 hover:text-red-700"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* 章内の動画 */}
+              <div className="ml-7 mt-2">
+                <div className="text-sm text-gray-600 mb-1">
+                  動画: {chapter.chapter_videos?.length || 0}件
+                </div>
+                <div className="space-y-1">
+                  {chapter.chapter_videos?.map((cv: any) => (
+                    <div key={cv.id} className="flex items-center justify-between bg-gray-50 p-2 rounded">
+                      <span className="text-sm">
+                        {cv.videos?.title || `動画ID: ${cv.video_id}`}
+                      </span>
+                      <button
+                        onClick={() => removeVideoFromChapter(chapter.id, cv.video_id)}
+                        className="text-xs text-red-500 hover:text-red-700"
+                      >
+                        削除
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* 動画を追加 */}
+                {selectedChapter?.id === chapter.id ? (
+                  <div className="mt-2 p-2 bg-blue-50 rounded">
+                    <div className="text-sm font-medium mb-1">動画を追加:</div>
+                    <div className="space-y-1">
+                      {getUnassignedVideos().map(video => (
+                        <button
+                          key={video.id}
+                          onClick={() => {
+                            addVideoToChapter(chapter.id, video.id);
+                            setSelectedChapter(null);
+                          }}
+                          className="block w-full text-left text-sm p-1 hover:bg-blue-100 rounded"
+                        >
+                          {video.title}
+                        </button>
+                      ))}
+                      {getUnassignedVideos().length === 0 && (
+                        <p className="text-xs text-gray-500">割り当て可能な動画がありません</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setSelectedChapter(null)}
+                      className="mt-2 text-xs text-gray-600"
+                    >
+                      キャンセル
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setSelectedChapter(chapter)}
+                    className="mt-2 text-sm text-blue-600 hover:text-blue-700"
+                  >
+                    + 動画を追加
+                  </button>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* 未割り当て動画 */}
+      <div className="bg-yellow-50 p-4 rounded-lg">
+        <h3 className="font-medium mb-2">未割り当ての動画</h3>
+        <div className="space-y-1">
+          {getUnassignedVideos().map(video => (
+            <div key={video.id} className="text-sm p-2 bg-white rounded">
+              {video.title}
+            </div>
+          ))}
+          {getUnassignedVideos().length === 0 && (
+            <p className="text-sm text-gray-500">すべての動画が章に割り当てられています</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

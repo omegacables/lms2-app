@@ -20,7 +20,7 @@ import {
   CloudArrowUpIcon,
   BookOpenIcon
 } from '@heroicons/react/24/outline';
-import { ChapterManager } from '@/components/admin/ChapterManager';
+import SimpleChapterManager from '@/components/admin/SimpleChapterManager';
 
 interface Course {
   id: string;
@@ -492,7 +492,7 @@ export default function EditCoursePage() {
 
               {/* Chapters Management */}
               <div className="mt-8">
-                <ChapterManager courseId={courseId} />
+                <SimpleChapterManager courseId={courseId} courseTitle={course.title} />
               </div>
             </div>
 
