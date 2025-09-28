@@ -70,21 +70,28 @@ export function ChapterManager({ courseId }: ChapterManagerProps) {
     if (!newChapterTitle.trim()) return;
 
     try {
+      console.log('ChapterManager: Adding chapter with title:', newChapterTitle);
       const response = await fetch(`/api/courses/${courseId}/chapters`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: newChapterTitle })
       });
 
+      const responseData = await response.json();
+      console.log('ChapterManager: Add chapter response:', response.status, responseData);
+
       if (response.ok) {
-        const newChapter = await response.json();
         setNewChapterTitle('');
         // 最新のデータを取得して表示を更新
         await fetchChapters();
-        setExpandedChapters(prev => new Set([...prev, newChapter.id]));
+        setExpandedChapters(prev => new Set([...prev, responseData.id]));
+        alert('章を追加しました');
+      } else {
+        alert(`章の追加に失敗しました: ${responseData.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error adding chapter:', error);
+      alert('章の追加中にエラーが発生しました');
     }
   };
 

@@ -9,6 +9,8 @@ export async function GET(
   try {
     const supabase = createRouteHandlerClient({ cookies });
 
+    console.log(`[GET /api/courses/${params.id}/chapters] Fetching chapters`);
+
     // コース情報を取得
     const { data: course, error: courseError } = await supabase
       .from('courses')
@@ -21,16 +23,24 @@ export async function GET(
       return NextResponse.json({ error: courseError.message }, { status: 500 });
     }
 
+    console.log(`[GET] Course metadata:`, course?.metadata);
+
     // metadataがnullの場合、デフォルト値を設定
     if (!course?.metadata) {
-      await supabase
+      console.log('[GET] Metadata is null, initializing with empty chapters array');
+      const { error: initError } = await supabase
         .from('courses')
         .update({ metadata: { chapters: [] } })
         .eq('id', params.id);
+
+      if (initError) {
+        console.error('[GET] Error initializing metadata:', initError);
+      }
     }
 
     // チャプター情報を取得（metadataから）
     const chapters = course?.metadata?.chapters || [];
+    console.log(`[GET] Chapters from metadata:`, chapters);
 
     // 動画を取得
     const { data: videos, error: videosError } = await supabase
@@ -57,6 +67,8 @@ export async function GET(
       !assignedVideoIds.includes(video.id)
     ) || [];
 
+    console.log(`[GET] Returning ${chaptersWithVideos.length} chapters and ${unassignedVideos.length} unassigned videos`);
+
     return NextResponse.json({
       chapters: chaptersWithVideos,
       unassignedVideos
@@ -78,6 +90,8 @@ export async function POST(
     const supabase = createRouteHandlerClient({ cookies });
     const { title } = await request.json();
 
+    console.log(`[POST /api/courses/${params.id}/chapters] Creating chapter with title:`, title);
+
     // 現在のコース情報を取得
     const { data: course, error: courseError } = await supabase
       .from('courses')
@@ -89,6 +103,8 @@ export async function POST(
       console.error('Error fetching course for POST:', courseError);
       return NextResponse.json({ error: courseError.message }, { status: 500 });
     }
+
+    console.log(`[POST] Current course metadata:`, course?.metadata);
 
     // metadataがnullの場合、初期化
     const metadata = course?.metadata || { chapters: [] };
@@ -104,18 +120,34 @@ export async function POST(
 
     chapters.push(newChapter);
 
+    const updatedMetadata = { ...metadata, chapters };
+    console.log(`[POST] Updated metadata to save:`, updatedMetadata);
+
     // metadataを更新
-    const { error: updateError } = await supabase
+    const { data: updateData, error: updateError } = await supabase
       .from('courses')
       .update({
-        metadata: { ...metadata, chapters },
+        metadata: updatedMetadata,
         updated_at: new Date().toISOString()
       })
-      .eq('id', params.id);
+      .eq('id', params.id)
+      .select();
 
     if (updateError) {
+      console.error('[POST] Update error:', updateError);
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
+
+    console.log(`[POST] Update result:`, updateData);
+
+    // 更新後のデータを確認
+    const { data: verifyData, error: verifyError } = await supabase
+      .from('courses')
+      .select('metadata')
+      .eq('id', params.id)
+      .single();
+
+    console.log(`[POST] Verification - Updated metadata in DB:`, verifyData?.metadata);
 
     return NextResponse.json(newChapter);
   } catch (error) {
