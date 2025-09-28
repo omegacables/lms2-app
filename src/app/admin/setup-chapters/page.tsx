@@ -132,6 +132,43 @@ export default function SetupChaptersPage() {
             </div>
           </div>
 
+          {/* RLSエラーの自動修正ボタン */}
+          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-6 mb-6">
+            <h2 className="text-lg font-semibold mb-4 text-yellow-800 dark:text-yellow-200">
+              ⚠️ RLSポリシーエラーの自動修正
+            </h2>
+            <p className="text-gray-700 dark:text-gray-300 mb-4">
+              「new row violates row-level security policy」エラーが発生している場合は、以下のボタンで自動修正できます。
+            </p>
+            <button
+              onClick={async () => {
+                try {
+                  const response = await fetch('/api/admin/fix-chapters-rls', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json'
+                    }
+                  });
+
+                  const data = await response.json();
+                  if (response.ok) {
+                    alert('✅ RLSポリシーが正常に設定されました！\n\nチャプターの追加・編集・削除が可能になりました。');
+                    setResult(data);
+                  } else {
+                    alert('❌ エラー: ' + data.error + '\n\n' + (data.details || ''));
+                    setError(data.error);
+                  }
+                } catch (error) {
+                  alert('❌ リクエストエラー: ' + error);
+                  setError('リクエストエラー: ' + error);
+                }
+              }}
+              className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-6 rounded-lg transition-colors"
+            >
+              🔧 RLSポリシーを自動修正する
+            </button>
+          </div>
+
           <div className="bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-800 p-6">
             <div className="space-y-4">
               <Button
