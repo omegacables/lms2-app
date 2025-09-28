@@ -109,18 +109,21 @@ export async function POST(
     const metadata = course?.metadata || { chapters: [] };
 
     // 新しいチャプターを作成
-    const chapters = metadata.chapters || [];
+    // 重要: 配列のコピーを作成して新しいチャプターを追加
+    const existingChapters = metadata.chapters || [];
     const newChapter = {
       id: crypto.randomUUID(),
       title,
-      display_order: chapters.length,
+      display_order: existingChapters.length,
       video_ids: []
     };
 
-    chapters.push(newChapter);
+    const chapters = [...existingChapters, newChapter];
 
     const updatedMetadata = { ...metadata, chapters };
-    console.log(`[POST] Updated metadata to save:`, updatedMetadata);
+    console.log(`[POST] Updated metadata to save:`, JSON.stringify(updatedMetadata, null, 2));
+    console.log(`[POST] Number of chapters to save:`, chapters.length);
+    console.log(`[POST] Chapter IDs:`, chapters.map((c: any) => c.id));
 
     // metadataを更新
     const { data: updateData, error: updateError } = await supabase
@@ -137,7 +140,8 @@ export async function POST(
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
-    console.log(`[POST] Update result:`, updateData);
+    console.log(`[POST] Update result:`, JSON.stringify(updateData, null, 2));
+    console.log(`[POST] Update error (if any):`, updateError);
 
     // 更新後のデータを確認
     const { data: verifyData, error: verifyError } = await supabase
@@ -146,7 +150,16 @@ export async function POST(
       .eq('id', params.id)
       .single();
 
-    console.log(`[POST] Verification - Updated metadata in DB:`, verifyData?.metadata);
+    console.log(`[POST] Verification - Updated metadata in DB:`, JSON.stringify(verifyData?.metadata, null, 2));
+    console.log(`[POST] Verify error (if any):`, verifyError);
+
+    if (verifyData?.metadata?.chapters?.length === 0) {
+      console.error('[POST] WARNING: Chapters were not saved to database!');
+      console.log('[POST] Attempting to debug the issue...');
+      console.log('[POST] Course ID:', params.id);
+      console.log('[POST] Expected chapters count:', chapters.length);
+      console.log('[POST] Actual chapters count in DB:', verifyData?.metadata?.chapters?.length);
+    }
 
     return NextResponse.json(newChapter);
   } catch (error) {
