@@ -1,41 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase-server';
+import { createServerSupabaseClient } from '@/lib/database/supabase';
+import { cookies } from 'next/headers';
 
 export async function PUT(request: NextRequest) {
   try {
-    const { supabase, error, status } = await createAdminClient();
+    const cookieStore = await cookies();
+    const supabase = createServerSupabaseClient(cookieStore);
 
-    if (error || !supabase) {
-      return NextResponse.json({ error }, { status: status || 401 });
+    // 認証チェック
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+    }
+
+    // 管理者権限チェック
+    const { data: userProfile } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (!userProfile || !['admin', 'instructor'].includes(userProfile.role)) {
+      return NextResponse.json({ error: '権限がありません' }, { status: 403 });
     }
 
     const { courses } = await request.json();
 
-    // 各コースのorder_indexを更新
-    const updatePromises = courses.map((course: any) =>
-      supabase
+    if (!courses || !Array.isArray(courses)) {
+      return NextResponse.json(
+        { error: 'Invalid courses data' },
+        { status: 400 }
+      );
+    }
+
+    // トランザクションのように、すべての更新を実行
+    for (const course of courses) {
+      const { error: updateError } = await supabase
         .from('courses')
         .update({
           order_index: course.order_index,
           updated_at: new Date().toISOString()
         })
-        .eq('id', course.id)
-    );
+        .eq('id', course.id);
 
-    const results = await Promise.all(updatePromises);
-
-    // エラーチェック
-    const hasError = results.some(result => result.error);
-    if (hasError) {
-      const errors = results.filter(r => r.error).map(r => r.error);
-      console.error('Errors updating course order:', errors);
-      return NextResponse.json(
-        { error: 'Failed to update course order' },
-        { status: 500 }
-      );
+      if (updateError) {
+        console.error(`Error updating course ${course.id}:`, updateError);
+        return NextResponse.json(
+          { error: `Failed to update course order for course ${course.id}` },
+          { status: 500 }
+        );
+      }
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      message: `Successfully updated order for ${courses.length} courses`
+    });
   } catch (error) {
     console.error('Error reordering courses:', error);
     return NextResponse.json(

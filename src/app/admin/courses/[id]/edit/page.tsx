@@ -488,21 +488,6 @@ export default function EditCoursePage() {
                   </Button>
                 </div>
               </form>
-
-              {/* Chapters Management Link */}
-              <div className="mt-8 bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">章管理</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                  このコースの章構成を管理します。章の追加、編集、削除、動画の割り当てが可能です。
-                </p>
-                <Link
-                  href={`/admin/courses/${courseId}/chapters`}
-                  className="w-full inline-flex items-center justify-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-neutral-900 hover:bg-gray-50 dark:hover:bg-gray-700"
-                >
-                  <BookOpenIcon className="h-4 w-4 mr-2" />
-                  章を管理
-                </Link>
-              </div>
             </div>
 
             {/* Sidebar */}

@@ -243,18 +243,20 @@ function SortableItem({ id, children }: { id: string | number; children: React.R
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0.3 : 1,
+    zIndex: isDragging ? 1000 : 1,
   };
 
   return (
     <div ref={setNodeRef} style={style}>
-      <div className="relative">
+      <div className={`relative ${isDragging ? 'ring-2 ring-blue-500 ring-opacity-50 rounded-xl' : ''}`}>
         <div
           {...attributes}
           {...listeners}
-          className="absolute top-4 left-4 z-10 cursor-move p-2 bg-white dark:bg-neutral-800 rounded-lg shadow-md hover:shadow-lg transition-shadow"
+          className="absolute top-4 left-4 z-10 cursor-move p-2 bg-white dark:bg-neutral-800 rounded-lg shadow-md hover:shadow-xl hover:scale-110 transition-all duration-200"
+          title="ドラッグして並び替え"
         >
-          <Bars3Icon className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+          <Bars3Icon className="h-5 w-5 text-gray-600 dark:text-gray-400" />
         </div>
         {children}
       </div>
@@ -333,14 +335,20 @@ export default function CoursesPage() {
     const oldIndex = courses.findIndex((c) => c.id === active.id);
     const newIndex = courses.findIndex((c) => c.id === over.id);
 
+    if (oldIndex === -1 || newIndex === -1) {
+      console.error('Invalid drag indices:', { oldIndex, newIndex });
+      return;
+    }
+
     const newCourses = arrayMove(courses, oldIndex, newIndex);
 
-    // order_indexを更新
+    // order_indexを更新（0から始まる連番）
     const updatedCourses = newCourses.map((course, index) => ({
       ...course,
       order_index: index
     }));
 
+    // 即座にUIを更新
     setCourses(updatedCourses);
 
     // サーバーに保存
@@ -456,8 +464,13 @@ export default function CoursesPage() {
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">コース管理</h1>
                 <p className="text-gray-600 dark:text-gray-400">
                   コースの作成・編集・管理を行います（{filteredCourses.length}件）
-                  {savingOrder && ' - 並び順を保存中...'}
                 </p>
+                {savingOrder && (
+                  <div className="mt-2 inline-flex items-center px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-full text-sm font-medium animate-pulse">
+                    <LoadingSpinner size="sm" className="mr-2" />
+                    並び順を保存中...
+                  </div>
+                )}
               </div>
               <div className="flex gap-2">
                 <Button
