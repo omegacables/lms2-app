@@ -13,6 +13,7 @@ export default function SetupChaptersPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tableExists, setTableExists] = useState<boolean | null>(null);
 
   const handleSetupChapters = async () => {
     setLoading(true);
@@ -132,14 +133,44 @@ export default function SetupChaptersPage() {
           </div>
 
           <div className="bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-800 p-6">
-            <Button
-              onClick={handleSetupChapters}
-              loading={loading}
-              disabled={loading}
-              className="w-full"
-            >
-              チャプターテーブルの状態を確認
-            </Button>
+            <div className="space-y-4">
+              <Button
+                onClick={handleSetupChapters}
+                loading={loading}
+                disabled={loading}
+                className="w-full"
+              >
+                チャプターテーブルの状態を確認
+              </Button>
+
+              {/* Success Message */}
+              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                <div className="flex items-start">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-green-600 dark:text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-green-800 dark:text-green-200">
+                      チャプターテーブルが作成されました
+                    </h3>
+                    <div className="mt-2 text-sm text-green-700 dark:text-green-300">
+                      <p>SQLコマンドを実行してチャプターテーブルが作成されました。</p>
+                      <p className="mt-2">
+                        <Link
+                          href={`/admin/courses`}
+                          className="underline hover:text-green-800 dark:hover:text-green-100"
+                        >
+                          コース管理画面に戻る
+                        </Link>
+                        から、動画管理ページでチャプター機能を使用できます。
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           {result && (
