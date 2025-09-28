@@ -554,6 +554,25 @@ export default function CourseVideosPage() {
         throw new Error('認証が必要です。再度ログインしてください。');
       }
 
+      // 新しい動画ファイルの時間を取得
+      const getDuration = (): Promise<number> => {
+        return new Promise((resolve) => {
+          const videoElement = document.createElement('video');
+          videoElement.preload = 'metadata';
+          videoElement.onloadedmetadata = () => {
+            resolve(Math.floor(videoElement.duration));
+          };
+          videoElement.onerror = () => {
+            console.warn('動画の時間を取得できませんでした');
+            resolve(0);
+          };
+          videoElement.src = URL.createObjectURL(replaceFile);
+        });
+      };
+
+      const newDuration = await getDuration();
+      console.log('新しい動画の時間:', newDuration, '秒');
+
       // ファイルサイズが100MB未満の場合は通常のAPIルートを使用
       const maxApiSize = 100 * 1024 * 1024; // 100MB
 
@@ -563,7 +582,7 @@ export default function CourseVideosPage() {
         formData.append('video', replaceFile);
         formData.append('title', video.title);
         formData.append('description', video.description || '');
-        formData.append('duration', video.duration?.toString() || '0');
+        formData.append('duration', newDuration.toString());
         formData.append('order_index', video.order_index.toString());
         formData.append('video_id', videoId);
 
@@ -641,12 +660,13 @@ export default function CourseVideosPage() {
           .from('videos')
           .getPublicUrl(fileName);
 
-        // データベースを更新
+        // データベースを更新（時間も含めて）
         const { error: dbError } = await supabase
           .from('videos')
           .update({
             file_url: publicUrl,
             file_path: fileName,
+            duration: newDuration,
             file_size: replaceFile.size,
             updated_at: new Date().toISOString()
           })
