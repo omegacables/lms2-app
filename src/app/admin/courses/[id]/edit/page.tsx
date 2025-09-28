@@ -20,7 +20,6 @@ import {
   CloudArrowUpIcon,
   BookOpenIcon
 } from '@heroicons/react/24/outline';
-import SimpleChapterManager from '@/components/admin/SimpleChapterManager';
 
 interface Course {
   id: string;
@@ -490,9 +489,18 @@ export default function EditCoursePage() {
                 </div>
               </form>
 
-              {/* Chapters Management */}
-              <div className="mt-8">
-                <SimpleChapterManager courseId={courseId} courseTitle={course.title} />
+              {/* Chapters Management Link */}
+              <div className="mt-8 bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-6">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">章管理</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  このコースの章構成を管理します。章の追加、編集、削除、動画の割り当てが可能です。
+                </p>
+                <Link href={`/admin/courses/${courseId}/chapters`}>
+                  <Button variant="outline" className="w-full">
+                    <BookOpenIcon className="h-4 w-4 mr-2" />
+                    章を管理
+                  </Button>
+                </Link>
               </div>
             </div>
 

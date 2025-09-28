@@ -1,6 +1,7 @@
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import type { Database } from './database.types';
+import type { RequestCookies } from 'next/dist/compiled/@edge-runtime/cookies';
 
 /**
  * Next.js 15対応のSupabaseクライアント作成関数
@@ -9,6 +10,16 @@ import type { Database } from './database.types';
 export async function createServerClient() {
   const cookieStore = await cookies();
 
+  return createRouteHandlerClient<Database>({
+    cookies: () => cookieStore
+  });
+}
+
+/**
+ * Cookie Storeを渡してSupabaseクライアントを作成
+ * APIルートで使用
+ */
+export function createServerSupabaseClient(cookieStore: RequestCookies) {
   return createRouteHandlerClient<Database>({
     cookies: () => cookieStore
   });
