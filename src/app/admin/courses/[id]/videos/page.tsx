@@ -171,7 +171,24 @@ export default function CourseVideosPage() {
       }
 
       const data = await response.json();
-      setChapters(data.chapters || []);
+      // videosのorder_indexをdisplay_orderにマッピング
+      const mappedChapters = (data.chapters || []).map((chapter: any) => ({
+        ...chapter,
+        videos: chapter.videos?.map((video: any) => ({
+          ...video,
+          display_order: video.order_index || 0
+        })) || []
+      }));
+      setChapters(mappedChapters);
+
+      // unassignedVideosも同様にマッピング
+      if (data.unassignedVideos) {
+        const mappedUnassignedVideos = data.unassignedVideos.map((video: any) => ({
+          ...video,
+          display_order: video.order_index || 0
+        }));
+        // ここでunassignedVideosを使用する場合は状態を設定
+      }
 
       // 警告メッセージがある場合は表示
       if (data.warning) {

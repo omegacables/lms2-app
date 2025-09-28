@@ -28,9 +28,9 @@ export async function GET(
       // 全ての動画を未割り当てとして返す
       const { data: allVideos, error: videosError } = await supabase
         .from('videos')
-        .select('id, title, display_order')
+        .select('id, title, order_index')
         .eq('course_id', parseInt(courseId, 10))
-        .order('display_order', { ascending: true });
+        .order('order_index', { ascending: true });
 
       return NextResponse.json({
         chapters: [],
@@ -46,7 +46,7 @@ export async function GET(
         videos (
           id,
           title,
-          display_order
+          order_index
         )
       `)
       .eq('course_id', parseInt(courseId, 10)) // 数値に変換
@@ -60,10 +60,10 @@ export async function GET(
     // 章に属さない動画も取得
     const { data: unassignedVideos, error: videosError } = await supabase
       .from('videos')
-      .select('id, title, display_order')
+      .select('id, title, order_index')
       .eq('course_id', parseInt(courseId, 10)) // 数値に変換
       .is('chapter_id', null)
-      .order('display_order', { ascending: true });
+      .order('order_index', { ascending: true });
 
     if (videosError) {
       console.error('Error fetching unassigned videos:', videosError);
