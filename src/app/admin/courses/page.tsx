@@ -10,6 +10,23 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { supabase } from '@/lib/database/supabase';
 import { fetchCoursesOptimized, courseCache } from '@/utils/performance';
 import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
   PlusIcon,
   MagnifyingGlassIcon,
   EyeIcon,
@@ -20,7 +37,8 @@ import {
   ClockIcon,
   AcademicCapIcon,
   FunnelIcon,
-  ChevronDownIcon
+  ChevronDownIcon,
+  Bars3Icon
 } from '@heroicons/react/24/outline';
 import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
 import type { Tables } from '@/lib/database/supabase';
@@ -30,7 +48,220 @@ type Course = Tables<'courses'> & {
   video_count?: number;
   total_duration?: number;
   enrollment_count?: number;
+  display_order?: number;
 };
+
+// Helper functions
+const formatDuration = (seconds: number) => {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+
+  if (hours > 0) {
+    return `${hours}時間${minutes}分`;
+  }
+  return `${minutes}分`;
+};
+
+const getDifficultyBadgeColor = (level: string) => {
+  switch (level) {
+    case 'beginner':
+      return 'bg-green-100 text-green-800';
+    case 'intermediate':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'advanced':
+      return 'bg-red-100 text-red-800';
+    default:
+      return 'bg-gray-100 dark:bg-neutral-900 text-gray-800 dark:text-gray-200';
+  }
+};
+
+const getDifficultyLabel = (level: string) => {
+  switch (level) {
+    case 'beginner':
+      return '初級';
+    case 'intermediate':
+      return '中級';
+    case 'advanced':
+      return '上級';
+    default:
+      return level;
+  }
+};
+
+// Course Card Component
+function CourseCard({
+  course,
+  onDelete,
+  onToggleStatus,
+  isDisabled = false
+}: {
+  course: Course;
+  onDelete: (id: number) => void;
+  onToggleStatus: (id: number, status: string) => void;
+  isDisabled?: boolean;
+}) {
+  return (
+    <div
+      className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 overflow-hidden hover:shadow-lg dark:hover:shadow-gray-900/50 transition-shadow cursor-pointer"
+      onClick={() => !isDisabled && (window.location.href = `/admin/courses/${course.id}/edit`)}
+    >
+      {/* Course Image/Icon */}
+      <div className="h-48 bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center relative overflow-hidden">
+        {course.thumbnail_url ? (
+          <img
+            src={course.thumbnail_url}
+            alt={course.title}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <AcademicCapIcon className="h-16 w-16 text-white opacity-80" />
+        )}
+
+        {/* Status Badge */}
+        <div className="absolute top-4 right-4">
+          {course.status === 'active' ? (
+            <div className="flex items-center px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+              <CheckCircleIcon className="h-3 w-3 mr-1" />
+              公開中
+            </div>
+          ) : (
+            <div className="flex items-center px-2 py-1 bg-gray-100 dark:bg-neutral-900 text-gray-800 dark:text-gray-200 rounded-full text-xs font-medium">
+              <XCircleIcon className="h-3 w-3 mr-1" />
+              非公開
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="p-6">
+        {/* Title and Category */}
+        <div className="mb-3">
+          <div className="flex items-start justify-between mb-2">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white line-clamp-2">
+              {course.title}
+            </h3>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            {course.category && (
+              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                {course.category}
+              </span>
+            )}
+            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getDifficultyBadgeColor(course.difficulty_level || '')}`}>
+              {getDifficultyLabel(course.difficulty_level || '')}
+            </span>
+          </div>
+
+          <p className="text-gray-600 dark:text-gray-400 text-sm line-clamp-2">
+            {course.description || '説明なし'}
+          </p>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 gap-4 mb-4 text-center">
+          <div>
+            <div className="text-sm font-semibold text-gray-900 dark:text-white">
+              {course.video_count || 0}
+            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">動画</div>
+          </div>
+          <div>
+            <div className="text-sm font-semibold text-gray-900 dark:text-white">
+              {course.total_duration ? formatDuration(course.total_duration) : '0分'}
+            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">総時間</div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+          <div className="flex space-x-2">
+            <Link href={`/courses/${course.id}`}>
+              <button
+                onClick={(e) => e.stopPropagation()}
+                className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                title="詳細表示（生徒ビュー）"
+                disabled={isDisabled}
+              >
+                <EyeIcon className="h-4 w-4" />
+              </button>
+            </Link>
+            <Link href={`/admin/courses/${course.id}/edit`}>
+              <button
+                onClick={(e) => e.stopPropagation()}
+                className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                title="編集"
+                disabled={isDisabled}
+              >
+                <PencilIcon className="h-4 w-4" />
+              </button>
+            </Link>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(course.id);
+              }}
+              className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+              title="削除"
+              disabled={isDisabled}
+            >
+              <TrashIcon className="h-4 w-4" />
+            </button>
+          </div>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleStatus(course.id, course.status || 'inactive');
+            }}
+            className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+              course.status === 'active'
+                ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                : 'bg-green-100 text-green-700 hover:bg-green-200'
+            }`}
+            disabled={isDisabled}
+          >
+            {course.status === 'active' ? '非公開にする' : '公開する'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Sortable Item Component
+function SortableItem({ id, children }: { id: string | number; children: React.ReactNode }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <div className="relative">
+        <div
+          {...attributes}
+          {...listeners}
+          className="absolute top-4 left-4 z-10 cursor-move p-2 bg-white dark:bg-neutral-800 rounded-lg shadow-md hover:shadow-lg transition-shadow"
+        >
+          <Bars3Icon className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export default function CoursesPage() {
   const { user } = useAuth();
@@ -40,6 +271,19 @@ export default function CoursesPage() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [isSorting, setIsSorting] = useState(false);
+  const [savingOrder, setSavingOrder] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   useEffect(() => {
     fetchCourses();
@@ -48,27 +292,91 @@ export default function CoursesPage() {
   const fetchCourses = async () => {
     try {
       setLoading(true);
-      
+
       // キャッシュをチェック
       const cacheKey = 'admin-courses';
       const cachedData = courseCache.get(cacheKey);
-      
+
       if (cachedData) {
-        setCourses(cachedData as Course[]);
+        const sortedData = (cachedData as Course[]).sort((a, b) =>
+          (a.display_order || 0) - (b.display_order || 0)
+        );
+        setCourses(sortedData);
         setLoading(false);
         return;
       }
-      
+
       // 最適化されたクエリでコースを取得
       const processedCourses = await fetchCoursesOptimized();
-      
+
+      // display_orderでソート
+      const sortedCourses = (processedCourses as Course[]).sort((a, b) =>
+        (a.display_order || 0) - (b.display_order || 0)
+      );
+
       // キャッシュに保存
-      courseCache.set(cacheKey, processedCourses);
-      setCourses(processedCourses as Course[]);
+      courseCache.set(cacheKey, sortedCourses);
+      setCourses(sortedCourses);
     } catch (error) {
       console.error('コース取得エラー:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const oldIndex = courses.findIndex((c) => c.id === active.id);
+    const newIndex = courses.findIndex((c) => c.id === over.id);
+
+    const newCourses = arrayMove(courses, oldIndex, newIndex);
+
+    // display_orderを更新
+    const updatedCourses = newCourses.map((course, index) => ({
+      ...course,
+      display_order: index
+    }));
+
+    setCourses(updatedCourses);
+
+    // サーバーに保存
+    await saveCoursesOrder(updatedCourses);
+  };
+
+  const saveCoursesOrder = async (orderedCourses: Course[]) => {
+    setSavingOrder(true);
+    try {
+      const coursesToUpdate = orderedCourses.map((course, index) => ({
+        id: course.id,
+        display_order: index
+      }));
+
+      const response = await fetch('/api/courses/update-order', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ courses: coursesToUpdate }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update course order');
+      }
+
+      // キャッシュをクリア
+      courseCache.clear();
+    } catch (error) {
+      console.error('Error saving course order:', error);
+      alert('コースの並び順の保存に失敗しました');
+      // エラー時は元に戻す
+      fetchCourses();
+    } finally {
+      setSavingOrder(false);
     }
   };
 
@@ -125,41 +433,6 @@ export default function CoursesPage() {
     }
   };
 
-  const formatDuration = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    
-    if (hours > 0) {
-      return `${hours}時間${minutes}分`;
-    }
-    return `${minutes}分`;
-  };
-
-  const getDifficultyBadgeColor = (level: string) => {
-    switch (level) {
-      case 'beginner':
-        return 'bg-green-100 text-green-800';
-      case 'intermediate':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'advanced':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 dark:bg-neutral-900 text-gray-800 dark:text-gray-200';
-    }
-  };
-
-  const getDifficultyLabel = (level: string) => {
-    switch (level) {
-      case 'beginner':
-        return '初級';
-      case 'intermediate':
-        return '中級';
-      case 'advanced':
-        return '上級';
-      default:
-        return level;
-    }
-  };
 
   if (loading) {
     return (
@@ -184,14 +457,24 @@ export default function CoursesPage() {
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">コース管理</h1>
                 <p className="text-gray-600 dark:text-gray-400">
                   コースの作成・編集・管理を行います（{filteredCourses.length}件）
+                  {savingOrder && ' - 並び順を保存中...'}
                 </p>
               </div>
-              <Link href="/admin/courses/new">
-                <Button className="bg-blue-600 hover:bg-blue-700 flex items-center">
-                  <PlusIcon className="h-4 w-4 mr-2" />
-                  新規コース作成
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => setIsSorting(!isSorting)}
+                  className={isSorting ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'}
+                >
+                  <Bars3Icon className="h-4 w-4 mr-2" />
+                  {isSorting ? '並び替え完了' : '並び替え'}
                 </Button>
-              </Link>
+                <Link href="/admin/courses/new">
+                  <Button className="bg-blue-600 hover:bg-blue-700 flex items-center">
+                    <PlusIcon className="h-4 w-4 mr-2" />
+                    新規コース作成
+                  </Button>
+                </Link>
+              </div>
             </div>
 
             {/* Search and Filter Bar */}
@@ -293,132 +576,42 @@ export default function CoursesPage() {
                 </Button>
               </Link>
             </div>
+          ) : isSorting ? (
+            // Sorting mode with drag and drop
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={filteredCourses.map(c => c.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filteredCourses.map((course) => (
+                    <SortableItem key={course.id} id={course.id}>
+                      <CourseCard
+                        course={course}
+                        onDelete={handleDeleteCourse}
+                        onToggleStatus={toggleCourseStatus}
+                        isDisabled={true}
+                      />
+                    </SortableItem>
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
           ) : (
+            // Normal mode without drag and drop
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredCourses.map((course) => (
-                <div 
-                  key={course.id} 
-                  className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 overflow-hidden hover:shadow-lg dark:hover:shadow-gray-900/50 transition-shadow cursor-pointer"
-                  onClick={() => window.location.href = `/admin/courses/${course.id}/edit`}
-                >
-                  {/* Course Image/Icon */}
-                  <div className="h-48 bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center relative overflow-hidden">
-                    {course.thumbnail_url ? (
-                      <img
-                        src={course.thumbnail_url}
-                        alt={course.title}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <AcademicCapIcon className="h-16 w-16 text-white opacity-80" />
-                    )}
-                    
-                    {/* Status Badge */}
-                    <div className="absolute top-4 right-4">
-                      {course.status === 'active' ? (
-                        <div className="flex items-center px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
-                          <CheckCircleIcon className="h-3 w-3 mr-1" />
-                          公開中
-                        </div>
-                      ) : (
-                        <div className="flex items-center px-2 py-1 bg-gray-100 dark:bg-neutral-900 text-gray-800 dark:text-gray-200 rounded-full text-xs font-medium">
-                          <XCircleIcon className="h-3 w-3 mr-1" />
-                          非公開
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="p-6">
-                    {/* Title and Category */}
-                    <div className="mb-3">
-                      <div className="flex items-start justify-between mb-2">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white line-clamp-2">
-                          {course.title}
-                        </h3>
-                      </div>
-                      
-                      <div className="flex flex-wrap items-center gap-2 mb-3">
-                        {course.category && (
-                          <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                            {course.category}
-                          </span>
-                        )}
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getDifficultyBadgeColor(course.difficulty_level || '')}`}>
-                          {getDifficultyLabel(course.difficulty_level || '')}
-                        </span>
-                      </div>
-                      
-                      <p className="text-gray-600 dark:text-gray-400 text-sm line-clamp-2">
-                        {course.description || '説明なし'}
-                      </p>
-                    </div>
-
-                    {/* Stats */}
-                    <div className="grid grid-cols-2 gap-4 mb-4 text-center">
-                      <div>
-                        <div className="text-sm font-semibold text-gray-900 dark:text-white">
-                          {course.video_count || 0}
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">動画</div>
-                      </div>
-                      <div>
-                        <div className="text-sm font-semibold text-gray-900 dark:text-white">
-                          {course.total_duration ? formatDuration(course.total_duration) : '0分'}
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">総時間</div>
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                      <div className="flex space-x-2">
-                        <Link href={`/courses/${course.id}`}>
-                          <button
-                            onClick={(e) => e.stopPropagation()}
-                            className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
-                            title="詳細表示（生徒ビュー）"
-                          >
-                            <EyeIcon className="h-4 w-4" />
-                          </button>
-                        </Link>
-                        <Link href={`/admin/courses/${course.id}/edit`}>
-                          <button 
-                            onClick={(e) => e.stopPropagation()}
-                            className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors" 
-                            title="編集"
-                          >
-                            <PencilIcon className="h-4 w-4" />
-                          </button>
-                        </Link>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteCourse(course.id);
-                          }}
-                          className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" 
-                          title="削除"
-                        >
-                          <TrashIcon className="h-4 w-4" />
-                        </button>
-                      </div>
-                      
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleCourseStatus(course.id, course.status || 'inactive');
-                        }}
-                        className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                          course.status === 'active' 
-                            ? 'bg-red-100 text-red-700 hover:bg-red-200' 
-                            : 'bg-green-100 text-green-700 hover:bg-green-200'
-                        }`}
-                      >
-                        {course.status === 'active' ? '非公開にする' : '公開する'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                <CourseCard
+                  key={course.id}
+                  course={course}
+                  onDelete={handleDeleteCourse}
+                  onToggleStatus={toggleCourseStatus}
+                  isDisabled={false}
+                />
               ))}
             </div>
           )}
