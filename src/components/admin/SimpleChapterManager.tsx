@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Trash2, Plus, GripVertical } from 'lucide-react';
+import { supabase } from '@/lib/database/supabase';
 
 interface Chapter {
   id: number;
@@ -41,7 +42,12 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
   const fetchChapters = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/chapters?course_id=${courseId}`);
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch(`/api/chapters?course_id=${courseId}`, {
+        headers: {
+          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
+        },
+      });
       const data = await response.json();
 
       if (response.ok && data.chapters) {
@@ -56,11 +62,16 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
 
   const fetchCourseVideos = async () => {
     try {
-      const response = await fetch(`/api/courses/${courseId}/videos`);
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch(`/api/courses/${courseId}/videos`, {
+        headers: {
+          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
+        },
+      });
       const data = await response.json();
 
-      if (response.ok && data.videos) {
-        setCourseVideos(data.videos);
+      if (response.ok) {
+        setCourseVideos(Array.isArray(data) ? data : data.videos || []);
       }
     } catch (error) {
       console.error('Error fetching videos:', error);
@@ -72,9 +83,13 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
 
     try {
       setLoading(true);
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch('/api/chapters', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
+        },
         body: JSON.stringify({
           course_id: courseId,
           title: newChapterTitle
@@ -100,9 +115,13 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
 
   const updateChapter = async (chapterId: number, title: string) => {
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch(`/api/chapters/${chapterId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
+        },
         body: JSON.stringify({ title })
       });
 
@@ -119,8 +138,12 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
 
     try {
       setLoading(true);
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch(`/api/chapters/${chapterId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: {
+          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
+        },
       });
 
       if (response.ok) {
@@ -139,9 +162,13 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
 
   const addVideoToChapter = async (chapterId: number, videoId: number) => {
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch(`/api/chapters/${chapterId}/videos`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
+        },
         body: JSON.stringify({ video_id: videoId })
       });
 
@@ -157,8 +184,12 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
 
   const removeVideoFromChapter = async (chapterId: number, videoId: number) => {
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch(`/api/chapters/${chapterId}/videos?video_id=${videoId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: {
+          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
+        },
       });
 
       if (response.ok) {

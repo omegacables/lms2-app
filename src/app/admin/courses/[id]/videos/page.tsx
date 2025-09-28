@@ -26,9 +26,7 @@ import {
   ArrowsUpDownIcon,
   ArrowUpTrayIcon,
   DocumentDuplicateIcon,
-  DocumentTextIcon,
-  FolderIcon,
-  FolderPlusIcon
+  DocumentTextIcon
 } from '@heroicons/react/24/outline';
 
 interface Course {
@@ -50,34 +48,18 @@ interface Video {
   status: 'active' | 'inactive';
   created_at: string;
   file_path?: string;
-  chapter_id?: string | null;
 }
-
-interface Chapter {
-  id: string;
-  title: string;
-  course_id: string;
-  display_order: number;
-  videos?: Video[];
-}
-
 
 export default function CourseVideosPage() {
   const { user } = useAuth();
   const router = useRouter();
   const params = useParams();
   const courseId = params.id as string;
-  
+
   const [course, setCourse] = useState<Course | null>(null);
   const [videos, setVideos] = useState<Video[]>([]);
-  const [chapters, setChapters] = useState<Chapter[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [showChapterModal, setShowChapterModal] = useState(false);
-  const [newChapterTitle, setNewChapterTitle] = useState('');
-  const [editingChapter, setEditingChapter] = useState<string | null>(null);
-  const [editChapterTitle, setEditChapterTitle] = useState('');
-  const [chapterTableWarning, setChapterTableWarning] = useState<string | null>(null);
   const [editingVideo, setEditingVideo] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
     title: '',
@@ -100,399 +82,73 @@ export default function CourseVideosPage() {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   useEffect(() => {
+    if (!user || user.user_metadata?.role !== 'admin') {
+      router.push('/dashboard');
+    }
+  }, [user, router]);
+
+  useEffect(() => {
     if (courseId) {
       fetchCourse();
       fetchVideos();
-      fetchChapters(); // チャプター機能を再有効化
     }
   }, [courseId]);
-
 
   const fetchCourse = async () => {
     try {
       const { data: courseData, error: courseError } = await supabase
         .from('courses')
-        .select('id, title, description, thumbnail_url')
+        .select('*')
         .eq('id', courseId)
         .single();
 
-      if (courseError) {
-        console.error('コース取得エラー:', courseError);
-        return;
+      if (!courseError && courseData) {
+        setCourse(courseData);
       }
-
-      setCourse(courseData);
     } catch (error) {
-      console.error('コース取得エラー:', error);
+      console.error('Videos Page: Error fetching course:', error);
     }
   };
 
   const fetchVideos = async () => {
     try {
       setLoading(true);
-
-      // 動画データを取得
       const { data: videosData, error: videosError } = await supabase
         .from('videos')
         .select('*')
         .eq('course_id', courseId)
-        .order('order_index', { ascending: true });
+        .order('order_index');
 
-      if (videosError) {
-        console.error('動画取得エラー:', videosError);
-        return;
-      }
-
-      // コースのmetadataを取得してチャプター情報を含める
-      const { data: courseData, error: courseError } = await supabase
-        .from('courses')
-        .select('metadata')
-        .eq('id', courseId)
-        .single();
-
-      if (!courseError && courseData?.metadata?.chapters) {
-        // 各動画にchapter_idを割り当て
-        const videosWithChapter = videosData?.map(video => {
-          const chapterWithVideo = courseData.metadata.chapters.find(
-            (chapter: any) => chapter.video_ids?.includes(video.id)
-          );
-          return {
-            ...video,
-            chapter_id: chapterWithVideo?.id || null
-          };
-        }) || [];
-
-        console.log('Videos Page: Videos with chapter info:', videosWithChapter);
-        console.log('Videos Page: Course metadata chapters:', courseData.metadata.chapters);
-        setVideos(videosWithChapter);
-      } else {
-        setVideos(videosData || []);
+      if (!videosError && videosData) {
+        setVideos(videosData);
       }
     } catch (error) {
-      console.error('動画取得エラー:', error);
+      console.error('Videos Page: Error fetching videos:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchChapters = async () => {
-    try {
-      // 認証セッションを取得
-      const { data: { session } } = await supabase.auth.getSession();
-
-      const response = await fetch(`/api/courses/${courseId}/chapters`, {
-        headers: {
-          ...(session?.access_token && { 'Authorization': `Bearer ${session.access_token}` })
-        }
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Chapter fetch failed:', errorData);
-        throw new Error(errorData.error || 'チャプター取得に失敗しました');
-      }
-
-      const data = await response.json();
-      // videosのorder_indexをdisplay_orderにマッピング
-      const mappedChapters = (data.chapters || []).map((chapter: any) => ({
-        ...chapter,
-        videos: chapter.videos?.map((video: any) => ({
-          ...video,
-          display_order: video.order_index || 0
-        })) || []
-      }));
-      console.log('Videos Page: Fetched chapters:', mappedChapters);
-      setChapters(mappedChapters);
-
-      // unassignedVideosも同様にマッピング
-      if (data.unassignedVideos) {
-        const mappedUnassignedVideos = data.unassignedVideos.map((video: any) => ({
-          ...video,
-          display_order: video.order_index || 0
-        }));
-        // ここでunassignedVideosを使用する場合は状態を設定
-      }
-
-      // 警告メッセージがある場合は表示
-      if (data.warning) {
-        console.warn(data.warning);
-        setChapterTableWarning(data.warning);
-      } else {
-        setChapterTableWarning(null);
-      }
-    } catch (error) {
-      console.error('チャプター取得エラー:', error);
-      // エラーがあってもアプリケーションは続行
-      setChapters([]);
-    }
-  };
-
-  const handleAddChapter = async () => {
-    if (!newChapterTitle.trim()) {
-      alert('チャプタータイトルを入力してください');
-      return;
-    }
-
-    try {
-      // 認証セッションを取得
-      const { data: { session } } = await supabase.auth.getSession();
-
-      const response = await fetch(`/api/courses/${courseId}/chapters`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(session?.access_token && { 'Authorization': `Bearer ${session.access_token}` })
-        },
-        body: JSON.stringify({ title: newChapterTitle }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Chapter creation failed:', errorData);
-        throw new Error(errorData.error || 'チャプターの追加に失敗しました');
-      }
-
-      // チャプターと動画データを再取得して最新の状態にする
-      await fetchChapters();
-      await fetchVideos();
-      setNewChapterTitle('');
-      setShowChapterModal(false);
-      alert('チャプターが追加されました');
-    } catch (error) {
-      console.error('チャプター追加エラー:', error);
-      const errorMessage = error instanceof Error ? error.message : 'チャプターの追加に失敗しました';
-
-      // チャプターテーブルが存在しない場合の特別なエラーハンドリング
-      if (errorMessage.includes('Chapters table does not exist')) {
-        alert('チャプターテーブルが存在しません。\n\n/admin/setup-chapters で初期設定を行ってください。');
-      } else {
-        alert(errorMessage);
-      }
-    }
-  };
-
-  const handleUpdateChapter = async (chapterId: string) => {
-    if (!editChapterTitle.trim()) {
-      alert('チャプタータイトルを入力してください');
-      return;
-    }
-
-    try {
-      // 認証セッションを取得
-      const { data: { session } } = await supabase.auth.getSession();
-
-      const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(session?.access_token && { 'Authorization': `Bearer ${session.access_token}` })
-        },
-        body: JSON.stringify({ title: editChapterTitle }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Chapter update failed:', errorData);
-        throw new Error(errorData.error || 'チャプターの更新に失敗しました');
-      }
-
-      // チャプターと動画データを再取得して最新の状態にする
-      await fetchChapters();
-      await fetchVideos();
-      setEditingChapter(null);
-      setEditChapterTitle('');
-      alert('チャプターが更新されました');
-    } catch (error) {
-      console.error('チャプター更新エラー:', error);
-      const errorMessage = error instanceof Error ? error.message : 'チャプターの更新に失敗しました';
-
-      // チャプターテーブルが存在しない場合の特別なエラーハンドリング
-      if (errorMessage.includes('Chapters table does not exist')) {
-        alert('チャプターテーブルが存在しません。\n\n/admin/setup-chapters で初期設定を行ってください。');
-      } else {
-        alert(errorMessage);
-      }
-    }
-  };
-
-  const handleDeleteChapter = async (chapterId: string) => {
-    if (!confirm('このチャプターを削除してもよろしいですか？\n章に含まれる動画は削除されません。')) {
-      return;
-    }
-
-    try {
-      // 認証セッションを取得
-      const { data: { session } } = await supabase.auth.getSession();
-
-      const response = await fetch(`/api/courses/${courseId}/chapters/${chapterId}`, {
-        method: 'DELETE',
-        headers: {
-          ...(session?.access_token && { 'Authorization': `Bearer ${session.access_token}` })
-        }
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Chapter deletion failed:', errorData);
-        throw new Error(errorData.error || 'チャプターの削除に失敗しました');
-      }
-
-      // チャプターと動画データを再取得して最新の状態にする
-      await fetchChapters();
-      await fetchVideos();
-      alert('チャプターが削除されました');
-    } catch (error) {
-      console.error('チャプター削除エラー:', error);
-      const errorMessage = error instanceof Error ? error.message : 'チャプターの削除に失敗しました';
-
-      // チャプターテーブルが存在しない場合の特別なエラーハンドリング
-      if (errorMessage.includes('Chapters table does not exist')) {
-        alert('チャプターテーブルが存在しません。\n\n/admin/setup-chapters で初期設定を行ってください。');
-      } else {
-        alert(errorMessage);
-      }
-    }
-  };
-
-  const handleAssignVideoToChapter = async (videoId: string, chapterId: string | null) => {
-    try {
-      const response = await fetch(`/api/videos/${videoId}/assign-chapter`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ chapterId }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'チャプターの割り当てに失敗しました');
-      }
-
-      await fetchVideos();
-      await fetchChapters();
-    } catch (error) {
-      console.error('動画のチャプター割り当てエラー:', error);
-      alert('動画のチャプター割り当てに失敗しました');
-    }
-  };
-
   const handleDeleteVideo = async (videoId: string) => {
-    if (!confirm('この動画を削除してもよろしいですか？\\n削除された動画は復元できません。')) {
+    if (!confirm('この動画を削除してもよろしいですか？')) {
       return;
     }
 
     try {
-      // Check if user is authenticated
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('認証が必要です。再度ログインしてください。');
-      }
-
-      // ユーザープロファイルを確認
-      const { data: userProfile, error: profileError } = await supabase
-        .from('user_profiles')
-        .select('role')
-        .eq('id', session.user.id)
-        .single();
-
-      console.log('削除実行ユーザー:', {
-        userId: session.user.id,
-        email: session.user.email,
-        role: userProfile?.role,
-        profileError
+      const response = await fetch(`/api/courses/${courseId}/videos/${videoId}`, {
+        method: 'DELETE'
       });
 
-      // 管理者またはインストラクター権限を確認
-      if (!userProfile || !['admin', 'instructor'].includes(userProfile.role)) {
-        throw new Error(`権限が不足しています。現在のロール: ${userProfile?.role || 'なし'}`);
-      }
-
-      // 動画情報を取得 - まずfile_urlで試し、失敗したらurlで試す
-      let video: any = null;
-      let fetchError: any = null;
-
-      // 新しいスキーマで試す
-      const { data: videoNew, error: errorNew } = await supabase
-        .from('videos')
-        .select('file_url, file_path')
-        .eq('id', videoId)
-        .single();
-
-      if (!errorNew && videoNew) {
-        video = videoNew;
+      if (response.ok) {
+        alert('動画を削除しました');
+        await fetchVideos();
       } else {
-        // 古いスキーマで試す
-        const { data: videoOld, error: errorOld } = await supabase
-          .from('videos')
-          .select('*')
-          .eq('id', videoId)
-          .single();
-
-        if (!errorOld && videoOld) {
-          video = videoOld;
-        } else {
-          fetchError = errorNew || errorOld;
-        }
+        const error = await response.json();
+        alert(`削除に失敗しました: ${error.error}`);
       }
-
-      if (fetchError || !video) {
-        console.error('動画取得エラー:', fetchError);
-        throw new Error('動画が見つかりません');
-      }
-
-      // ストレージから動画ファイルを削除
-      // file_pathが存在する場合はそれを使用、そうでなければURLから抽出
-      let filePathToDelete = video.file_path;
-
-      if (!filePathToDelete && (video.file_url || video.url)) {
-        const fileUrl = video.file_url || video.url;
-        const urlParts = fileUrl.split('/storage/v1/object/public/videos/');
-        if (urlParts.length > 1) {
-          filePathToDelete = decodeURIComponent(urlParts[1]);
-        }
-      }
-
-      if (filePathToDelete) {
-        console.log('ストレージから削除:', filePathToDelete);
-
-        try {
-          const { data: deleteData, error: storageError } = await supabase.storage
-            .from('videos')
-            .remove([filePathToDelete]);
-
-          if (storageError) {
-            console.error('ストレージ削除エラー:', storageError);
-            // ストレージ削除に失敗してもデータベース削除は続行
-          } else {
-            console.log('ストレージから削除成功:', deleteData);
-          }
-        } catch (e) {
-          console.error('ストレージ削除例外:', e);
-        }
-      }
-
-      // データベースから動画レコードを削除（直接Supabaseを使用）
-      const { data: deletedVideo, error: deleteError } = await supabase
-        .from('videos')
-        .delete()
-        .eq('id', videoId)
-        .eq('course_id', courseId)
-        .select()
-        .single();
-
-      if (deleteError) {
-        console.error('データベース削除エラー:', deleteError);
-        throw new Error('データベースからの削除に失敗しました');
-      }
-
-      console.log('データベースから削除成功:', deletedVideo);
-
-      setVideos(prev => prev.filter(v => v.id !== videoId));
-      alert('動画が削除されました');
     } catch (error) {
-      console.error('動画削除エラー:', error);
-      alert(`動画の削除に失敗しました: ${(error as Error).message}`);
+      console.error('Error deleting video:', error);
+      alert('削除中にエラーが発生しました');
     }
   };
 
@@ -500,7 +156,7 @@ export default function CourseVideosPage() {
     setEditingVideo(video.id);
     setEditForm({
       title: video.title,
-      description: video.description,
+      description: video.description || '',
       order_index: video.order_index,
       status: video.status
     });
@@ -510,236 +166,108 @@ export default function CourseVideosPage() {
     if (!editingVideo) return;
 
     try {
-      const { error } = await supabase
-        .from('videos')
-        .update({
+      const response = await fetch(`/api/videos/${editingVideo}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
           title: editForm.title,
           description: editForm.description,
           order_index: editForm.order_index,
-          status: editForm.status,
-          updated_at: new Date().toISOString()
+          status: editForm.status
         })
-        .eq('id', editingVideo);
+      });
 
-      if (error) {
-        throw error;
+      if (response.ok) {
+        await fetchVideos();
+        setEditingVideo(null);
+        alert('動画情報を更新しました');
+      } else {
+        const error = await response.json();
+        alert(`更新に失敗しました: ${error.error}`);
       }
-
-      await fetchVideos();
-      setEditingVideo(null);
-      alert('動画情報が更新されました');
     } catch (error) {
-      console.error('動画更新エラー:', error);
-      alert('動画の更新に失敗しました');
+      console.error('Error updating video:', error);
+      alert('更新中にエラーが発生しました');
     }
   };
 
-  const handleVideoFileChange = (e: React.ChangeEvent<HTMLInputElement>, isReplace: boolean = false) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleCancelEdit = () => {
+    setEditingVideo(null);
+    setEditForm({
+      title: '',
+      description: '',
+      order_index: 1,
+      status: 'active'
+    });
+  };
 
-    const validation = validateVideoFile(file);
+  const handleReplaceVideo = async (videoId: string) => {
+    if (!replaceFile) {
+      alert('ファイルを選択してください');
+      return;
+    }
+
+    const validation = validateVideoFile(replaceFile);
     if (!validation.valid) {
       alert(validation.error);
       return;
     }
 
-    // ファイルサイズチェック（100MB以上の場合警告）
-    const maxSize = 100 * 1024 * 1024; // 100MB
-    if (file.size > maxSize) {
-      const sizeMB = Math.round(file.size / (1024 * 1024));
-      const proceed = confirm(
-        `選択されたファイル（${sizeMB}MB）は大きいため、アップロードに時間がかかる場合があります。\n` +
-        `続行しますか？\n\n` +
-        `推奨: 動画を圧縮してからアップロードしてください。`
-      );
-      if (!proceed) {
-        e.target.value = ''; // ファイル選択をリセット
-        return;
-      }
-    }
-
-    if (isReplace) {
-      setReplaceFile(file);
-    }
-  };
-
-
-
-
-  const handleReplaceVideo = async (videoId: string) => {
-    if (!replaceFile) {
-      alert('置き換える動画ファイルを選択してください');
-      return;
-    }
-
-    const video = videos.find(v => v.id === videoId);
-    if (!video) return;
-
     setUploading(true);
     setUploadProgress(0);
 
     try {
-      // Check if user is authenticated
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('認証が必要です。再度ログインしてください。');
-      }
+      const formData = new FormData();
+      formData.append('video', replaceFile);
 
-      // 新しい動画ファイルの時間を取得
-      const getDuration = (): Promise<number> => {
-        return new Promise((resolve) => {
-          const videoElement = document.createElement('video');
-          videoElement.preload = 'metadata';
-          videoElement.onloadedmetadata = () => {
-            resolve(Math.floor(videoElement.duration));
-          };
-          videoElement.onerror = () => {
-            console.warn('動画の時間を取得できませんでした');
-            resolve(0);
-          };
-          videoElement.src = URL.createObjectURL(replaceFile);
-        });
-      };
+      // Progress tracking
+      const xhr = new XMLHttpRequest();
 
-      const newDuration = await getDuration();
-      console.log('新しい動画の時間:', newDuration, '秒');
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const progress = Math.round((e.loaded / e.total) * 100);
+          setUploadProgress(progress);
+        }
+      });
 
-      // ファイルサイズが100MB未満の場合は通常のAPIルートを使用
-      const maxApiSize = 100 * 1024 * 1024; // 100MB
+      const response = await new Promise<Response>((resolve, reject) => {
+        xhr.onload = () => resolve(new Response(xhr.response, {
+          status: xhr.status,
+          headers: { 'Content-Type': 'application/json' }
+        }));
+        xhr.onerror = () => reject(new Error('Upload failed'));
 
-      if (replaceFile.size < maxApiSize) {
-        // 従来のAPIルートを使用
-        const formData = new FormData();
-        formData.append('video', replaceFile);
-        formData.append('title', video.title);
-        formData.append('description', video.description || '');
-        formData.append('duration', newDuration.toString());
-        formData.append('order_index', video.order_index.toString());
-        formData.append('video_id', videoId);
+        xhr.open('PUT', `/api/courses/${courseId}/videos/${videoId}`);
+        xhr.send(formData);
+      });
 
-        const xhr = new XMLHttpRequest();
-
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            const percentComplete = (e.loaded / e.total) * 100;
-            setUploadProgress(Math.round(percentComplete));
-          }
-        });
-
-        const uploadPromise = new Promise((resolve, reject) => {
-          xhr.onload = () => {
-            if (xhr.status === 200) {
-              try {
-                const result = JSON.parse(xhr.responseText);
-                resolve(result);
-              } catch (e) {
-                reject(new Error('サーバーからの応答が不正です'));
-              }
-            } else {
-              try {
-                const response = JSON.parse(xhr.responseText);
-                reject(new Error(response.error || '置き換えに失敗しました'));
-              } catch (e) {
-                reject(new Error(`置き換えに失敗しました (ステータス: ${xhr.status})`));
-              }
-            }
-          };
-
-          xhr.onerror = () => {
-            reject(new Error('ネットワークエラーが発生しました'));
-          };
-
-          xhr.ontimeout = () => {
-            reject(new Error('アップロードがタイムアウトしました'));
-          };
-
-          xhr.open('PUT', `/api/courses/${courseId}/videos/${videoId}`);
-          xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
-          xhr.timeout = 600000;
-          xhr.send(formData);
-        });
-
-        await uploadPromise;
+      if (response.ok) {
+        alert('動画を置き換えました');
+        await fetchVideos();
+        setReplacingVideo(null);
+        setReplaceFile(null);
       } else {
-        // 大きなファイルの場合は直接Supabase Storageを使用
-        console.log('大きなファイルのため、直接Supabase Storageを使用します');
-
-        // 古いファイルのパスを取得
-        let oldFilePath = video.file_path;
-        if (!oldFilePath && video.file_url) {
-          const urlParts = video.file_url.split('/storage/v1/object/public/videos/');
-          if (urlParts.length > 1) {
-            oldFilePath = decodeURIComponent(urlParts[1]);
-          }
-        }
-
-        // 新しいファイルをアップロード
-        const fileName = `course_${courseId}/video_${Date.now()}_${replaceFile.name}`;
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('videos')
-          .upload(fileName, replaceFile, {
-            cacheControl: '3600',
-            upsert: false
-          });
-
-        if (uploadError) {
-          throw uploadError;
-        }
-
-        // 公開URLを取得
-        const { data: { publicUrl } } = supabase.storage
-          .from('videos')
-          .getPublicUrl(fileName);
-
-        // データベースを更新（時間も含めて）
-        const { error: dbError } = await supabase
-          .from('videos')
-          .update({
-            file_url: publicUrl,
-            file_path: fileName,
-            duration: newDuration,
-            file_size: replaceFile.size,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId);
-
-        if (dbError) {
-          // アップロードしたファイルを削除
-          await supabase.storage.from('videos').remove([fileName]);
-          throw dbError;
-        }
-
-        // 古いファイルを削除
-        if (oldFilePath) {
-          try {
-            await supabase.storage.from('videos').remove([oldFilePath]);
-          } catch (e) {
-            console.error('古いファイルの削除に失敗:', e);
-          }
-        }
+        const error = await response.json();
+        alert(`置き換えに失敗しました: ${error.error}`);
       }
-
-      setReplacingVideo(null);
-      setReplaceFile(null);
-      await fetchVideos();
-      alert('動画が正常に置き換えられました');
     } catch (error) {
-      console.error('動画置き換えエラー:', error);
-      alert(`動画の置き換えに失敗しました: ${(error as Error).message}`);
+      console.error('Error replacing video:', error);
+      alert('置き換え中にエラーが発生しました');
     } finally {
       setUploading(false);
       setUploadProgress(0);
     }
   };
 
-  // ドラッグ&ドロップハンドラー
-  const handleDragStart = (e: React.DragEvent, video: Video) => {
+  // ドラッグ&ドロップのハンドラー
+  const handleDragStart = (e: React.DragEvent<HTMLTableRowElement>, video: Video) => {
     setDraggedVideo(video);
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
+  const handleDragOver = (e: React.DragEvent<HTMLTableRowElement>, index: number) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     setDragOverIndex(index);
@@ -749,7 +277,7 @@ export default function CourseVideosPage() {
     setDragOverIndex(null);
   };
 
-  const handleDrop = async (e: React.DragEvent, dropIndex: number) => {
+  const handleDrop = async (e: React.DragEvent<HTMLTableRowElement>, dropIndex: number) => {
     e.preventDefault();
     setDragOverIndex(null);
 
@@ -758,554 +286,364 @@ export default function CourseVideosPage() {
     const draggedIndex = videos.findIndex(v => v.id === draggedVideo.id);
     if (draggedIndex === dropIndex) return;
 
-    // 新しい順序を計算
     const newVideos = [...videos];
     newVideos.splice(draggedIndex, 1);
     newVideos.splice(dropIndex, 0, draggedVideo);
 
-    // order_indexを更新
-    const updates = newVideos.map((video, index) => ({
-      id: video.id,
+    // 新しい順序を計算
+    const updatedVideos = newVideos.map((video, index) => ({
+      ...video,
       order_index: index + 1
     }));
 
-    setVideos(newVideos.map((v, i) => ({ ...v, order_index: i + 1 })));
+    setVideos(updatedVideos);
 
+    // APIで順序を更新
     try {
-      // バッチ更新
-      for (const update of updates) {
-        await supabase
-          .from('videos')
-          .update({ order_index: update.order_index })
-          .eq('id', update.id);
+      const videoUpdates = updatedVideos.map(video => ({
+        id: video.id,
+        order_index: video.order_index
+      }));
+
+      const response = await fetch(`/api/courses/${courseId}/videos`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ videoUpdates })
+      });
+
+      if (!response.ok) {
+        console.error('Failed to update video order');
+        // 失敗したら元に戻す
+        await fetchVideos();
       }
     } catch (error) {
-      console.error('順序更新エラー:', error);
-      alert('動画の順序更新に失敗しました');
-      await fetchVideos(); // エラー時は元に戻す
+      console.error('Error updating video order:', error);
+      await fetchVideos();
     }
 
     setDraggedVideo(null);
   };
 
   const formatDuration = (seconds: number) => {
-    if (!seconds || seconds === 0) return '時間が未設定';
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    const remainingSeconds = seconds % 60;
+    const secs = seconds % 60;
 
     if (hours > 0) {
-      return `${hours}時間${minutes}分${remainingSeconds}秒`;
+      return `${hours}時間${minutes}分${secs}秒`;
     } else if (minutes > 0) {
-      return `${minutes}分${remainingSeconds}秒`;
+      return `${minutes}分${secs}秒`;
     } else {
-      return `${remainingSeconds}秒`;
+      return `${secs}秒`;
     }
   };
 
   const filteredVideos = videos.filter(video =>
     video.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    video.description.toLowerCase().includes(searchTerm.toLowerCase())
+    video.description?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  if (loading) {
-    return (
-      <AuthGuard>
-        <MainLayout>
-          <div className="flex justify-center items-center min-h-64">
-            <LoadingSpinner size="lg" />
-          </div>
-        </MainLayout>
-      </AuthGuard>
-    );
-  }
-
   return (
-    <AuthGuard>
+    <AuthGuard requiredRole="admin">
       <MainLayout>
-        <div className="max-w-6xl mx-auto">
-          {/* Header */}
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center space-x-4">
-                <Link 
-                  href={`/admin/courses/${courseId}/edit`}
-                  className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-                >
-                  <ArrowLeftIcon className="h-5 w-5" />
-                </Link>
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900 dark:text-white">動画管理</h1>
-                  <p className="text-gray-600 dark:text-gray-400">
-                    {course ? `${course.title} の動画一覧` : 'コースの動画を管理します'}
-                  </p>
+        <div className="min-h-screen bg-gray-50 dark:bg-neutral-950">
+          {/* Navigation */}
+          <div className="mb-8 pt-6 px-4 sm:px-6 lg:px-8">
+            <Link
+              href="/admin/courses"
+              className="inline-flex items-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+            >
+              <ArrowLeftIcon className="h-4 w-4 mr-2" />
+              コース管理に戻る
+            </Link>
+          </div>
+
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            {/* Header */}
+            <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-6 mb-6">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center space-x-4">
+                  <VideoCameraIcon className="h-8 w-8 text-blue-600 dark:text-blue-500" />
+                  <div>
+                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                      動画管理
+                    </h1>
+                    <p className="text-gray-600 dark:text-gray-400 mt-1">
+                      {course ? `${course.title} の動画一覧` : 'コースの動画を管理します'}
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <div className="flex space-x-2">
-                <Button variant="outline" onClick={() => setShowChapterModal(true)}>
-                  <FolderPlusIcon className="h-4 w-4 mr-2" />
-                  チャプター追加
-                </Button>
                 <Button onClick={() => setShowAddModal(true)}>
                   <PlusIcon className="h-4 w-4 mr-2" />
                   動画を追加
                 </Button>
               </div>
             </div>
-          </div>
 
-          {/* Warning for missing chapters table */}
-          {chapterTableWarning && (
-            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mb-6">
-              <div className="flex items-start">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-yellow-600 dark:text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                  </svg>
+            {/* Search and Stats */}
+            <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-6 mb-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
+                <div className="flex-1 max-w-md">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="動画を検索..."
+                      className="w-full pl-4 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-                    チャプター機能が利用できません
-                  </h3>
-                  <div className="mt-2 text-sm text-yellow-700 dark:text-yellow-300">
-                    <p>チャプターテーブルが存在しません。チャプター機能を使用するには、以下の手順で設定を行ってください：</p>
-                    <ol className="list-decimal list-inside mt-2 space-y-1">
-                      <li>
-                        <Link
-                          href="/admin/setup-chapters"
-                          className="underline hover:text-yellow-800 dark:hover:text-yellow-100"
-                        >
-                          /admin/setup-chapters
-                        </Link> にアクセス
-                      </li>
-                      <li>表示されるSQLコマンドをSupabaseダッシュボードで実行</li>
-                      <li>このページをリロードして確認</li>
-                    </ol>
+                <div className="flex items-center space-x-6 text-sm text-gray-600 dark:text-gray-400">
+                  <div className="flex items-center">
+                    <VideoCameraIcon className="h-4 w-4 mr-1" />
+                    <span>動画数: {videos.length}</span>
+                  </div>
+                  <div className="flex items-center">
+                    <ClockIcon className="h-4 w-4 mr-1" />
+                    <span>
+                      総時間: {formatDuration(videos.reduce((sum, v) => sum + (v.duration || 0), 0))}
+                    </span>
+                  </div>
+                  <div className="flex items-center">
+                    <ArrowsUpDownIcon className="h-4 w-4 mr-1" />
+                    <span className="text-xs">ドラッグで順序変更</span>
                   </div>
                 </div>
               </div>
             </div>
-          )}
 
-          {/* Search and Stats */}
-          <div className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-6 mb-6">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
-              <div className="flex-1 max-w-md">
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="動画を検索..."
-                    className="w-full pl-4 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
+            {/* Videos List */}
+            <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800">
+              {filteredVideos.length === 0 ? (
+                <div className="text-center py-12">
+                  <VideoCameraIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                    {searchTerm ? '検索結果がありません' : '動画がまだありません'}
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400 mb-6">
+                    {searchTerm
+                      ? '別のキーワードで検索してみてください'
+                      : 'このコースに最初の動画を追加しましょう'
+                    }
+                  </p>
+                  {!searchTerm && (
+                    <Button onClick={() => setShowAddModal(true)}>
+                      <PlusIcon className="h-4 w-4 mr-2" />
+                      動画を追加
+                    </Button>
+                  )}
                 </div>
-              </div>
-              <div className="flex items-center space-x-6 text-sm text-gray-600 dark:text-gray-400">
-                <div className="flex items-center">
-                  <VideoCameraIcon className="h-4 w-4 mr-1" />
-                  <span>動画数: {videos.length}</span>
-                </div>
-                <div className="flex items-center">
-                  <ClockIcon className="h-4 w-4 mr-1" />
-                  <span>
-                    総時間: {formatDuration(videos.reduce((sum, v) => sum + (v.duration || 0), 0))}
-                  </span>
-                </div>
-                <div className="flex items-center">
-                  <ArrowsUpDownIcon className="h-4 w-4 mr-1" />
-                  <span className="text-xs">ドラッグで順序変更</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Chapters List */}
-          {chapters.length > 0 && (
-            <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 mb-6">
-              <div className="p-6">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                  チャプター管理
-                </h2>
-                <div className="space-y-3">
-                  {chapters.map((chapter, index) => (
-                    <div
-                      key={chapter.id}
-                      className="flex items-center justify-between p-4 bg-gray-50 dark:bg-neutral-800 rounded-lg"
-                    >
-                      {editingChapter === chapter.id ? (
-                        <div className="flex items-center space-x-3 flex-1">
-                          <FolderIcon className="h-5 w-5 text-gray-400" />
-                          <Input
-                            value={editChapterTitle}
-                            onChange={(e) => setEditChapterTitle(e.target.value)}
-                            className="flex-1"
-                            placeholder="チャプタータイトル"
-                          />
-                          <Button
-                            size="sm"
-                            onClick={() => handleUpdateChapter(chapter.id)}
-                          >
-                            保存
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setEditingChapter(null);
-                              setEditChapterTitle('');
-                            }}
-                          >
-                            キャンセル
-                          </Button>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex items-center space-x-3">
-                            <FolderIcon className="h-5 w-5 text-gray-400" />
-                            <span className="text-sm font-medium text-gray-900 dark:text-white">
-                              第{chapter.display_order + 1}章: {chapter.title}
-                            </span>
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                              ({chapter.videos?.length || 0}個の動画)
-                            </span>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => {
-                                setEditingChapter(chapter.id);
-                                setEditChapterTitle(chapter.title);
-                              }}
-                              className="text-indigo-600 hover:text-indigo-900"
-                            >
-                              <PencilIcon className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteChapter(chapter.id)}
-                              className="text-red-600 hover:text-red-900"
-                            >
-                              <TrashIcon className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Videos List */}
-          <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800">
-            {filteredVideos.length === 0 ? (
-              <div className="text-center py-12">
-                <VideoCameraIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                  {searchTerm ? '検索結果がありません' : '動画がまだありません'}
-                </h3>
-                <p className="text-gray-600 dark:text-gray-400 mb-6">
-                  {searchTerm 
-                    ? '別のキーワードで検索してみてください'
-                    : 'このコースに最初の動画を追加しましょう'
-                  }
-                </p>
-                {!searchTerm && (
-                  <Button onClick={() => setShowAddModal(true)}>
-                    <PlusIcon className="h-4 w-4 mr-2" />
-                    動画を追加
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <div className="overflow-hidden">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50 dark:bg-black">
-                    <tr>
-                      <th className="w-12 px-6 py-3"></th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        順番
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        動画情報
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        チャプター
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        時間
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        ステータス
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        アクション
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white dark:bg-neutral-900 divide-y divide-gray-200">
-                    {filteredVideos.map((video, index) => (
-                      <tr 
-                        key={video.id} 
-                        className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${dragOverIndex === index ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, video)}
-                        onDragOver={(e) => handleDragOver(e, index)}
-                        onDragLeave={handleDragLeave}
-                        onDrop={(e) => handleDrop(e, index)}
-                      >
-                        <td className="px-6 py-4 cursor-move">
-                          <ArrowsUpDownIcon className="h-4 w-4 text-gray-400" />
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                          #{video.order_index}
-                        </td>
-                        <td className="px-6 py-4">
-                          {editingVideo === video.id ? (
-                            <div className="space-y-2">
-                              <Input
-                                value={editForm.title}
-                                onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                                placeholder="動画タイトル"
-                              />
-                              <textarea
-                                rows={2}
-                                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-neutral-900"
-                                value={editForm.description}
-                                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                                placeholder="動画の説明"
-                              />
-                              <div className="flex space-x-2">
-                                <input
-                                  type="number"
-                                  className="w-20 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
-                                  value={editForm.order_index}
-                                  onChange={(e) => setEditForm({ ...editForm, order_index: parseInt(e.target.value) || 1 })}
-                                  min="1"
-                                />
-                                <select
-                                  className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
-                                  value={editForm.status}
-                                  onChange={(e) => setEditForm({ ...editForm, status: e.target.value as any })}
-                                >
-                                  <option value="active">公開</option>
-                                  <option value="inactive">非公開</option>
-                                </select>
-                                <Button size="sm" onClick={handleSaveEdit}>
-                                  保存
-                                </Button>
-                                <Button size="sm" variant="outline" onClick={() => setEditingVideo(null)}>
-                                  キャンセル
-                                </Button>
-                              </div>
-                            </div>
-                          ) : replacingVideo === video.id ? (
-                            <div className="space-y-2">
-                              <div className="text-sm font-medium text-gray-900 dark:text-white">{video.title}</div>
-                              <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-3">
-                                <input
-                                  type="file"
-                                  accept="video/*"
-                                  onChange={(e) => handleVideoFileChange(e, true)}
-                                  className="hidden"
-                                  id={`replace-video-${video.id}`}
-                                />
-                                <label htmlFor={`replace-video-${video.id}`} className="cursor-pointer">
-                                  {replaceFile ? (
-                                    <div className="text-xs">
-                                      <p className="font-medium">{replaceFile.name}</p>
-                                      <p className="text-gray-500 dark:text-gray-400">{formatFileSize(replaceFile.size)}</p>
-                                    </div>
-                                  ) : (
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">クリックして置き換える動画を選択</p>
-                                  )}
-                                </label>
-                              </div>
-                              <div className="flex space-x-2">
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleReplaceVideo(video.id)}
-                                  disabled={!replaceFile || uploading}
-                                  loading={uploading}
-                                >
-                                  {uploading ? `${uploadProgress}%` : '置き換え'}
-                                </Button>
-                                <Button 
-                                  size="sm" 
-                                  variant="outline" 
-                                  onClick={() => {
-                                    setReplacingVideo(null);
-                                    setReplaceFile(null);
-                                  }}
-                                >
-                                  キャンセル
-                                </Button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div>
-                              <div className="text-sm font-medium text-gray-900 dark:text-white">{video.title}</div>
-                              <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">{video.description}</div>
-                              <div className="text-xs text-gray-400 mt-1">
-                                作成日: {new Date(video.created_at).toLocaleDateString('ja-JP')}
-                              </div>
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <select
-                            className="text-sm border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
-                            value={video.chapter_id || ''}
-                            onChange={(e) => handleAssignVideoToChapter(video.id, e.target.value || null)}
-                            disabled={chapters.length === 0}
-                          >
-                            <option value="">チャプターなし</option>
-                            {chapters.map((chapter) => (
-                              <option key={chapter.id} value={chapter.id}>
-                                第{chapter.display_order + 1}章: {chapter.title}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                          <div className="flex items-center">
-                            <ClockIcon className="h-4 w-4 mr-1" />
-                            {formatDuration(video.duration || 0)}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            video.status === 'active' 
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-gray-100 dark:bg-neutral-900 text-gray-800 dark:text-gray-200'
-                          }`}>
-                            {video.status === 'active' ? '公開' : '非公開'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <div className="flex items-center space-x-2">
-                            <Link href={`/videos/${video.id}`}>
-                              <button className="text-blue-600 hover:text-blue-900" title="プレビュー">
-                                <EyeIcon className="h-4 w-4" />
-                              </button>
-                            </Link>
-                            <Link href={`/admin/courses/${courseId}/videos/${video.id}/edit`}>
-                              <button className="text-green-600 hover:text-green-900" title="リソース管理">
-                                <DocumentTextIcon className="h-4 w-4" />
-                              </button>
-                            </Link>
-                            <button
-                              onClick={() => handleEditVideo(video)}
-                              className="text-indigo-600 hover:text-indigo-900"
-                              title="編集"
-                            >
-                              <PencilIcon className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => setReplacingVideo(video.id)}
-                              className="text-yellow-600 hover:text-yellow-900"
-                              title="動画を置き換え"
-                            >
-                              <DocumentDuplicateIcon className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteVideo(video.id)}
-                              className="text-red-600 hover:text-red-900"
-                              title="削除"
-                            >
-                              <TrashIcon className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </td>
+              ) : (
+                <div className="overflow-hidden">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50 dark:bg-black">
+                      <tr>
+                        <th className="w-12 px-6 py-3"></th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          順番
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          動画情報
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          時間
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          ステータス
+                        </th>
+                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          操作
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="bg-white dark:bg-neutral-900 divide-y divide-gray-200 dark:divide-neutral-800">
+                      {filteredVideos.map((video, index) => (
+                        <tr
+                          key={video.id}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, video)}
+                          onDragOver={(e) => handleDragOver(e, index)}
+                          onDragLeave={handleDragLeave}
+                          onDrop={(e) => handleDrop(e, index)}
+                          className={`
+                            ${dragOverIndex === index ? 'bg-blue-50 dark:bg-blue-900/20' : ''}
+                            ${draggedVideo?.id === video.id ? 'opacity-50' : ''}
+                            hover:bg-gray-50 dark:hover:bg-neutral-800 cursor-move
+                          `}
+                        >
+                          <td className="px-6 py-4">
+                            <ArrowsUpDownIcon className="h-5 w-5 text-gray-400" />
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
+                            {video.order_index}
+                          </td>
+                          <td className="px-6 py-4">
+                            {editingVideo === video.id ? (
+                              <div className="space-y-2">
+                                <Input
+                                  value={editForm.title}
+                                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                                  placeholder="タイトル"
+                                />
+                                <textarea
+                                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-neutral-800 text-gray-900 dark:text-white"
+                                  value={editForm.description}
+                                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                                  placeholder="説明"
+                                  rows={2}
+                                />
+                                <div className="flex space-x-2">
+                                  <Button size="sm" onClick={handleSaveEdit}>保存</Button>
+                                  <Button size="sm" variant="outline" onClick={handleCancelEdit}>キャンセル</Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div>
+                                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                                  {video.title}
+                                </p>
+                                {video.description && (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                    {video.description}
+                                  </p>
+                                )}
+                                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                                  サイズ: {formatFileSize(video.file_size)}
+                                </p>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
+                            {formatDuration(video.duration || 0)}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span
+                              className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                video.status === 'active'
+                                  ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                  : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                              }`}
+                            >
+                              {video.status === 'active' ? '公開' : '非公開'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right text-sm font-medium">
+                            <div className="flex justify-end space-x-2">
+                              <button
+                                onClick={() => window.open(video.file_url, '_blank')}
+                                className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
+                                title="視聴"
+                              >
+                                <EyeIcon className="h-5 w-5" />
+                              </button>
+                              <button
+                                onClick={() => handleEditVideo(video)}
+                                className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300"
+                                title="編集"
+                              >
+                                <PencilIcon className="h-5 w-5" />
+                              </button>
+                              <button
+                                onClick={() => setReplacingVideo(video.id)}
+                                className="text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300"
+                                title="置き換え"
+                              >
+                                <ArrowUpTrayIcon className="h-5 w-5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteVideo(video.id)}
+                                className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+                                title="削除"
+                              >
+                                <TrashIcon className="h-5 w-5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Add Video Modal */}
+            {showAddModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div className="bg-white dark:bg-neutral-900 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                  <div className="p-6 border-b border-gray-200 dark:border-neutral-800">
+                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                      動画をアップロード
+                    </h2>
+                  </div>
+                  <div className="p-6">
+                    <VideoUploader
+                      courseId={courseId}
+                      onSuccess={() => {
+                        setShowAddModal(false);
+                        fetchVideos();
+                      }}
+                      onCancel={() => setShowAddModal(false)}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Replace Video Modal */}
+            {replacingVideo && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div className="bg-white dark:bg-neutral-900 rounded-lg max-w-md w-full">
+                  <div className="p-6">
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                      動画を置き換え
+                    </h2>
+                    <input
+                      type="file"
+                      accept="video/*"
+                      onChange={(e) => setReplaceFile(e.target.files?.[0] || null)}
+                      className="mb-4 text-sm text-gray-900 dark:text-white"
+                      disabled={uploading}
+                    />
+                    {uploading && (
+                      <div className="mb-4">
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-600 h-2 rounded-full"
+                            style={{ width: `${uploadProgress}%` }}
+                          />
+                        </div>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                          アップロード中: {uploadProgress}%
+                        </p>
+                      </div>
+                    )}
+                    <div className="flex justify-end space-x-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setReplacingVideo(null);
+                          setReplaceFile(null);
+                        }}
+                        disabled={uploading}
+                      >
+                        キャンセル
+                      </Button>
+                      <Button
+                        onClick={() => handleReplaceVideo(replacingVideo)}
+                        disabled={!replaceFile || uploading}
+                      >
+                        置き換え
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
-
-          {/* Add Video Modal */}
-          {showAddModal && (
-            <div className="fixed inset-0 bg-gray-50 dark:bg-black0 bg-opacity-75 flex items-center justify-center z-50">
-              <div className="bg-white dark:bg-neutral-900 rounded-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden">
-                <div className="p-6 border-b border-gray-200 dark:border-neutral-800">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white">動画を追加</h2>
-                    <button
-                      onClick={() => {
-                        setShowAddModal(false);
-                      }}
-                      className="text-gray-400 hover:text-gray-600 dark:text-gray-400"
-                    >
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Video Uploader */}
-                <div className="p-6 overflow-y-auto max-h-[60vh]">
-                  <VideoUploader
-                    courseId={parseInt(courseId)}
-                    onSuccess={() => {
-                      setShowAddModal(false);
-                      fetchVideos();
-                    }}
-                    onError={(error) => {
-                      console.error('動画アップロードエラー:', error);
-                      alert(`動画のアップロードに失敗しました: ${error.message}`);
-                    }}
-                  />
-                </div>
-                
-                <div className="p-6 border-t border-gray-200 dark:border-neutral-800 flex justify-end space-x-3">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setShowAddModal(false);
-                    }}
-                  >
-                    閉じる
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Chapter Modal */}
-          {showChapterModal && (
-            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
-              <div className="bg-white dark:bg-neutral-900 rounded-xl max-w-md w-full mx-4">
-                <div className="p-6 border-b border-gray-200 dark:border-neutral-800">
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">新しいチャプターを追加</h2>
-                </div>
-                <div className="p-6">
-                  <Input
-                    value={newChapterTitle}
-                    onChange={(e) => setNewChapterTitle(e.target.value)}
-                    placeholder="チャプタータイトル (例: 第1章 基礎知識)"
-                    className="mb-4"
-                  />
-                  <div className="flex justify-end space-x-3">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setShowChapterModal(false);
-                        setNewChapterTitle('');
-                      }}
-                    >
-                      キャンセル
-                    </Button>
-                    <Button onClick={handleAddChapter}>
-                      追加
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </MainLayout>
     </AuthGuard>
