@@ -52,6 +52,8 @@ export function ChapterManager({ courseId }: ChapterManagerProps) {
       const data = await response.json();
 
       if (response.ok) {
+        console.log('ChapterManager: Fetched chapters:', data.chapters);
+        console.log('ChapterManager: Unassigned videos:', data.unassignedVideos);
         setChapters(data.chapters || []);
         setUnassignedVideos(data.unassignedVideos || []);
         // 初期状態で全章を展開
@@ -76,8 +78,9 @@ export function ChapterManager({ courseId }: ChapterManagerProps) {
 
       if (response.ok) {
         const newChapter = await response.json();
-        setChapters([...chapters, { ...newChapter, videos: [] }]);
         setNewChapterTitle('');
+        // 最新のデータを取得して表示を更新
+        await fetchChapters();
         setExpandedChapters(prev => new Set([...prev, newChapter.id]));
       }
     } catch (error) {
@@ -193,11 +196,16 @@ export function ChapterManager({ courseId }: ChapterManagerProps) {
           ...prev.slice(destination.index)
         ]);
         // APIで章の割り当てを解除
-        await fetch(`/api/videos/${movedVideo.id}/assign-chapter`, {
+        const response = await fetch(`/api/videos/${movedVideo.id}/assign-chapter`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ chapterId: null })
         });
+        if (!response.ok) {
+          console.error('Failed to unassign video from chapter');
+          // エラー時はデータを再取得
+          await fetchChapters();
+        }
       } else {
         setChapters(prev => prev.map(ch =>
           ch.id === destChapterId
@@ -212,11 +220,16 @@ export function ChapterManager({ courseId }: ChapterManagerProps) {
             : ch
         ));
         // APIで章に割り当て
-        await fetch(`/api/videos/${movedVideo.id}/assign-chapter`, {
+        const response = await fetch(`/api/videos/${movedVideo.id}/assign-chapter`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ chapterId: destChapterId })
         });
+        if (!response.ok) {
+          console.error('Failed to assign video to chapter');
+          // エラー時はデータを再取得
+          await fetchChapters();
+        }
       }
     }
   };

@@ -162,7 +162,8 @@ export default function CourseVideosPage() {
           };
         }) || [];
 
-        console.log('チャプター情報付き動画データ:', videosWithChapter);
+        console.log('Videos Page: Videos with chapter info:', videosWithChapter);
+        console.log('Videos Page: Course metadata chapters:', courseData.metadata.chapters);
         setVideos(videosWithChapter);
       } else {
         setVideos(videosData || []);
@@ -200,6 +201,7 @@ export default function CourseVideosPage() {
           display_order: video.order_index || 0
         })) || []
       }));
+      console.log('Videos Page: Fetched chapters:', mappedChapters);
       setChapters(mappedChapters);
 
       // unassignedVideosも同様にマッピング
@@ -250,7 +252,9 @@ export default function CourseVideosPage() {
         throw new Error(errorData.error || 'チャプターの追加に失敗しました');
       }
 
+      // チャプターと動画データを再取得して最新の状態にする
       await fetchChapters();
+      await fetchVideos();
       setNewChapterTitle('');
       setShowChapterModal(false);
       alert('チャプターが追加されました');
@@ -292,7 +296,9 @@ export default function CourseVideosPage() {
         throw new Error(errorData.error || 'チャプターの更新に失敗しました');
       }
 
+      // チャプターと動画データを再取得して最新の状態にする
       await fetchChapters();
+      await fetchVideos();
       setEditingChapter(null);
       setEditChapterTitle('');
       alert('チャプターが更新されました');
@@ -331,6 +337,7 @@ export default function CourseVideosPage() {
         throw new Error(errorData.error || 'チャプターの削除に失敗しました');
       }
 
+      // チャプターと動画データを再取得して最新の状態にする
       await fetchChapters();
       await fetchVideos();
       alert('チャプターが削除されました');
