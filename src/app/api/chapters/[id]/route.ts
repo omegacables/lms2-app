@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase-server';
+import { createServerSupabaseClient } from '@/lib/database/supabase';
+import { cookies } from 'next/headers';
 
 // GET: 個別チャプター取得
 export async function GET(
@@ -7,7 +8,14 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createServerClient();
+    const cookieStore = await cookies();
+    const supabase = createServerSupabaseClient(cookieStore);
+
+    // 認証チェック
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+    }
 
     const { data: chapter, error } = await supabase
       .from('chapters')
@@ -48,7 +56,28 @@ export async function PUT(
 ) {
   try {
     const { title, description, display_order } = await request.json();
-    const supabase = await createServerClient();
+    const cookieStore = await cookies();
+    const supabase = createServerSupabaseClient(cookieStore);
+
+    // 認証チェック
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+    }
+
+    // 権限チェックを一時的に無効化（開発環境用）
+    // TODO: 本番環境では必ず有効にすること
+    /*
+    const { data: userProfile } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (!userProfile || !['instructor', 'admin'].includes(userProfile.role)) {
+      return NextResponse.json({ error: '講師または管理者権限が必要です' }, { status: 403 });
+    }
+    */
 
     const updateData: any = {
       updated_at: new Date().toISOString()
@@ -87,7 +116,28 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = await createServerClient();
+    const cookieStore = await cookies();
+    const supabase = createServerSupabaseClient(cookieStore);
+
+    // 認証チェック
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+    }
+
+    // 権限チェックを一時的に無効化（開発環境用）
+    // TODO: 本番環境では必ず有効にすること
+    /*
+    const { data: userProfile } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (!userProfile || !['instructor', 'admin'].includes(userProfile.role)) {
+      return NextResponse.json({ error: '講師または管理者権限が必要です' }, { status: 403 });
+    }
+    */
 
     const { error } = await supabase
       .from('chapters')

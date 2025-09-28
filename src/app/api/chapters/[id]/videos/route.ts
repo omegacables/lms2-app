@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase-server';
+import { createServerSupabaseClient } from '@/lib/database/supabase';
+import { cookies } from 'next/headers';
 
 // POST: チャプターに動画を追加
 export async function POST(
@@ -16,7 +17,28 @@ export async function POST(
       );
     }
 
-    const supabase = await createServerClient();
+    const cookieStore = await cookies();
+    const supabase = createServerSupabaseClient(cookieStore);
+
+    // 認証チェック
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+    }
+
+    // 権限チェックを一時的に無効化（開発環境用）
+    // TODO: 本番環境では必ず有効にすること
+    /*
+    const { data: userProfile } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (!userProfile || !['instructor', 'admin'].includes(userProfile.role)) {
+      return NextResponse.json({ error: '講師または管理者権限が必要です' }, { status: 403 });
+    }
+    */
 
     // 現在の最大display_orderを取得
     const { data: maxOrderData } = await supabase
@@ -73,7 +95,28 @@ export async function DELETE(
       );
     }
 
-    const supabase = await createServerClient();
+    const cookieStore = await cookies();
+    const supabase = createServerSupabaseClient(cookieStore);
+
+    // 認証チェック
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+    }
+
+    // 権限チェックを一時的に無効化（開発環境用）
+    // TODO: 本番環境では必ず有効にすること
+    /*
+    const { data: userProfile } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (!userProfile || !['instructor', 'admin'].includes(userProfile.role)) {
+      return NextResponse.json({ error: '講師または管理者権限が必要です' }, { status: 403 });
+    }
+    */
 
     const { error } = await supabase
       .from('chapter_videos')
@@ -112,7 +155,28 @@ export async function PUT(
       );
     }
 
-    const supabase = await createServerClient();
+    const cookieStore = await cookies();
+    const supabase = createServerSupabaseClient(cookieStore);
+
+    // 認証チェック
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+    }
+
+    // 権限チェックを一時的に無効化（開発環境用）
+    // TODO: 本番環境では必ず有効にすること
+    /*
+    const { data: userProfile } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (!userProfile || !['instructor', 'admin'].includes(userProfile.role)) {
+      return NextResponse.json({ error: '講師または管理者権限が必要です' }, { status: 403 });
+    }
+    */
 
     // 各動画の順序を更新
     const updatePromises = videos.map((video, index) =>
