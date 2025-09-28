@@ -26,7 +26,9 @@ import {
   ArrowsUpDownIcon,
   ArrowUpTrayIcon,
   DocumentDuplicateIcon,
-  DocumentTextIcon
+  DocumentTextIcon,
+  DocumentIcon,
+  AcademicCapIcon
 } from '@heroicons/react/24/outline';
 
 interface Course {
@@ -565,6 +567,60 @@ export default function CourseVideosPage() {
                 </div>
               )}
             </div>
+
+            {/* Video Resources Section */}
+            {filteredVideos.length > 0 && (
+              <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-6 mt-6">
+                <div className="flex items-center mb-4">
+                  <DocumentTextIcon className="h-5 w-5 text-gray-600 dark:text-gray-400 mr-2" />
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    課題・参考資料設定
+                  </h3>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  各動画に課題や参考資料を追加して、学習効果を高めることができます。
+                </p>
+                <div className="space-y-3">
+                  {filteredVideos.map((video) => (
+                    <div key={video.id} className="border border-gray-200 dark:border-neutral-800 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-medium text-gray-900 dark:text-white flex items-center">
+                          <VideoCameraIcon className="h-4 w-4 mr-2 text-gray-500" />
+                          {video.title}
+                        </h4>
+                        <Link
+                          href={`/admin/courses/${courseId}/videos/${video.id}/edit`}
+                          className="inline-flex items-center px-3 py-1 text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-md hover:bg-blue-50 dark:hover:bg-blue-900 transition-colors"
+                        >
+                          <PencilIcon className="h-3 w-3 mr-1" />
+                          リソース編集
+                        </Link>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                        <div className="flex items-start">
+                          <AcademicCapIcon className="h-4 w-4 text-gray-400 mt-0.5 mr-2 flex-shrink-0" />
+                          <div>
+                            <span className="text-gray-600 dark:text-gray-400">課題:</span>
+                            <span className="ml-2 text-gray-500 dark:text-gray-500">
+                              未設定
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-start">
+                          <DocumentIcon className="h-4 w-4 text-gray-400 mt-0.5 mr-2 flex-shrink-0" />
+                          <div>
+                            <span className="text-gray-600 dark:text-gray-400">参考資料:</span>
+                            <span className="ml-2 text-gray-500 dark:text-gray-500">
+                              未設定
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Add Video Modal */}
             {showAddModal && (

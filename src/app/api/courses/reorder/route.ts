@@ -7,11 +7,15 @@ export async function PUT(request: NextRequest) {
     const cookieStore = await cookies();
     const supabase = createServerSupabaseClient(cookieStore);
 
-    // 認証チェック
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    // セッションチェック
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError || !session) {
+      console.error('Session error:', sessionError);
       return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
     }
+
+    const user = session.user;
 
     // 管理者権限チェック
     const { data: userProfile } = await supabase
