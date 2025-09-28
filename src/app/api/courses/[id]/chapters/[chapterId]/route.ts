@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/database/supabase';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 
 export async function PUT(
@@ -7,43 +7,46 @@ export async function PUT(
   { params }: { params: { id: string; chapterId: string } }
 ) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerSupabaseClient(cookieStore);
-    const { chapterId } = params;
+    const supabase = createRouteHandlerClient({ cookies });
+    const { title } = await request.json();
 
-    // チャプターテーブルが存在するか確認
-    const { data: chaptersExist, error: tableCheckError } = await supabase
-      .from('chapters')
-      .select('id')
-      .limit(1);
-
-    if (tableCheckError && tableCheckError.message.includes('does not exist')) {
-      return NextResponse.json({
-        error: 'Chapters table does not exist',
-        message: 'Please create the chapters table first'
-      }, { status: 400 });
-    }
-
-    const body = await request.json();
-    const { title } = body;
-
-    const { data, error } = await supabase
-      .from('chapters')
-      .update({ title, updated_at: new Date().toISOString() })
-      .eq('id', chapterId)
-      .select()
+    // 現在のコース情報を取得
+    const { data: course, error: courseError } = await supabase
+      .from('courses')
+      .select('metadata')
+      .eq('id', params.id)
       .single();
 
-    if (error) {
-      console.error('Error updating chapter:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (courseError) {
+      return NextResponse.json({ error: courseError.message }, { status: 500 });
     }
 
-    return NextResponse.json(data);
+    // チャプターを更新
+    const chapters = course?.metadata?.chapters || [];
+    const updatedChapters = chapters.map((chapter: any) =>
+      chapter.id === params.chapterId
+        ? { ...chapter, title }
+        : chapter
+    );
+
+    // metadataを更新
+    const { error: updateError } = await supabase
+      .from('courses')
+      .update({
+        metadata: { ...course.metadata, chapters: updatedChapters },
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', params.id);
+
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Error updating chapter:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to update chapter' },
       { status: 500 }
     );
   }
@@ -54,50 +57,43 @@ export async function DELETE(
   { params }: { params: { id: string; chapterId: string } }
 ) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerSupabaseClient(cookieStore);
-    const { chapterId } = params;
+    const supabase = createRouteHandlerClient({ cookies });
 
-    // チャプターテーブルが存在するか確認
-    const { data: chaptersExist, error: tableCheckError } = await supabase
-      .from('chapters')
-      .select('id')
-      .limit(1);
+    // 現在のコース情報を取得
+    const { data: course, error: courseError } = await supabase
+      .from('courses')
+      .select('metadata')
+      .eq('id', params.id)
+      .single();
 
-    if (tableCheckError && tableCheckError.message.includes('does not exist')) {
-      return NextResponse.json({
-        error: 'Chapters table does not exist',
-        message: 'Please create the chapters table first'
-      }, { status: 400 });
+    if (courseError) {
+      return NextResponse.json({ error: courseError.message }, { status: 500 });
     }
 
-    // 章に属する動画のchapter_idをnullに設定
+    // チャプターを削除
+    const chapters = course?.metadata?.chapters || [];
+    const updatedChapters = chapters.filter(
+      (chapter: any) => chapter.id !== params.chapterId
+    );
+
+    // metadataを更新
     const { error: updateError } = await supabase
-      .from('videos')
-      .update({ chapter_id: null })
-      .eq('chapter_id', chapterId);
+      .from('courses')
+      .update({
+        metadata: { ...course.metadata, chapters: updatedChapters },
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', params.id);
 
     if (updateError) {
-      console.error('Error updating videos:', updateError);
       return NextResponse.json({ error: updateError.message }, { status: 500 });
-    }
-
-    // 章を削除
-    const { error } = await supabase
-      .from('chapters')
-      .delete()
-      .eq('id', chapterId);
-
-    if (error) {
-      console.error('Error deleting chapter:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Error deleting chapter:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to delete chapter' },
       { status: 500 }
     );
   }

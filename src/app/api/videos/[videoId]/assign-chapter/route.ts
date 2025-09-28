@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 
 export async function PUT(
@@ -7,31 +7,69 @@ export async function PUT(
   { params }: { params: { videoId: string } }
 ) {
   try {
-    const supabase = createServerComponentClient({ cookies });
-    const { videoId } = params;
-    const body = await request.json();
-    const { chapterId } = body;
+    const supabase = createRouteHandlerClient({ cookies });
+    const { chapterId } = await request.json();
+    const videoId = parseInt(params.videoId);
 
-    const { data, error } = await supabase
+    // ビデオの情報を取得
+    const { data: video, error: videoError } = await supabase
       .from('videos')
-      .update({
-        chapter_id: chapterId,
-        updated_at: new Date().toISOString()
-      })
+      .select('course_id')
       .eq('id', videoId)
-      .select()
       .single();
 
-    if (error) {
-      console.error('Error assigning video to chapter:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (videoError) {
+      return NextResponse.json({ error: videoError.message }, { status: 500 });
     }
 
-    return NextResponse.json(data);
+    // コースのメタデータを取得
+    const { data: course, error: courseError } = await supabase
+      .from('courses')
+      .select('metadata')
+      .eq('id', video.course_id)
+      .single();
+
+    if (courseError) {
+      return NextResponse.json({ error: courseError.message }, { status: 500 });
+    }
+
+    const chapters = course?.metadata?.chapters || [];
+
+    // すべてのチャプターから該当動画IDを削除
+    const updatedChapters = chapters.map((chapter: any) => ({
+      ...chapter,
+      video_ids: (chapter.video_ids || []).filter((id: number) => id !== videoId)
+    }));
+
+    // 新しいチャプターに動画を追加
+    if (chapterId) {
+      const chapterIndex = updatedChapters.findIndex((ch: any) => ch.id === chapterId);
+      if (chapterIndex !== -1) {
+        updatedChapters[chapterIndex].video_ids = [
+          ...(updatedChapters[chapterIndex].video_ids || []),
+          videoId
+        ];
+      }
+    }
+
+    // metadataを更新
+    const { error: updateError } = await supabase
+      .from('courses')
+      .update({
+        metadata: { ...course.metadata, chapters: updatedChapters },
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', video.course_id);
+
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Error assigning video to chapter:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to assign video to chapter' },
       { status: 500 }
     );
   }

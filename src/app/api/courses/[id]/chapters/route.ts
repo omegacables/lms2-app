@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/database/supabase';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 
 export async function GET(
@@ -7,77 +7,55 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerSupabaseClient(cookieStore);
-    const courseId = params.id;
+    const supabase = createRouteHandlerClient({ cookies });
 
-    // チャプターテーブルが存在するか確認
-    const { data: chaptersExist, error: tableCheckError } = await supabase
-      .from('chapters')
-      .select('id')
-      .limit(1);
+    // コース情報を取得
+    const { data: course, error: courseError } = await supabase
+      .from('courses')
+      .select('metadata')
+      .eq('id', params.id)
+      .single();
 
-    // テーブルが存在しない場合は空の配列を返す
-    if (tableCheckError && (
-      tableCheckError.message.includes('does not exist') ||
-      tableCheckError.message.includes('relation') ||
-      tableCheckError.code === '42P01'
-    )) {
-      console.log('Chapters table does not exist - returning empty arrays');
-
-      // 全ての動画を未割り当てとして返す
-      const { data: allVideos, error: videosError } = await supabase
-        .from('videos')
-        .select('id, title, order_index')
-        .eq('course_id', parseInt(courseId, 10))
-        .order('order_index', { ascending: true });
-
-      return NextResponse.json({
-        chapters: [],
-        unassignedVideos: allVideos || [],
-        warning: 'チャプターテーブルが存在しません。/admin/setup-chapters で設定してください。'
-      });
+    if (courseError) {
+      return NextResponse.json({ error: courseError.message }, { status: 500 });
     }
 
-    const { data: chapters, error } = await supabase
-      .from('chapters')
-      .select(`
-        *,
-        videos (
-          id,
-          title,
-          order_index
-        )
-      `)
-      .eq('course_id', parseInt(courseId, 10)) // 数値に変換
-      .order('display_order', { ascending: true });
+    // チャプター情報を取得（metadataから）
+    const chapters = course?.metadata?.chapters || [];
 
-    if (error) {
-      console.error('Error fetching chapters:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    // 章に属さない動画も取得
-    const { data: unassignedVideos, error: videosError } = await supabase
+    // 動画を取得
+    const { data: videos, error: videosError } = await supabase
       .from('videos')
-      .select('id, title, order_index')
-      .eq('course_id', parseInt(courseId, 10)) // 数値に変換
-      .is('chapter_id', null)
+      .select('*')
+      .eq('course_id', params.id)
       .order('order_index', { ascending: true });
 
     if (videosError) {
-      console.error('Error fetching unassigned videos:', videosError);
       return NextResponse.json({ error: videosError.message }, { status: 500 });
     }
 
+    // チャプターに動画を割り当て
+    const chaptersWithVideos = chapters.map((chapter: any) => ({
+      ...chapter,
+      videos: videos?.filter((video: any) =>
+        chapter.video_ids?.includes(video.id)
+      ) || []
+    }));
+
+    // 未割り当ての動画を取得
+    const assignedVideoIds = chapters.flatMap((ch: any) => ch.video_ids || []);
+    const unassignedVideos = videos?.filter((video: any) =>
+      !assignedVideoIds.includes(video.id)
+    ) || [];
+
     return NextResponse.json({
-      chapters: chapters || [],
-      unassignedVideos: unassignedVideos || []
+      chapters: chaptersWithVideos,
+      unassignedVideos
     });
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Error fetching chapters:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to fetch chapters' },
       { status: 500 }
     );
   }
@@ -88,104 +66,49 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerSupabaseClient(cookieStore);
-    const courseId = params.id;
-    console.log('POST /api/courses/[id]/chapters - courseId:', courseId);
+    const supabase = createRouteHandlerClient({ cookies });
+    const { title } = await request.json();
 
-    // チャプターテーブルが存在するか確認
-    const { data: chaptersExist, error: tableCheckError } = await supabase
-      .from('chapters')
-      .select('id')
-      .limit(1);
-
-    console.log('Chapter table check:', {
-      exists: !tableCheckError,
-      error: tableCheckError?.message,
-      data: chaptersExist
-    });
-
-    if (tableCheckError) {
-      console.error('Chapters table error:', tableCheckError.message);
-
-      // テーブルが存在しない場合の詳細なレスポンス
-      if (tableCheckError.message.includes('does not exist') ||
-          tableCheckError.message.includes('relation') ||
-          tableCheckError.code === '42P01') {
-        return NextResponse.json({
-          error: 'Chapters table does not exist',
-          message: 'チャプターテーブルが存在しません。Supabaseダッシュボードでテーブルを作成してください。',
-          instructions: '/admin/setup-chapters にアクセスして手順を確認してください',
-          sqlHint: 'CREATE TABLE chapters (id uuid primary key default gen_random_uuid(), course_id integer references courses(id), title text, display_order integer default 0, created_at timestamptz default now(), updated_at timestamptz default now())'
-        }, { status: 400 });
-      }
-
-      // その他のエラー
-      return NextResponse.json({
-        error: 'Database error',
-        message: tableCheckError.message
-      }, { status: 500 });
-    }
-
-    const body = await request.json();
-    const { title } = body;
-    console.log('Creating chapter with title:', title);
-
-    if (!title || title.trim() === '') {
-      return NextResponse.json({ error: 'Title is required' }, { status: 400 });
-    }
-
-    // 現在の最大display_orderを取得
-    const { data: maxOrderData, error: maxOrderError } = await supabase
-      .from('chapters')
-      .select('display_order')
-      .eq('course_id', parseInt(courseId, 10)) // 数値に変換
-      .order('display_order', { ascending: false })
-      .limit(1);
-
-    console.log('Max order data:', maxOrderData, 'Error:', maxOrderError);
-
-    // single()を使わず、配列として処理
-    const nextOrder = (maxOrderData && maxOrderData.length > 0)
-      ? maxOrderData[0].display_order + 1
-      : 0;
-
-    console.log('Inserting chapter with order:', nextOrder);
-
-    const { data, error } = await supabase
-      .from('chapters')
-      .insert({
-        course_id: parseInt(courseId, 10), // 数値に変換
-        title: title.trim(),
-        display_order: nextOrder
-      })
-      .select()
+    // 現在のコース情報を取得
+    const { data: course, error: courseError } = await supabase
+      .from('courses')
+      .select('metadata')
+      .eq('id', params.id)
       .single();
 
-    if (error) {
-      console.error('Error creating chapter:', error);
-      console.error('Error details:', {
-        code: error.code,
-        details: error.details,
-        hint: error.hint,
-        message: error.message
-      });
-      return NextResponse.json({
-        error: error.message,
-        details: error.details,
-        hint: error.hint
-      }, { status: 500 });
+    if (courseError) {
+      return NextResponse.json({ error: courseError.message }, { status: 500 });
     }
 
-    console.log('Chapter created successfully:', data);
-    return NextResponse.json(data);
+    // 新しいチャプターを作成
+    const chapters = course?.metadata?.chapters || [];
+    const newChapter = {
+      id: crypto.randomUUID(),
+      title,
+      display_order: chapters.length,
+      video_ids: []
+    };
+
+    chapters.push(newChapter);
+
+    // metadataを更新
+    const { error: updateError } = await supabase
+      .from('courses')
+      .update({
+        metadata: { ...course.metadata, chapters },
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', params.id);
+
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    return NextResponse.json(newChapter);
   } catch (error) {
-    console.error('Unexpected error in POST chapters:', error);
+    console.error('Error creating chapter:', error);
     return NextResponse.json(
-      {
-        error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
+      { error: 'Failed to create chapter' },
       { status: 500 }
     );
   }
@@ -196,35 +119,27 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerSupabaseClient(cookieStore);
-    const courseId = params.id;
-    const body = await request.json();
-    const { chapters } = body;
+    const supabase = createRouteHandlerClient({ cookies });
+    const { chapters } = await request.json();
 
-    // トランザクション的に更新
-    const updates = chapters.map((chapter: any, index: number) =>
-      supabase
-        .from('chapters')
-        .update({ display_order: index })
-        .eq('id', chapter.id)
-    );
+    // metadataを更新（チャプター順序の更新用）
+    const { error: updateError } = await supabase
+      .from('courses')
+      .update({
+        metadata: { chapters },
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', params.id);
 
-    const results = await Promise.all(updates);
-    const hasError = results.some(result => result.error);
-
-    if (hasError) {
-      return NextResponse.json(
-        { error: 'Failed to update chapter order' },
-        { status: 500 }
-      );
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Error updating chapters:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to update chapters' },
       { status: 500 }
     );
   }

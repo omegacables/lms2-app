@@ -48,7 +48,6 @@ type Course = Tables<'courses'> & {
   video_count?: number;
   total_duration?: number;
   enrollment_count?: number;
-  display_order?: number;
 };
 
 // Helper functions
@@ -299,7 +298,7 @@ export default function CoursesPage() {
 
       if (cachedData) {
         const sortedData = (cachedData as Course[]).sort((a, b) =>
-          (a.display_order || 0) - (b.display_order || 0)
+          (a.order_index || 0) - (b.order_index || 0)
         );
         setCourses(sortedData);
         setLoading(false);
@@ -309,9 +308,9 @@ export default function CoursesPage() {
       // 最適化されたクエリでコースを取得
       const processedCourses = await fetchCoursesOptimized();
 
-      // display_orderでソート
+      // order_indexでソート
       const sortedCourses = (processedCourses as Course[]).sort((a, b) =>
-        (a.display_order || 0) - (b.display_order || 0)
+        (a.order_index || 0) - (b.order_index || 0)
       );
 
       // キャッシュに保存
@@ -336,10 +335,10 @@ export default function CoursesPage() {
 
     const newCourses = arrayMove(courses, oldIndex, newIndex);
 
-    // display_orderを更新
+    // order_indexを更新
     const updatedCourses = newCourses.map((course, index) => ({
       ...course,
-      display_order: index
+      order_index: index
     }));
 
     setCourses(updatedCourses);
@@ -353,10 +352,10 @@ export default function CoursesPage() {
     try {
       const coursesToUpdate = orderedCourses.map((course, index) => ({
         id: course.id,
-        display_order: index
+        order_index: index
       }));
 
-      const response = await fetch('/api/courses/update-order', {
+      const response = await fetch('/api/courses/reorder', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
