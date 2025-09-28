@@ -24,11 +24,11 @@ export async function PUT(request: NextRequest) {
     }
 
     // 各コースのorder_indexを更新
-    const updatePromises = courses.map((course: any, index: number) =>
+    const updatePromises = courses.map((course: any) =>
       supabase
         .from('courses')
         .update({
-          order_index: index,
+          order_index: course.order_index,
           updated_at: new Date().toISOString()
         })
         .eq('id', course.id)

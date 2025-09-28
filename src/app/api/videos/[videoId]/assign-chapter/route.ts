@@ -33,7 +33,9 @@ export async function PUT(
       return NextResponse.json({ error: courseError.message }, { status: 500 });
     }
 
-    const chapters = course?.metadata?.chapters || [];
+    // metadataがnullの場合の処理
+    const metadata = course?.metadata || { chapters: [] };
+    const chapters = metadata.chapters || [];
 
     // すべてのチャプターから該当動画IDを削除
     const updatedChapters = chapters.map((chapter: any) => ({
@@ -56,7 +58,7 @@ export async function PUT(
     const { error: updateError } = await supabase
       .from('courses')
       .update({
-        metadata: { ...course.metadata, chapters: updatedChapters },
+        metadata: { ...metadata, chapters: updatedChapters },
         updated_at: new Date().toISOString()
       })
       .eq('id', video.course_id);

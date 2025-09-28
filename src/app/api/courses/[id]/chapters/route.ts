@@ -17,7 +17,16 @@ export async function GET(
       .single();
 
     if (courseError) {
+      console.error('Error fetching course:', courseError);
       return NextResponse.json({ error: courseError.message }, { status: 500 });
+    }
+
+    // metadataがnullの場合、デフォルト値を設定
+    if (!course?.metadata) {
+      await supabase
+        .from('courses')
+        .update({ metadata: { chapters: [] } })
+        .eq('id', params.id);
     }
 
     // チャプター情報を取得（metadataから）
@@ -77,11 +86,15 @@ export async function POST(
       .single();
 
     if (courseError) {
+      console.error('Error fetching course for POST:', courseError);
       return NextResponse.json({ error: courseError.message }, { status: 500 });
     }
 
+    // metadataがnullの場合、初期化
+    const metadata = course?.metadata || { chapters: [] };
+
     // 新しいチャプターを作成
-    const chapters = course?.metadata?.chapters || [];
+    const chapters = metadata.chapters || [];
     const newChapter = {
       id: crypto.randomUUID(),
       title,
@@ -95,7 +108,7 @@ export async function POST(
     const { error: updateError } = await supabase
       .from('courses')
       .update({
-        metadata: { ...course.metadata, chapters },
+        metadata: { ...metadata, chapters },
         updated_at: new Date().toISOString()
       })
       .eq('id', params.id);

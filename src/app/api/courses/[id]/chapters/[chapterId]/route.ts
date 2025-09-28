@@ -21,8 +21,11 @@ export async function PUT(
       return NextResponse.json({ error: courseError.message }, { status: 500 });
     }
 
+    // metadataがnullの場合の処理
+    const metadata = course?.metadata || { chapters: [] };
+
     // チャプターを更新
-    const chapters = course?.metadata?.chapters || [];
+    const chapters = metadata.chapters || [];
     const updatedChapters = chapters.map((chapter: any) =>
       chapter.id === params.chapterId
         ? { ...chapter, title }
@@ -33,7 +36,7 @@ export async function PUT(
     const { error: updateError } = await supabase
       .from('courses')
       .update({
-        metadata: { ...course.metadata, chapters: updatedChapters },
+        metadata: { ...metadata, chapters: updatedChapters },
         updated_at: new Date().toISOString()
       })
       .eq('id', params.id);
@@ -70,8 +73,11 @@ export async function DELETE(
       return NextResponse.json({ error: courseError.message }, { status: 500 });
     }
 
+    // metadataがnullの場合の処理
+    const metadata = course?.metadata || { chapters: [] };
+
     // チャプターを削除
-    const chapters = course?.metadata?.chapters || [];
+    const chapters = metadata.chapters || [];
     const updatedChapters = chapters.filter(
       (chapter: any) => chapter.id !== params.chapterId
     );
@@ -80,7 +86,7 @@ export async function DELETE(
     const { error: updateError } = await supabase
       .from('courses')
       .update({
-        metadata: { ...course.metadata, chapters: updatedChapters },
+        metadata: { ...metadata, chapters: updatedChapters },
         updated_at: new Date().toISOString()
       })
       .eq('id', params.id);
