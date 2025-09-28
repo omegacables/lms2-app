@@ -43,18 +43,34 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
     try {
       setLoading(true);
       const { data: { session } } = await supabase.auth.getSession();
+
+      console.log('[SimpleChapterManager] Fetching chapters with session:', {
+        hasSession: !!session,
+        hasAccessToken: !!session?.access_token,
+        courseId: courseId
+      });
+
       const response = await fetch(`/api/chapters?course_id=${courseId}`, {
         headers: {
           'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
         },
       });
+
+      console.log('[SimpleChapterManager] Response status:', response.status);
+
       const data = await response.json();
 
       if (response.ok && data.chapters) {
         setChapters(data.chapters);
+        console.log('[SimpleChapterManager] Chapters loaded:', data.chapters.length);
+      } else {
+        console.error('[SimpleChapterManager] Error response:', data);
+        if (response.status === 401) {
+          alert('認証エラー: 再度ログインしてください');
+        }
       }
     } catch (error) {
-      console.error('Error fetching chapters:', error);
+      console.error('[SimpleChapterManager] Error fetching chapters:', error);
     } finally {
       setLoading(false);
     }
@@ -84,6 +100,14 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
     try {
       setLoading(true);
       const { data: { session } } = await supabase.auth.getSession();
+
+      console.log('[SimpleChapterManager] Creating chapter with session:', {
+        hasSession: !!session,
+        hasAccessToken: !!session?.access_token,
+        courseId: courseId,
+        title: newChapterTitle
+      });
+
       const response = await fetch('/api/chapters', {
         method: 'POST',
         headers: {
@@ -96,6 +120,8 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
         })
       });
 
+      console.log('[SimpleChapterManager] Create response status:', response.status);
+
       const data = await response.json();
 
       if (response.ok) {
@@ -103,10 +129,11 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
         await fetchChapters();
         alert('章を追加しました');
       } else {
+        console.error('[SimpleChapterManager] Create error:', data);
         alert(`エラー: ${data.error}`);
       }
     } catch (error) {
-      console.error('Error creating chapter:', error);
+      console.error('[SimpleChapterManager] Error creating chapter:', error);
       alert('章の追加に失敗しました');
     } finally {
       setLoading(false);
