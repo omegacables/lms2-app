@@ -7,7 +7,8 @@ export async function PUT(
   { params }: { params: { videoId: string } }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     const { chapterId } = await request.json();
     const videoId = parseInt(params.videoId);
 

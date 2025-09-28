@@ -4,7 +4,8 @@ import { cookies } from 'next/headers';
 
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     const { courses } = await request.json();
 
     // 権限チェック

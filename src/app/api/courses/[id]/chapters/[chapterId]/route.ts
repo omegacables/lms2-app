@@ -7,7 +7,8 @@ export async function PUT(
   { params }: { params: { id: string; chapterId: string } }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     const { title } = await request.json();
 
     // 現在のコース情報を取得
@@ -60,7 +61,8 @@ export async function DELETE(
   { params }: { params: { id: string; chapterId: string } }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
 
     // 現在のコース情報を取得
     const { data: course, error: courseError } = await supabase
