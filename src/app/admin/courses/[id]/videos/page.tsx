@@ -131,6 +131,7 @@ export default function CourseVideosPage() {
     try {
       setLoading(true);
 
+      // 動画データを取得
       const { data: videosData, error: videosError } = await supabase
         .from('videos')
         .select('*')
@@ -142,10 +143,30 @@ export default function CourseVideosPage() {
         return;
       }
 
-      console.log('取得した動画データ:', videosData);
-      console.log('動画の時間情報:', videosData?.map(v => ({ id: v.id, title: v.title, duration: v.duration })));
+      // コースのmetadataを取得してチャプター情報を含める
+      const { data: courseData, error: courseError } = await supabase
+        .from('courses')
+        .select('metadata')
+        .eq('id', courseId)
+        .single();
 
-      setVideos(videosData || []);
+      if (!courseError && courseData?.metadata?.chapters) {
+        // 各動画にchapter_idを割り当て
+        const videosWithChapter = videosData?.map(video => {
+          const chapterWithVideo = courseData.metadata.chapters.find(
+            (chapter: any) => chapter.video_ids?.includes(video.id)
+          );
+          return {
+            ...video,
+            chapter_id: chapterWithVideo?.id || null
+          };
+        }) || [];
+
+        console.log('チャプター情報付き動画データ:', videosWithChapter);
+        setVideos(videosWithChapter);
+      } else {
+        setVideos(videosData || []);
+      }
     } catch (error) {
       console.error('動画取得エラー:', error);
     } finally {
@@ -328,13 +349,17 @@ export default function CourseVideosPage() {
 
   const handleAssignVideoToChapter = async (videoId: string, chapterId: string | null) => {
     try {
-      const { error } = await supabase
-        .from('videos')
-        .update({ chapter_id: chapterId })
-        .eq('id', videoId);
+      const response = await fetch(`/api/videos/${videoId}/assign-chapter`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ chapterId }),
+      });
 
-      if (error) {
-        throw error;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'チャプターの割り当てに失敗しました');
       }
 
       await fetchVideos();
