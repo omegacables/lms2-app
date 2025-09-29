@@ -33,6 +33,7 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
   const [loading, setLoading] = useState(false);
   const [newChapterTitle, setNewChapterTitle] = useState('');
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
+  const [draggedChapter, setDraggedChapter] = useState<Chapter | null>(null);
 
   useEffect(() => {
     fetchChapters();
@@ -190,6 +191,14 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
   const addVideoToChapter = async (chapterId: number, videoId: number) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
+
+      console.log('[SimpleChapterManager] Adding video to chapter:', {
+        chapterId,
+        videoId,
+        hasSession: !!session,
+        hasAccessToken: !!session?.access_token
+      });
+
       const response = await fetch(`/api/chapters/${chapterId}/videos`, {
         method: 'POST',
         headers: {
@@ -199,12 +208,22 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
         body: JSON.stringify({ video_id: videoId })
       });
 
+      const data = await response.json();
+
+      console.log('[SimpleChapterManager] Add video response:', {
+        status: response.status,
+        data
+      });
+
       if (response.ok) {
         await fetchChapters();
         alert('動画を章に追加しました');
+      } else {
+        console.error('[SimpleChapterManager] Error response:', data);
+        alert(`エラー: ${data.error}${data.details ? '\n詳細: ' + data.details : ''}`);
       }
     } catch (error) {
-      console.error('Error adding video:', error);
+      console.error('[SimpleChapterManager] Error adding video:', error);
       alert('動画の追加に失敗しました');
     }
   };
@@ -234,6 +253,56 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
       )
     );
     return courseVideos.filter(v => !assignedVideoIds.has(v.id));
+  };
+
+  const handleDragStart = (chapter: Chapter) => {
+    setDraggedChapter(chapter);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = async (targetChapter: Chapter) => {
+    if (!draggedChapter || draggedChapter.id === targetChapter.id) {
+      setDraggedChapter(null);
+      return;
+    }
+
+    const oldIndex = chapters.findIndex(c => c.id === draggedChapter.id);
+    const newIndex = chapters.findIndex(c => c.id === targetChapter.id);
+
+    const reorderedChapters = [...chapters];
+    reorderedChapters.splice(oldIndex, 1);
+    reorderedChapters.splice(newIndex, 0, draggedChapter);
+
+    // 表示順序を更新
+    const updatedChapters = reorderedChapters.map((ch, index) => ({
+      ...ch,
+      display_order: index
+    }));
+
+    setChapters(updatedChapters);
+    setDraggedChapter(null);
+
+    // サーバーに順序を保存
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      await fetch('/api/chapters', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
+        },
+        body: JSON.stringify({
+          chapters: updatedChapters.map(ch => ({ id: ch.id, display_order: ch.display_order }))
+        })
+      });
+    } catch (error) {
+      console.error('Error updating chapter order:', error);
+      // エラー時は元に戻す
+      fetchChapters();
+    }
   };
 
   return (
@@ -280,10 +349,18 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
           </div>
         ) : (
           chapters.map((chapter) => (
-            <div key={chapter.id} className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+            <div
+              key={chapter.id}
+              className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow cursor-move transition-opacity"
+              draggable
+              onDragStart={() => handleDragStart(chapter)}
+              onDragOver={handleDragOver}
+              onDrop={() => handleDrop(chapter)}
+              style={{ opacity: draggedChapter?.id === chapter.id ? 0.5 : 1 }}
+            >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <GripVertical className="w-5 h-5 text-gray-400 dark:text-gray-500" />
+                  <GripVertical className="w-5 h-5 text-gray-400 dark:text-gray-500 cursor-grab active:cursor-grabbing" />
                   <input
                     type="text"
                     value={chapter.title}

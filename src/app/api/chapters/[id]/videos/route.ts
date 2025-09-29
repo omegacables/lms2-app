@@ -70,6 +70,12 @@ export async function POST(
       ? (maxOrderData[0].display_order || 0) + 1
       : 0;
 
+    console.log('Adding video to chapter:', {
+      chapter_id: parseInt(id),
+      video_id: parseInt(video_id),
+      display_order: nextOrder
+    });
+
     // チャプターに動画を追加
     const { data, error } = await supabase
       .from('chapter_videos')
@@ -81,17 +87,23 @@ export async function POST(
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error inserting into chapter_videos:', error);
+      throw error;
+    }
 
     return NextResponse.json({
       success: true,
       data
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error adding video to chapter:', error);
     return NextResponse.json(
-      { error: '動画の追加に失敗しました' },
+      {
+        error: '動画の追加に失敗しました',
+        details: error?.message || String(error)
+      },
       { status: 500 }
     );
   }
