@@ -407,7 +407,7 @@ export default function AdminDashboard() {
                       </div>
                       <div className="flex items-center">
                         <ArrowTrendingUpIcon className="h-4 w-4 text-green-500 mr-1" />
-                        <span className="text-sm text-green-600">+{Math.floor(Math.random() * 20 + 5)}</span>
+                        <span className="text-sm text-green-600">+{course.enrollments}</span>
                       </div>
                     </div>
                   ))}
@@ -444,8 +444,8 @@ export default function AdminDashboard() {
                             </>
                           )}
                         </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          {new Date(activity.timestamp).toLocaleString('ja-JP')}
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1" suppressHydrationWarning>
+                          {typeof window !== 'undefined' && new Date(activity.timestamp).toLocaleString('ja-JP')}
                         </p>
                       </div>
                     </div>
