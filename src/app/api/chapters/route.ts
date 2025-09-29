@@ -36,28 +36,47 @@ export async function GET(request: NextRequest) {
 
     if (courseId) {
       // 特定コースのチャプター取得
-      const { data: chapters, error } = await supabase
+      // まずチャプターのみを取得
+      const { data: chapters, error: chaptersError } = await supabase
         .from('chapters')
-        .select(`
-          *,
-          chapter_videos (
-            id,
-            video_id,
-            display_order,
-            videos (
-              id,
-              title,
-              duration,
-              thumbnail_url
-            )
-          )
-        `)
+        .select('*')
         .eq('course_id', courseId)
         .order('display_order', { ascending: true });
 
-      if (error) throw error;
+      if (chaptersError) {
+        console.error('Error fetching chapters:', chaptersError);
+        throw chaptersError;
+      }
 
-      return NextResponse.json({ chapters: chapters || [] });
+      // 各チャプターに関連する動画を取得
+      const chaptersWithVideos = await Promise.all(
+        (chapters || []).map(async (chapter) => {
+          const { data: chapterVideos, error: videosError } = await supabase
+            .from('chapter_videos')
+            .select(`
+              id,
+              video_id,
+              display_order,
+              videos (
+                id,
+                title,
+                duration,
+                thumbnail_url
+              )
+            `)
+            .eq('chapter_id', chapter.id)
+            .order('display_order', { ascending: true });
+
+          if (videosError) {
+            console.error(`Error fetching videos for chapter ${chapter.id}:`, videosError);
+            return { ...chapter, chapter_videos: [] };
+          }
+
+          return { ...chapter, chapter_videos: chapterVideos || [] };
+        })
+      );
+
+      return NextResponse.json({ chapters: chaptersWithVideos });
     } else {
       // 全チャプター取得
       const { data: chapters, error } = await supabase
