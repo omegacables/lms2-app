@@ -130,27 +130,43 @@ export async function POST(
     }
 
     // チャプターに動画を追加
-    const { data, error } = await supabase
+    console.log('Attempting to insert into chapter_videos:', {
+      chapter_id: chapterId,
+      video_id: videoIdNum,
+      display_order: nextOrder
+    });
+
+    const insertResult = await supabase
       .from('chapter_videos')
       .insert({
         chapter_id: chapterId,
         video_id: videoIdNum,
         display_order: nextOrder
       })
-      .select()
-      .single();
+      .select();
 
-    if (error) {
-      console.error('Error inserting into chapter_videos:', error);
-      console.error('Error details:', JSON.stringify(error, null, 2));
+    console.log('Insert result (without single()):', {
+      data: insertResult.data,
+      error: insertResult.error,
+      status: insertResult.status,
+      statusText: insertResult.statusText
+    });
+
+    if (insertResult.error) {
+      console.error('Error inserting into chapter_videos:', insertResult.error);
+      console.error('Error type:', typeof insertResult.error);
+      console.error('Error keys:', Object.keys(insertResult.error));
+      console.error('Error details:', JSON.stringify(insertResult.error, null, 2));
       return NextResponse.json(
         {
           error: '動画の追加に失敗しました',
-          details: JSON.stringify(error, null, 2) || error.toString()
+          details: `Error: ${JSON.stringify(insertResult.error, null, 2) || insertResult.error.toString()}, Status: ${insertResult.status}`
         },
         { status: 500 }
       );
     }
+
+    const data = insertResult.data?.[0];
 
     return NextResponse.json({
       success: true,
