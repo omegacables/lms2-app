@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
 // POST: 新規チャプター作成
 export async function POST(request: NextRequest) {
   try {
-    const { course_id, title, description } = await request.json();
+    const { course_id, title } = await request.json();
 
     if (!course_id || !title) {
       return NextResponse.json(
@@ -171,17 +171,15 @@ export async function POST(request: NextRequest) {
     console.log('Creating chapter with data:', {
       course_id: parseInt(course_id),
       title,
-      description: description || null,
       display_order: nextOrder
     });
 
-    // チャプターを作成
+    // チャプターを作成（descriptionカラムは存在しない可能性があるため除外）
     const { data: chapter, error } = await supabase
       .from('chapters')
       .insert({
         course_id: parseInt(course_id),
         title,
-        description: description || null,
         display_order: nextOrder
       })
       .select()
