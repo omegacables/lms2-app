@@ -4,9 +4,11 @@ import { createClient } from '@supabase/supabase-js';
 // GET: 個別チャプター取得
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
+    const { id } = 'then' in params ? await params : params;
+
     // Authorizationヘッダーからトークンを取得
     const authHeader = request.headers.get('authorization');
     const token = authHeader?.replace('Bearer ', '');
@@ -50,7 +52,7 @@ export async function GET(
           )
         )
       `)
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     if (error) throw error;
@@ -69,9 +71,10 @@ export async function GET(
 // PUT: チャプター更新
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
+    const { id } = 'then' in params ? await params : params;
     const { title, description, display_order } = await request.json();
 
     // Authorizationヘッダーからトークンを取得
@@ -126,7 +129,7 @@ export async function PUT(
     const { data: chapter, error } = await supabase
       .from('chapters')
       .update(updateData)
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single();
 
@@ -149,9 +152,11 @@ export async function PUT(
 // DELETE: チャプター削除
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
+    const { id } = 'then' in params ? await params : params;
+
     // Authorizationヘッダーからトークンを取得
     const authHeader = request.headers.get('authorization');
     const token = authHeader?.replace('Bearer ', '');
@@ -196,7 +201,7 @@ export async function DELETE(
     const { error } = await supabase
       .from('chapters')
       .delete()
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (error) throw error;
 

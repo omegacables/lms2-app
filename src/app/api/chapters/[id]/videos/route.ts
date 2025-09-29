@@ -4,9 +4,10 @@ import { createClient } from '@supabase/supabase-js';
 // POST: チャプターに動画を追加
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
+    const { id } = 'then' in params ? await params : params;
     const { video_id } = await request.json();
 
     if (!video_id) {
@@ -61,7 +62,7 @@ export async function POST(
     const { data: maxOrderData } = await supabase
       .from('chapter_videos')
       .select('display_order')
-      .eq('chapter_id', params.id)
+      .eq('chapter_id', id)
       .order('display_order', { ascending: false })
       .limit(1);
 
@@ -73,7 +74,7 @@ export async function POST(
     const { data, error } = await supabase
       .from('chapter_videos')
       .insert({
-        chapter_id: parseInt(params.id),
+        chapter_id: parseInt(id),
         video_id: parseInt(video_id),
         display_order: nextOrder
       })
@@ -99,9 +100,10 @@ export async function POST(
 // DELETE: チャプターから動画を削除
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
+    const { id } = 'then' in params ? await params : params;
     const { searchParams } = new URL(request.url);
     const videoId = searchParams.get('video_id');
 
@@ -156,7 +158,7 @@ export async function DELETE(
     const { error } = await supabase
       .from('chapter_videos')
       .delete()
-      .eq('chapter_id', params.id)
+      .eq('chapter_id', id)
       .eq('video_id', videoId);
 
     if (error) throw error;
@@ -178,9 +180,10 @@ export async function DELETE(
 // PUT: チャプター内の動画順序を更新
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
+    const { id } = 'then' in params ? await params : params;
     const { videos } = await request.json();
 
     if (!Array.isArray(videos)) {
@@ -236,7 +239,7 @@ export async function PUT(
       supabase
         .from('chapter_videos')
         .update({ display_order: index })
-        .eq('chapter_id', params.id)
+        .eq('chapter_id', id)
         .eq('video_id', video.video_id)
     );
 
