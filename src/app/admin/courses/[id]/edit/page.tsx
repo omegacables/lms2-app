@@ -527,6 +527,13 @@ export default function EditCoursePage() {
                     動画を管理
                   </Link>
                   <Link
+                    href={`/admin/courses/${courseId}/chapters`}
+                    className="w-full inline-flex items-center justify-center px-4 py-2 border border-blue-300 dark:border-blue-600 rounded-md text-sm font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30"
+                  >
+                    <BookOpenIcon className="h-4 w-4 mr-2" />
+                    章を管理
+                  </Link>
+                  <Link
                     href="/admin/courses"
                     className="w-full inline-flex items-center justify-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-neutral-900 hover:bg-gray-50 dark:hover:bg-gray-700"
                   >

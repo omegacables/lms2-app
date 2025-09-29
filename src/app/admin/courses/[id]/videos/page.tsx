@@ -28,7 +28,8 @@ import {
   DocumentDuplicateIcon,
   DocumentTextIcon,
   DocumentIcon,
-  AcademicCapIcon
+  AcademicCapIcon,
+  BookOpenIcon
 } from '@heroicons/react/24/outline';
 
 interface Course {
@@ -372,10 +373,18 @@ export default function CourseVideosPage() {
                     </p>
                   </div>
                 </div>
-                <Button onClick={() => setShowAddModal(true)}>
-                  <PlusIcon className="h-4 w-4 mr-2" />
-                  動画を追加
-                </Button>
+                <div className="flex gap-2">
+                  <Link href={`/admin/courses/${courseId}/chapters`}>
+                    <Button variant="outline">
+                      <BookOpenIcon className="h-4 w-4 mr-2" />
+                      章を管理
+                    </Button>
+                  </Link>
+                  <Button onClick={() => setShowAddModal(true)}>
+                    <PlusIcon className="h-4 w-4 mr-2" />
+                    動画を追加
+                  </Button>
+                </div>
               </div>
             </div>
 
