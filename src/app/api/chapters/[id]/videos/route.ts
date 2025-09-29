@@ -85,6 +85,42 @@ export async function POST(
       id_type: typeof chapterId
     });
 
+    // まずチャプターが存在するか確認
+    const { data: chapterExists, error: chapterCheckError } = await supabase
+      .from('chapters')
+      .select('id')
+      .eq('id', chapterId)
+      .single();
+
+    if (chapterCheckError) {
+      console.error('Chapter not found:', chapterCheckError);
+      return NextResponse.json(
+        {
+          error: 'チャプターが見つかりません',
+          details: `Chapter ID: ${chapterId}, Error: ${chapterCheckError.message}`
+        },
+        { status: 404 }
+      );
+    }
+
+    // 動画が存在するか確認
+    const { data: videoExists, error: videoCheckError } = await supabase
+      .from('videos')
+      .select('id')
+      .eq('id', videoIdNum)
+      .single();
+
+    if (videoCheckError) {
+      console.error('Video not found:', videoCheckError);
+      return NextResponse.json(
+        {
+          error: '動画が見つかりません',
+          details: `Video ID: ${videoIdNum}, Error: ${videoCheckError.message}`
+        },
+        { status: 404 }
+      );
+    }
+
     // チャプターに動画を追加
     const { data, error } = await supabase
       .from('chapter_videos')
@@ -98,7 +134,13 @@ export async function POST(
 
     if (error) {
       console.error('Error inserting into chapter_videos:', error);
-      throw error;
+      return NextResponse.json(
+        {
+          error: '動画の追加に失敗しました',
+          details: `Insert error: ${error.message} (Code: ${error.code}, Hint: ${error.hint})`
+        },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({
