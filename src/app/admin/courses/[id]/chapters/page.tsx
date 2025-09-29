@@ -29,14 +29,18 @@ export default function ChapterManagementPage() {
 
   const fetchCourse = async () => {
     try {
-      const response = await fetch(`/api/courses/${courseId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setCourse(data);
-      } else {
-        console.error('Failed to fetch course:', response.status, response.statusText);
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Error data:', errorData);
+      // Supabaseを直接使用してコース情報を取得
+      const { supabase } = await import('@/lib/database/supabase');
+      const { data: courseData, error } = await supabase
+        .from('courses')
+        .select('id, title, description')
+        .eq('id', courseId)
+        .single();
+
+      if (error) {
+        console.error('Failed to fetch course:', error);
+      } else if (courseData) {
+        setCourse(courseData);
       }
     } catch (error) {
       console.error('Error fetching course:', error);
