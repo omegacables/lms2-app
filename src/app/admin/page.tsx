@@ -55,6 +55,12 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [hasPermission, setHasPermission] = useState(true);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [mounted, setMounted] = useState(false);
+
+  // マウント状態を管理
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // 管理者チェックをuseEffectで実行
   useEffect(() => {
@@ -330,7 +336,7 @@ export default function AdminDashboard() {
           {/* クイックアクション */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
             <Link href="/admin/students" className="block">
-              <div className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 rounded-lg border p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-center">
+              <div className="bg-white dark:bg-neutral-900 rounded-lg border p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-center">
                 <UsersIcon className="h-8 w-8 text-blue-600 mx-auto mb-2" />
                 <h3 className="font-semibold text-gray-900 dark:text-white">生徒管理</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400">生徒の管理・学習状況</p>
@@ -444,8 +450,14 @@ export default function AdminDashboard() {
                             </>
                           )}
                         </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1" suppressHydrationWarning>
-                          {typeof window !== 'undefined' && new Date(activity.timestamp).toLocaleString('ja-JP')}
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          {mounted && activity.timestamp ? new Date(activity.timestamp).toLocaleString('ja-JP', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          }) : ''}
                         </p>
                       </div>
                     </div>
