@@ -368,6 +368,7 @@ export default function CoursesPage() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({ courses: coursesToUpdate }),
       });
 
