@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/database/supabase';
-import { cookies } from 'next/headers';
+import { createClient } from '@supabase/supabase-js';
 
 // POST: チャプターに動画を追加
 export async function POST(
@@ -17,8 +16,26 @@ export async function POST(
       );
     }
 
-    const cookieStore = await cookies();
-    const supabase = createServerSupabaseClient(cookieStore);
+    // Authorizationヘッダーからトークンを取得
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.replace('Bearer ', '');
+
+    if (!token) {
+      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+    }
+
+    // トークンを使ってSupabaseクライアントを作成
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      }
+    );
 
     // 認証チェック
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -95,8 +112,26 @@ export async function DELETE(
       );
     }
 
-    const cookieStore = await cookies();
-    const supabase = createServerSupabaseClient(cookieStore);
+    // Authorizationヘッダーからトークンを取得
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.replace('Bearer ', '');
+
+    if (!token) {
+      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+    }
+
+    // トークンを使ってSupabaseクライアントを作成
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      }
+    );
 
     // 認証チェック
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -155,8 +190,26 @@ export async function PUT(
       );
     }
 
-    const cookieStore = await cookies();
-    const supabase = createServerSupabaseClient(cookieStore);
+    // Authorizationヘッダーからトークンを取得
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.replace('Bearer ', '');
+
+    if (!token) {
+      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+    }
+
+    // トークンを使ってSupabaseクライアントを作成
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      }
+    );
 
     // 認証チェック
     const { data: { user }, error: authError } = await supabase.auth.getUser();

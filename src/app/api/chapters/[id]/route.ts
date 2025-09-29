@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/database/supabase';
-import { cookies } from 'next/headers';
+import { createClient } from '@supabase/supabase-js';
 
 // GET: 個別チャプター取得
 export async function GET(
@@ -8,8 +7,26 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerSupabaseClient(cookieStore);
+    // Authorizationヘッダーからトークンを取得
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.replace('Bearer ', '');
+
+    if (!token) {
+      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+    }
+
+    // トークンを使ってSupabaseクライアントを作成
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      }
+    );
 
     // 認証チェック
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -56,8 +73,27 @@ export async function PUT(
 ) {
   try {
     const { title, description, display_order } = await request.json();
-    const cookieStore = await cookies();
-    const supabase = createServerSupabaseClient(cookieStore);
+
+    // Authorizationヘッダーからトークンを取得
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.replace('Bearer ', '');
+
+    if (!token) {
+      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+    }
+
+    // トークンを使ってSupabaseクライアントを作成
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      }
+    );
 
     // 認証チェック
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -116,8 +152,26 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerSupabaseClient(cookieStore);
+    // Authorizationヘッダーからトークンを取得
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.replace('Bearer ', '');
+
+    if (!token) {
+      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+    }
+
+    // トークンを使ってSupabaseクライアントを作成
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      }
+    );
 
     // 認証チェック
     const { data: { user }, error: authError } = await supabase.auth.getUser();
