@@ -86,36 +86,44 @@ export async function POST(
     });
 
     // まずチャプターが存在するか確認
+    console.log('Checking if chapter exists:', chapterId);
     const { data: chapterExists, error: chapterCheckError } = await supabase
       .from('chapters')
       .select('id')
       .eq('id', chapterId)
       .single();
 
+    console.log('Chapter check result:', { chapterExists, chapterCheckError });
+
     if (chapterCheckError) {
       console.error('Chapter not found:', chapterCheckError);
+      console.error('Chapter error details:', JSON.stringify(chapterCheckError, null, 2));
       return NextResponse.json(
         {
           error: 'チャプターが見つかりません',
-          details: `Chapter ID: ${chapterId}, Error: ${chapterCheckError.message}`
+          details: `Chapter ID: ${chapterId}, Error: ${JSON.stringify(chapterCheckError, null, 2)}`
         },
         { status: 404 }
       );
     }
 
     // 動画が存在するか確認
+    console.log('Checking if video exists:', videoIdNum);
     const { data: videoExists, error: videoCheckError } = await supabase
       .from('videos')
       .select('id')
       .eq('id', videoIdNum)
       .single();
 
+    console.log('Video check result:', { videoExists, videoCheckError });
+
     if (videoCheckError) {
       console.error('Video not found:', videoCheckError);
+      console.error('Video error details:', JSON.stringify(videoCheckError, null, 2));
       return NextResponse.json(
         {
           error: '動画が見つかりません',
-          details: `Video ID: ${videoIdNum}, Error: ${videoCheckError.message}`
+          details: `Video ID: ${videoIdNum}, Error: ${JSON.stringify(videoCheckError, null, 2)}`
         },
         { status: 404 }
       );
@@ -134,10 +142,11 @@ export async function POST(
 
     if (error) {
       console.error('Error inserting into chapter_videos:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
       return NextResponse.json(
         {
           error: '動画の追加に失敗しました',
-          details: `Insert error: ${error.message} (Code: ${error.code}, Hint: ${error.hint})`
+          details: JSON.stringify(error, null, 2) || error.toString()
         },
         { status: 500 }
       );
