@@ -34,6 +34,7 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
   const [newChapterTitle, setNewChapterTitle] = useState('');
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   const [draggedChapter, setDraggedChapter] = useState<Chapter | null>(null);
+  const [draggedVideo, setDraggedVideo] = useState<Video | null>(null);
 
   useEffect(() => {
     fetchChapters();
@@ -305,6 +306,25 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
     }
   };
 
+  const handleVideoDragStart = (video: Video) => {
+    setDraggedVideo(video);
+  };
+
+  const handleVideoDrop = async (targetChapter: Chapter) => {
+    if (!draggedVideo) {
+      setDraggedVideo(null);
+      return;
+    }
+
+    console.log('[SimpleChapterManager] Dropping video:', {
+      videoId: draggedVideo.id,
+      chapterId: targetChapter.id
+    });
+
+    await addVideoToChapter(targetChapter.id, draggedVideo.id);
+    setDraggedVideo(null);
+  };
+
   return (
     <div className="space-y-6">
       {/* ヘッダー */}
@@ -355,8 +375,17 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
               draggable
               onDragStart={() => handleDragStart(chapter)}
               onDragOver={handleDragOver}
-              onDrop={() => handleDrop(chapter)}
-              style={{ opacity: draggedChapter?.id === chapter.id ? 0.5 : 1 }}
+              onDrop={(e) => {
+                if (draggedVideo) {
+                  handleVideoDrop(chapter);
+                } else {
+                  handleDrop(chapter);
+                }
+              }}
+              style={{
+                opacity: draggedChapter?.id === chapter.id ? 0.5 : 1,
+                border: draggedVideo ? '2px dashed #3b82f6' : 'none'
+              }}
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
@@ -444,11 +473,18 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
 
       {/* 未割り当て動画 */}
       <div className="bg-yellow-50 dark:bg-yellow-900/30 p-4 rounded-lg">
-        <h3 className="font-medium mb-2 text-gray-900 dark:text-white">未割り当ての動画</h3>
+        <h3 className="font-medium mb-2 text-gray-900 dark:text-white">未割り当ての動画（章にドラッグ&ドロップ可能）</h3>
         <div className="space-y-1">
           {getUnassignedVideos().map(video => (
-            <div key={video.id} className="text-sm p-2 bg-white dark:bg-gray-700 rounded text-gray-900 dark:text-gray-100">
-              {video.title}
+            <div
+              key={video.id}
+              draggable
+              onDragStart={() => handleVideoDragStart(video)}
+              onDragEnd={() => setDraggedVideo(null)}
+              className="text-sm p-2 bg-white dark:bg-gray-700 rounded text-gray-900 dark:text-gray-100 cursor-move hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+              style={{ opacity: draggedVideo?.id === video.id ? 0.5 : 1 }}
+            >
+              📹 {video.title}
             </div>
           ))}
           {getUnassignedVideos().length === 0 && (

@@ -74,7 +74,7 @@ export async function POST(
       ? (maxOrderData[0].display_order || 0) + 1
       : 0;
 
-    // IDの型をそのまま使用（型変換なし）
+    // IDの型をそのまま使用（UUIDとINTEGERの両方に対応）
     const chapterId = id;
     const videoIdNum = parseInt(video_id);
 
@@ -85,88 +85,45 @@ export async function POST(
       id_type: typeof chapterId
     });
 
-    // まずチャプターが存在するか確認
-    console.log('Checking if chapter exists:', chapterId);
-    const { data: chapterExists, error: chapterCheckError } = await supabase
-      .from('chapters')
-      .select('id')
-      .eq('id', chapterId)
-      .single();
-
-    console.log('Chapter check result:', { chapterExists, chapterCheckError });
-
-    if (chapterCheckError) {
-      console.error('Chapter not found:', chapterCheckError);
-      console.error('Chapter error details:', JSON.stringify(chapterCheckError, null, 2));
-      return NextResponse.json(
-        {
-          error: 'チャプターが見つかりません',
-          details: `Chapter ID: ${chapterId}, Error: ${JSON.stringify(chapterCheckError, null, 2)}`
-        },
-        { status: 404 }
-      );
-    }
-
-    // 動画が存在するか確認
-    console.log('Checking if video exists:', videoIdNum);
-    const { data: videoExists, error: videoCheckError } = await supabase
-      .from('videos')
-      .select('id')
-      .eq('id', videoIdNum)
-      .single();
-
-    console.log('Video check result:', { videoExists, videoCheckError });
-
-    if (videoCheckError) {
-      console.error('Video not found:', videoCheckError);
-      console.error('Video error details:', JSON.stringify(videoCheckError, null, 2));
-      return NextResponse.json(
-        {
-          error: '動画が見つかりません',
-          details: `Video ID: ${videoIdNum}, Error: ${JSON.stringify(videoCheckError, null, 2)}`
-        },
-        { status: 404 }
-      );
-    }
-
-    // チャプターに動画を追加
+    // チャプターに動画を追加（直接INSERTを実行）
     console.log('Attempting to insert into chapter_videos:', {
       chapter_id: chapterId,
       video_id: videoIdNum,
       display_order: nextOrder
     });
 
-    const insertResult = await supabase
+    const { data, error, status, statusText } = await supabase
       .from('chapter_videos')
       .insert({
         chapter_id: chapterId,
         video_id: videoIdNum,
         display_order: nextOrder
       })
-      .select();
+      .select()
+      .maybeSingle();
 
-    console.log('Insert result (without single()):', {
-      data: insertResult.data,
-      error: insertResult.error,
-      status: insertResult.status,
-      statusText: insertResult.statusText
+    console.log('Insert result:', {
+      hasData: !!data,
+      hasError: !!error,
+      status,
+      statusText,
+      errorCode: error?.code,
+      errorMessage: error?.message,
+      errorDetails: error?.details
     });
 
-    if (insertResult.error) {
-      console.error('Error inserting into chapter_videos:', insertResult.error);
-      console.error('Error type:', typeof insertResult.error);
-      console.error('Error keys:', Object.keys(insertResult.error));
-      console.error('Error details:', JSON.stringify(insertResult.error, null, 2));
+    if (error) {
+      console.error('Error inserting into chapter_videos:', error);
       return NextResponse.json(
         {
           error: '動画の追加に失敗しました',
-          details: `Error: ${JSON.stringify(insertResult.error, null, 2) || insertResult.error.toString()}, Status: ${insertResult.status}`
+          details: error.message || error.details || `Status: ${status}`,
+          code: error.code,
+          hint: error.hint
         },
         { status: 500 }
       );
     }
-
-    const data = insertResult.data?.[0];
 
     return NextResponse.json({
       success: true,
