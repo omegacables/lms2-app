@@ -239,22 +239,22 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
   return (
     <div className="space-y-6">
       {/* ヘッダー */}
-      <div className="bg-white p-4 rounded-lg shadow">
-        <h2 className="text-lg font-semibold mb-2">章管理 - {courseTitle}</h2>
-        <p className="text-sm text-gray-600">
+      <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+        <h2 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">章管理 - {courseTitle}</h2>
+        <p className="text-sm text-gray-600 dark:text-gray-400">
           コースID: {courseId} | 章数: {chapters.length} | 動画数: {courseVideos.length}
         </p>
       </div>
 
       {/* 新規章追加 */}
-      <div className="bg-white p-4 rounded-lg shadow">
+      <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
         <div className="flex gap-2">
           <input
             type="text"
             value={newChapterTitle}
             onChange={(e) => setNewChapterTitle(e.target.value)}
             placeholder="新しい章のタイトル"
-            className="flex-1 px-3 py-2 border rounded-md"
+            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
             disabled={loading}
           />
           <button
@@ -272,31 +272,31 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
       <div className="space-y-4">
         {loading ? (
           <div className="text-center py-8">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-gray-100"></div>
           </div>
         ) : chapters.length === 0 ? (
-          <div className="bg-gray-50 p-8 rounded-lg text-center">
-            <p className="text-gray-500">章がまだありません</p>
+          <div className="bg-gray-50 dark:bg-gray-800 p-8 rounded-lg text-center">
+            <p className="text-gray-500 dark:text-gray-400">章がまだありません</p>
           </div>
         ) : (
           chapters.map((chapter) => (
-            <div key={chapter.id} className="bg-white p-4 rounded-lg shadow">
+            <div key={chapter.id} className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <GripVertical className="w-5 h-5 text-gray-400" />
+                  <GripVertical className="w-5 h-5 text-gray-400 dark:text-gray-500" />
                   <input
                     type="text"
                     value={chapter.title}
                     onChange={(e) => updateChapter(chapter.id, e.target.value)}
-                    className="font-medium text-lg border-b border-transparent hover:border-gray-300 focus:border-blue-500 outline-none px-1"
+                    className="font-medium text-lg border-b border-transparent hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-500 outline-none px-1 bg-transparent text-gray-900 dark:text-white"
                   />
-                  <span className="text-sm text-gray-500">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
                     (ID: {chapter.id}, 順序: {chapter.display_order})
                   </span>
                 </div>
                 <button
                   onClick={() => deleteChapter(chapter.id)}
-                  className="text-red-500 hover:text-red-700"
+                  className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                 >
                   <Trash2 className="w-5 h-5" />
                 </button>
@@ -304,18 +304,18 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
 
               {/* 章内の動画 */}
               <div className="ml-7 mt-2">
-                <div className="text-sm text-gray-600 mb-1">
+                <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
                   動画: {chapter.chapter_videos?.length || 0}件
                 </div>
                 <div className="space-y-1">
                   {chapter.chapter_videos?.map((cv: any) => (
-                    <div key={cv.id} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-                      <span className="text-sm">
+                    <div key={cv.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 p-2 rounded">
+                      <span className="text-sm text-gray-900 dark:text-gray-100">
                         {cv.videos?.title || `動画ID: ${cv.video_id}`}
                       </span>
                       <button
                         onClick={() => removeVideoFromChapter(chapter.id, cv.video_id)}
-                        className="text-xs text-red-500 hover:text-red-700"
+                        className="text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                       >
                         削除
                       </button>
@@ -325,8 +325,8 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
 
                 {/* 動画を追加 */}
                 {selectedChapter?.id === chapter.id ? (
-                  <div className="mt-2 p-2 bg-blue-50 rounded">
-                    <div className="text-sm font-medium mb-1">動画を追加:</div>
+                  <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/30 rounded">
+                    <div className="text-sm font-medium mb-1 text-gray-900 dark:text-white">動画を追加:</div>
                     <div className="space-y-1">
                       {getUnassignedVideos().map(video => (
                         <button
@@ -335,18 +335,18 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
                             addVideoToChapter(chapter.id, video.id);
                             setSelectedChapter(null);
                           }}
-                          className="block w-full text-left text-sm p-1 hover:bg-blue-100 rounded"
+                          className="block w-full text-left text-sm p-1 hover:bg-blue-100 dark:hover:bg-blue-800 rounded text-gray-900 dark:text-gray-100"
                         >
                           {video.title}
                         </button>
                       ))}
                       {getUnassignedVideos().length === 0 && (
-                        <p className="text-xs text-gray-500">割り当て可能な動画がありません</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">割り当て可能な動画がありません</p>
                       )}
                     </div>
                     <button
                       onClick={() => setSelectedChapter(null)}
-                      className="mt-2 text-xs text-gray-600"
+                      className="mt-2 text-xs text-gray-600 dark:text-gray-400"
                     >
                       キャンセル
                     </button>
@@ -354,7 +354,7 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
                 ) : (
                   <button
                     onClick={() => setSelectedChapter(chapter)}
-                    className="mt-2 text-sm text-blue-600 hover:text-blue-700"
+                    className="mt-2 text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
                   >
                     + 動画を追加
                   </button>
@@ -366,16 +366,16 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
       </div>
 
       {/* 未割り当て動画 */}
-      <div className="bg-yellow-50 p-4 rounded-lg">
-        <h3 className="font-medium mb-2">未割り当ての動画</h3>
+      <div className="bg-yellow-50 dark:bg-yellow-900/30 p-4 rounded-lg">
+        <h3 className="font-medium mb-2 text-gray-900 dark:text-white">未割り当ての動画</h3>
         <div className="space-y-1">
           {getUnassignedVideos().map(video => (
-            <div key={video.id} className="text-sm p-2 bg-white rounded">
+            <div key={video.id} className="text-sm p-2 bg-white dark:bg-gray-700 rounded text-gray-900 dark:text-gray-100">
               {video.title}
             </div>
           ))}
           {getUnassignedVideos().length === 0 && (
-            <p className="text-sm text-gray-500">すべての動画が章に割り当てられています</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">すべての動画が章に割り当てられています</p>
           )}
         </div>
       </div>
