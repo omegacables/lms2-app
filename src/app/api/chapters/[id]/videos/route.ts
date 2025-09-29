@@ -59,29 +59,38 @@ export async function POST(
     */
 
     // 現在の最大display_orderを取得
-    const { data: maxOrderData } = await supabase
+    const { data: maxOrderData, error: maxOrderError } = await supabase
       .from('chapter_videos')
       .select('display_order')
       .eq('chapter_id', id)
       .order('display_order', { ascending: false })
       .limit(1);
 
+    if (maxOrderError) {
+      console.error('Error fetching max order:', maxOrderError);
+    }
+
     const nextOrder = maxOrderData && maxOrderData.length > 0
       ? (maxOrderData[0].display_order || 0) + 1
       : 0;
 
+    // IDの型をそのまま使用（型変換なし）
+    const chapterId = id;
+    const videoIdNum = parseInt(video_id);
+
     console.log('Adding video to chapter:', {
-      chapter_id: parseInt(id),
-      video_id: parseInt(video_id),
-      display_order: nextOrder
+      chapter_id: chapterId,
+      video_id: videoIdNum,
+      display_order: nextOrder,
+      id_type: typeof chapterId
     });
 
     // チャプターに動画を追加
     const { data, error } = await supabase
       .from('chapter_videos')
       .insert({
-        chapter_id: parseInt(id),
-        video_id: parseInt(video_id),
+        chapter_id: chapterId,
+        video_id: videoIdNum,
         display_order: nextOrder
       })
       .select()
@@ -102,7 +111,7 @@ export async function POST(
     return NextResponse.json(
       {
         error: '動画の追加に失敗しました',
-        details: error?.message || String(error)
+        details: error?.message || error?.code || JSON.stringify(error)
       },
       { status: 500 }
     );
