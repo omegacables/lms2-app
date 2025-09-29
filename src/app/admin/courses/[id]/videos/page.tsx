@@ -329,13 +329,12 @@ export default function CourseVideosPage() {
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
 
-    if (hours > 0) {
-      return `${hours}時間${minutes}分${secs}秒`;
-    } else if (minutes > 0) {
-      return `${minutes}分${secs}秒`;
-    } else {
-      return `${secs}秒`;
-    }
+    const parts = [];
+    if (hours > 0) parts.push(`${hours}時間`);
+    if (minutes > 0) parts.push(`${minutes}分`);
+    if (secs > 0 || parts.length === 0) parts.push(`${secs}秒`);
+
+    return parts.join('');
   };
 
   const filteredVideos = videos.filter(video =>
