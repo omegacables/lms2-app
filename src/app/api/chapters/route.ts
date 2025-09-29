@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
 
 // GET: チャプター一覧取得
 export async function GET(request: NextRequest) {
@@ -152,16 +153,27 @@ export async function POST(request: NextRequest) {
     */
 
     // 現在の最大display_orderを取得
-    const { data: maxOrderData } = await supabase
+    const { data: maxOrderData, error: maxOrderError } = await supabase
       .from('chapters')
       .select('display_order')
       .eq('course_id', course_id)
       .order('display_order', { ascending: false })
       .limit(1);
 
+    if (maxOrderError) {
+      console.error('Error fetching max order:', maxOrderError);
+    }
+
     const nextOrder = maxOrderData && maxOrderData.length > 0
       ? (maxOrderData[0].display_order || 0) + 1
       : 0;
+
+    console.log('Creating chapter with data:', {
+      course_id: parseInt(course_id),
+      title,
+      description: description || null,
+      display_order: nextOrder
+    });
 
     // チャプターを作成
     const { data: chapter, error } = await supabase
@@ -175,17 +187,23 @@ export async function POST(request: NextRequest) {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error inserting chapter:', error);
+      throw error;
+    }
 
     return NextResponse.json({
       success: true,
       chapter
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating chapter:', error);
     return NextResponse.json(
-      { error: 'チャプターの作成に失敗しました' },
+      {
+        error: 'チャプターの作成に失敗しました',
+        details: error?.message || String(error)
+      },
       { status: 500 }
     );
   }
