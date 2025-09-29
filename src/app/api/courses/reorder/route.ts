@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/database/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 
 export async function PUT(request: NextRequest) {
@@ -12,24 +13,37 @@ export async function PUT(request: NextRequest) {
 
     console.log('[Reorder API] Has token:', !!token);
 
-    const cookieStore = await cookies();
-    const supabase = createServerSupabaseClient(cookieStore);
-
-    // トークンがある場合はそれを使用して認証
+    let supabase;
     let user;
     let authError;
 
     if (token) {
-      const { data, error } = await supabase.auth.getUser(token);
-      user = data.user;
-      authError = error;
-      console.log('[Reorder API] Auth via token:', { hasUser: !!user, error: error?.message });
-    } else {
-      // トークンがない場合はクッキーから認証
+      // トークンがある場合は、そのトークンを使用してSupabaseクライアントを作成
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        }
+      );
+
       const { data, error } = await supabase.auth.getUser();
       user = data.user;
       authError = error;
-      console.log('[Reorder API] Auth via cookie:', { hasUser: !!user, error: error?.message });
+      console.log('[Reorder API] Auth via token:', { hasUser: !!user, userId: user?.id, error: error?.message });
+    } else {
+      // トークンがない場合はクッキーから認証
+      const cookieStore = await cookies();
+      supabase = createServerSupabaseClient(cookieStore);
+
+      const { data, error } = await supabase.auth.getUser();
+      user = data.user;
+      authError = error;
+      console.log('[Reorder API] Auth via cookie:', { hasUser: !!user, userId: user?.id, error: error?.message });
     }
 
     if (authError || !user) {
@@ -44,14 +58,28 @@ export async function PUT(request: NextRequest) {
     }
 
     // 管理者権限チェック
-    const { data: userProfile } = await supabase
+    const { data: userProfile, error: profileError } = await supabase
       .from('user_profiles')
       .select('role')
       .eq('id', user.id)
       .single();
 
+    console.log('[Reorder API] User profile:', {
+      userId: user.id,
+      hasProfile: !!userProfile,
+      role: userProfile?.role,
+      profileError: profileError?.message
+    });
+
     if (!userProfile || !['admin', 'instructor'].includes(userProfile.role)) {
-      return NextResponse.json({ error: '権限がありません' }, { status: 403 });
+      return NextResponse.json({
+        error: '権限がありません',
+        debug: process.env.NODE_ENV === 'development' ? {
+          hasProfile: !!userProfile,
+          role: userProfile?.role,
+          allowedRoles: ['admin', 'instructor']
+        } : undefined
+      }, { status: 403 });
     }
 
     const { courses } = await request.json();
