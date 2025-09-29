@@ -363,17 +363,27 @@ export default function CoursesPage() {
         order_index: index
       }));
 
+      // Supabaseセッションを取得してトークンを含める
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session) {
+        throw new Error('認証セッションが見つかりません');
+      }
+
       const response = await fetch('/api/courses/reorder', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
         },
         credentials: 'include',
         body: JSON.stringify({ courses: coursesToUpdate }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to update course order');
+        const errorData = await response.json();
+        console.error('Server error:', errorData);
+        throw new Error(errorData.error || 'Failed to update course order');
       }
 
       // キャッシュをクリア

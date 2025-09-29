@@ -4,15 +4,43 @@ import { cookies } from 'next/headers';
 
 export async function PUT(request: NextRequest) {
   try {
+    console.log('[Reorder API] Request received');
+
+    // Authorizationヘッダーからトークンを取得
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.replace('Bearer ', '');
+
+    console.log('[Reorder API] Has token:', !!token);
+
     const cookieStore = await cookies();
     const supabase = createServerSupabaseClient(cookieStore);
 
-    // 認証チェック
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // トークンがある場合はそれを使用して認証
+    let user;
+    let authError;
+
+    if (token) {
+      const { data, error } = await supabase.auth.getUser(token);
+      user = data.user;
+      authError = error;
+      console.log('[Reorder API] Auth via token:', { hasUser: !!user, error: error?.message });
+    } else {
+      // トークンがない場合はクッキーから認証
+      const { data, error } = await supabase.auth.getUser();
+      user = data.user;
+      authError = error;
+      console.log('[Reorder API] Auth via cookie:', { hasUser: !!user, error: error?.message });
+    }
 
     if (authError || !user) {
-      console.error('Auth error:', authError);
-      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+      console.error('[Reorder API] Auth error:', authError);
+      return NextResponse.json({
+        error: '認証が必要です',
+        debug: process.env.NODE_ENV === 'development' ? {
+          authError: authError?.message,
+          hasToken: !!token
+        } : undefined
+      }, { status: 401 });
     }
 
     // 管理者権限チェック
