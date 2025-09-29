@@ -7,6 +7,7 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { useAuth } from '@/stores/auth';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Button } from '@/components/ui/Button';
+import { ClientOnlyDate } from '@/components/ui/ClientOnlyDate';
 import { supabase } from '@/lib/database/supabase';
 import {
   UsersIcon,
@@ -55,12 +56,6 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [hasPermission, setHasPermission] = useState(true);
   const [unreadMessages, setUnreadMessages] = useState(0);
-  const [mounted, setMounted] = useState(false);
-
-  // マウント状態を管理
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   // 管理者チェックをuseEffectで実行
   useEffect(() => {
@@ -450,15 +445,10 @@ export default function AdminDashboard() {
                             </>
                           )}
                         </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          {mounted && activity.timestamp ? new Date(activity.timestamp).toLocaleString('ja-JP', {
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          }) : ''}
-                        </p>
+                        <ClientOnlyDate
+                          timestamp={activity.timestamp}
+                          className="text-xs text-gray-500 dark:text-gray-400 mt-1 block"
+                        />
                       </div>
                     </div>
                   ))}
