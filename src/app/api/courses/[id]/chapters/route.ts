@@ -8,63 +8,76 @@ export async function GET(
   try {
     const supabase = await createServerClient();
 
-    console.log(`[GET /api/courses/${params.id}/chapters] Fetching chapters`);
+    console.log(`[GET /api/courses/${params.id}/chapters] Fetching chapters from chapters table`);
 
-    // コース情報を取得
-    const { data: course, error: courseError } = await supabase
-      .from('courses')
-      .select('metadata')
-      .eq('id', params.id)
-      .single();
+    // chaptersテーブルから章を取得
+    const { data: chapters, error: chaptersError } = await supabase
+      .from('chapters')
+      .select('id, title, display_order')
+      .eq('course_id', params.id)
+      .order('display_order', { ascending: true });
 
-    if (courseError) {
-      console.error('Error fetching course:', courseError);
-      return NextResponse.json({ error: courseError.message }, { status: 500 });
+    if (chaptersError) {
+      console.error('Error fetching chapters:', chaptersError);
+      return NextResponse.json({ error: chaptersError.message }, { status: 500 });
     }
 
-    console.log(`[GET] Course metadata:`, course?.metadata);
+    console.log(`[GET] Found ${chapters?.length || 0} chapters`);
 
-    // metadataがnullの場合、デフォルト値を設定
-    if (!course?.metadata) {
-      console.log('[GET] Metadata is null, initializing with empty chapters array');
-      const { error: initError } = await supabase
-        .from('courses')
-        .update({ metadata: { chapters: [] } })
-        .eq('id', params.id);
-
-      if (initError) {
-        console.error('[GET] Error initializing metadata:', initError);
-      }
-    }
-
-    // チャプター情報を取得（metadataから）
-    const chapters = course?.metadata?.chapters || [];
-    console.log(`[GET] Chapters from metadata:`, chapters);
-
-    // 動画を取得
-    const { data: videos, error: videosError } = await supabase
+    // 全動画を取得
+    const { data: allVideos, error: videosError } = await supabase
       .from('videos')
       .select('*')
       .eq('course_id', params.id)
+      .eq('status', 'active')
       .order('order_index', { ascending: true });
 
     if (videosError) {
+      console.error('Error fetching videos:', videosError);
       return NextResponse.json({ error: videosError.message }, { status: 500 });
     }
 
-    // チャプターに動画を割り当て
-    const chaptersWithVideos = chapters.map((chapter: any) => ({
-      ...chapter,
-      videos: videos?.filter((video: any) =>
-        chapter.video_ids?.includes(video.id)
-      ) || []
-    }));
+    console.log(`[GET] Found ${allVideos?.length || 0} videos`);
+
+    // 各章に紐づく動画を取得
+    const chaptersWithVideos = await Promise.all(
+      (chapters || []).map(async (chapter) => {
+        const { data: chapterVideos, error: cvError } = await supabase
+          .from('chapter_videos')
+          .select('video_id, display_order')
+          .eq('chapter_id', chapter.id)
+          .order('display_order', { ascending: true });
+
+        if (cvError) {
+          console.error(`Error fetching videos for chapter ${chapter.id}:`, cvError);
+          return { ...chapter, videos: [] };
+        }
+
+        // 動画IDに基づいて実際の動画データを取得
+        const videoIds = chapterVideos?.map(cv => cv.video_id) || [];
+        const videos = (allVideos || []).filter(v => videoIds.includes(v.id));
+
+        // display_order順にソート
+        const sortedVideos = videos.sort((a, b) => {
+          const orderA = chapterVideos?.find(cv => cv.video_id === a.id)?.display_order || 0;
+          const orderB = chapterVideos?.find(cv => cv.video_id === b.id)?.display_order || 0;
+          return orderA - orderB;
+        });
+
+        return {
+          ...chapter,
+          videos: sortedVideos
+        };
+      })
+    );
 
     // 未割り当ての動画を取得
-    const assignedVideoIds = chapters.flatMap((ch: any) => ch.video_ids || []);
-    const unassignedVideos = videos?.filter((video: any) =>
-      !assignedVideoIds.includes(video.id)
-    ) || [];
+    const { data: assignedVideoIds, error: assignedError } = await supabase
+      .from('chapter_videos')
+      .select('video_id');
+
+    const assignedIds = new Set(assignedVideoIds?.map(cv => cv.video_id) || []);
+    const unassignedVideos = (allVideos || []).filter(v => !assignedIds.has(v.id));
 
     console.log(`[GET] Returning ${chaptersWithVideos.length} chapters and ${unassignedVideos.length} unassigned videos`);
 

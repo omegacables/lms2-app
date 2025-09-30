@@ -391,7 +391,7 @@ export default function CourseDetailPage() {
                         {chapter.videos?.map((video, videoIndex) => {
                 const progress = getVideoProgress(video.id);
                 const status = getVideoStatus(video.id);
-                
+
                 return (
                   <div
                     key={video.id}
@@ -402,7 +402,7 @@ export default function CourseDetailPage() {
                         <div className="relative">
                           {getStatusIcon(status)}
                           <span className="absolute -top-1 -right-1 bg-blue-100 text-blue-800 text-xs font-bold px-2 py-0.5 rounded-full">
-                            {index + 1}
+                            {videoIndex + 1}
                           </span>
                         </div>
                       </div>
