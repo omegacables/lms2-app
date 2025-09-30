@@ -134,8 +134,13 @@ export default function CourseVideosPage() {
     }
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+
       const response = await fetch(`/api/courses/${courseId}/videos/${videoId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: {
+          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
+        }
       });
 
       if (response.ok) {
@@ -299,6 +304,7 @@ export default function CourseVideosPage() {
 
     // APIで順序を更新
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const videoUpdates = updatedVideos.map(video => ({
         id: video.id,
         order_index: video.order_index
@@ -307,7 +313,8 @@ export default function CourseVideosPage() {
       const response = await fetch(`/api/courses/${courseId}/videos`, {
         method: 'PATCH',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
         },
         body: JSON.stringify({ videoUpdates })
       });
@@ -522,7 +529,7 @@ export default function CourseVideosPage() {
                               </div>
                             )}
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
+                          <td className="px-6 py-4 text-sm text-gray-900 dark:text-white whitespace-nowrap">
                             {formatDuration(video.duration || 0)}
                           </td>
                           <td className="px-6 py-4">
