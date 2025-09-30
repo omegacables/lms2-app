@@ -123,14 +123,30 @@ export async function PUT(
     }
 
     // 講師または管理者権限チェック
-    const { data: userProfile } = await supabase
+    const { data: userProfile, error: profileError } = await supabase
       .from('user_profiles')
       .select('role')
       .eq('id', user.id)
       .single();
 
-    if (!userProfile || !['instructor', 'admin'].includes(userProfile.role)) {
-      return NextResponse.json({ error: '講師または管理者権限が必要です' }, { status: 403 });
+    console.log('PUT /api/videos/[videoId] - User ID:', user.id);
+    console.log('PUT /api/videos/[videoId] - User Profile:', userProfile);
+    console.log('PUT /api/videos/[videoId] - Profile Error:', profileError);
+
+    if (profileError || !userProfile) {
+      console.error('Profile not found for user:', user.id);
+      return NextResponse.json({
+        error: 'ユーザープロファイルが見つかりません',
+        debug: { userId: user.id, profileError: profileError?.message }
+      }, { status: 403 });
+    }
+
+    if (!['instructor', 'admin'].includes(userProfile.role)) {
+      console.error('Insufficient permissions. User role:', userProfile.role);
+      return NextResponse.json({
+        error: `権限が不足しています。現在のロール: ${userProfile.role}`,
+        debug: { userId: user.id, role: userProfile.role }
+      }, { status: 403 });
     }
 
     const body = await request.json();
