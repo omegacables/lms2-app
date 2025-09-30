@@ -96,6 +96,79 @@ export async function GET(
   }
 }
 
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ videoId: string }> }
+) {
+  try {
+    const { videoId } = await params;
+    const cookieStore = await cookies();
+    const supabase = createServerSupabaseClient(cookieStore);
+
+    // 認証チェック（Authorizationヘッダーから）
+    const authHeader = request.headers.get('authorization');
+    let user = null;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.replace('Bearer ', '');
+      const { data: authData, error: authError } = await supabase.auth.getUser(token);
+      user = authData?.user;
+    } else {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      user = authData?.user;
+    }
+
+    if (!user) {
+      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+    }
+
+    // 講師または管理者権限チェック
+    const { data: userProfile } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (!userProfile || !['instructor', 'admin'].includes(userProfile.role)) {
+      return NextResponse.json({ error: '講師または管理者権限が必要です' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { title, description, order_index, status } = body;
+
+    // 更新データの作成
+    const updateData: any = {
+      updated_at: new Date().toISOString()
+    };
+
+    if (title !== undefined) updateData.title = title;
+    if (description !== undefined) updateData.description = description;
+    if (order_index !== undefined) updateData.order_index = order_index;
+    if (status !== undefined) updateData.status = status;
+
+    // 動画情報を更新
+    const { data: updatedVideo, error: updateError } = await supabase
+      .from('videos')
+      .update(updateData)
+      .eq('id', videoId)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('Error updating video:', updateError);
+      return NextResponse.json({ error: '動画の更新に失敗しました' }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      message: '動画情報が更新されました',
+      video: updatedVideo
+    });
+  } catch (error) {
+    console.error('Error in PUT /api/videos/[videoId]:', error);
+    return NextResponse.json({ error: 'サーバーエラーが発生しました' }, { status: 500 });
+  }
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ videoId: string }> }

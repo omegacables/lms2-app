@@ -170,10 +170,13 @@ export default function CourseVideosPage() {
     if (!editingVideo) return;
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+
       const response = await fetch(`/api/videos/${editingVideo}`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
         },
         body: JSON.stringify({
           title: editForm.title,
