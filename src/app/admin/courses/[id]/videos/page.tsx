@@ -172,6 +172,10 @@ export default function CourseVideosPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
 
+      // デバッグ: ユーザーIDを表示
+      console.log('Current user ID:', session?.user?.id);
+      console.log('Current user email:', session?.user?.email);
+
       const response = await fetch(`/api/videos/${editingVideo}`, {
         method: 'PUT',
         headers: {
@@ -192,7 +196,8 @@ export default function CourseVideosPage() {
         alert('動画情報を更新しました');
       } else {
         const error = await response.json();
-        alert(`更新に失敗しました: ${error.error}`);
+        console.error('API Error:', error);
+        alert(`更新に失敗しました: ${error.error}\n\nユーザーID: ${session?.user?.id}\nメール: ${session?.user?.email}\n\n詳細: ${JSON.stringify(error.debug || {})}`);
       }
     } catch (error) {
       console.error('Error updating video:', error);
