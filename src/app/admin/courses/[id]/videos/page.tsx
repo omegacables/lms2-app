@@ -260,9 +260,15 @@ export default function CourseVideosPage() {
         await fetchVideos();
         setReplacingVideo(null);
         setReplaceFile(null);
+      } else if (response.status === 413) {
+        alert('エラー: ファイルサイズが大きすぎます。\n\nVercelの制限により、4.5MB以上の動画ファイルは直接アップロードできません。\n\n対処方法:\n1. 動画を削除して、新規アップロード機能を使用してください\n2. または、動画ファイルを圧縮してサイズを小さくしてください');
       } else {
-        const error = await response.json();
-        alert(`置き換えに失敗しました: ${error.error}`);
+        try {
+          const error = await response.json();
+          alert(`置き換えに失敗しました: ${error.error}`);
+        } catch (e) {
+          alert(`置き換えに失敗しました（ステータス: ${response.status}）`);
+        }
       }
     } catch (error) {
       console.error('Error replacing video:', error);
