@@ -231,48 +231,77 @@ export default function CourseVideosPage() {
     setUploadProgress(0);
 
     try {
-      const formData = new FormData();
-      formData.append('video', replaceFile);
-
-      // Progress tracking
-      const xhr = new XMLHttpRequest();
-
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          const progress = Math.round((e.loaded / e.total) * 100);
-          setUploadProgress(progress);
-        }
-      });
-
-      const response = await new Promise<Response>((resolve, reject) => {
-        xhr.onload = () => resolve(new Response(xhr.response, {
-          status: xhr.status,
-          headers: { 'Content-Type': 'application/json' }
-        }));
-        xhr.onerror = () => reject(new Error('Upload failed'));
-
-        xhr.open('PUT', `/api/courses/${courseId}/videos/${videoId}`);
-        xhr.send(formData);
-      });
-
-      if (response.ok) {
-        alert('動画を置き換えました');
-        await fetchVideos();
-        setReplacingVideo(null);
-        setReplaceFile(null);
-      } else if (response.status === 413) {
-        alert('エラー: ファイルサイズが大きすぎます。\n\nVercelの制限により、4.5MB以上の動画ファイルは直接アップロードできません。\n\n対処方法:\n1. 動画を削除して、新規アップロード機能を使用してください\n2. または、動画ファイルを圧縮してサイズを小さくしてください');
-      } else {
-        try {
-          const error = await response.json();
-          alert(`置き換えに失敗しました: ${error.error}`);
-        } catch (e) {
-          alert(`置き換えに失敗しました（ステータス: ${response.status}）`);
-        }
+      // 既存の動画情報を取得
+      const video = videos.find(v => v.id === videoId);
+      if (!video) {
+        alert('動画が見つかりません');
+        return;
       }
+
+      // 1. 古いファイルのパスを取得
+      const oldFilePath = video.file_url?.split('/storage/v1/object/public/videos/')[1];
+
+      // 2. 新しいファイルをSupabase Storageに直接アップロード
+      const fileName = `${Date.now()}-${replaceFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      const filePath = `course-${courseId}/${fileName}`;
+
+      // Supabase Storageに直接アップロード
+      setUploadProgress(10);
+
+      const { error: uploadError } = await supabase.storage
+        .from('videos')
+        .upload(filePath, replaceFile, {
+          contentType: replaceFile.type,
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) {
+        throw new Error(`アップロードエラー: ${uploadError.message}`);
+      }
+
+      setUploadProgress(90);
+
+      // 3. 動画URLを取得
+      const { data: urlData } = supabase.storage
+        .from('videos')
+        .getPublicUrl(filePath);
+
+      // 4. データベースを更新
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const response = await fetch(`/api/videos/${videoId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
+        },
+        body: JSON.stringify({
+          file_url: urlData.publicUrl,
+          file_size: replaceFile.size,
+          mime_type: replaceFile.type,
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('データベース更新に失敗しました');
+      }
+
+      setUploadProgress(98);
+
+      // 5. 古いファイルを削除
+      if (oldFilePath) {
+        await supabase.storage.from('videos').remove([oldFilePath]);
+      }
+
+      setUploadProgress(100);
+      alert('動画を置き換えました');
+      await fetchVideos();
+      setReplacingVideo(null);
+      setReplaceFile(null);
     } catch (error) {
       console.error('Error replacing video:', error);
-      alert('置き換え中にエラーが発生しました');
+      alert(`置き換え中にエラーが発生しました: ${error instanceof Error ? error.message : '不明なエラー'}`);
     } finally {
       setUploading(false);
       setUploadProgress(0);

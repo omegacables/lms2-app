@@ -153,7 +153,7 @@ export async function PUT(
     */
 
     const body = await request.json();
-    const { title, description, order_index, status } = body;
+    const { title, description, order_index, status, file_url, file_size, mime_type } = body;
 
     // 更新データの作成
     const updateData: any = {
@@ -164,6 +164,9 @@ export async function PUT(
     if (description !== undefined) updateData.description = description;
     if (order_index !== undefined) updateData.order_index = order_index;
     if (status !== undefined) updateData.status = status;
+    if (file_url !== undefined) updateData.file_url = file_url;
+    if (file_size !== undefined) updateData.file_size = file_size;
+    if (mime_type !== undefined) updateData.mime_type = mime_type;
 
     // 動画情報を更新
     const { data: updatedVideo, error: updateError } = await supabase
