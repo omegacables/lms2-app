@@ -1561,7 +1561,11 @@ export default function LearningLogsPage() {
                         <button
                           type="button"
                           onClick={() => {
-                            const video = allVideos.find(v => v.id === newLog.video_id);
+                            const video = allVideos.find(v => String(v.id) === String(newLog.video_id));
+                            console.log('選択された動画:', video);
+                            console.log('動画ID:', newLog.video_id);
+                            console.log('動画の長さ:', video?.duration);
+
                             if (video?.duration && newLog.start_time) {
                               const startTimeStr = newLog.start_time.replace('Z', '').replace('.000', '');
                               const [datePart, timePart] = startTimeStr.split('T');
@@ -1594,11 +1598,16 @@ export default function LearningLogsPage() {
                               const pad = (num: number) => num.toString().padStart(2, '0');
                               const endDateStr = `${newYear}-${pad(newMonth)}-${pad(newDay)}T${pad(newHours)}:${pad(newMinutes)}:${pad(newSeconds)}.000Z`;
 
+                              console.log('計算された終了時刻:', endDateStr);
+                              console.log('視聴時間（秒）:', video.duration);
+
                               setNewLog({
                                 ...newLog,
                                 end_time: endDateStr,
                                 watch_duration: video.duration
                               });
+                            } else {
+                              console.error('動画が見つからないか、durationが存在しません');
                             }
                           }}
                           className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
@@ -1636,7 +1645,7 @@ export default function LearningLogsPage() {
 
                             // 動画が選択されている場合、自動的に終了時刻を計算
                             if (newLog.video_id) {
-                              const video = allVideos.find(v => v.id === newLog.video_id);
+                              const video = allVideos.find(v => String(v.id) === String(newLog.video_id));
                               if (video?.duration) {
                                 const startTimeStr = dateTimeStr.replace('Z', '').replace('.000', '');
                                 const [datePart, timePart] = startTimeStr.split('T');
