@@ -74,12 +74,30 @@ export default function LearningLogsPage() {
   const [allVideos, setAllVideos] = useState<{ id: string; title: string; course_id: string; duration?: number }[]>([]);
   const [selectedCourseForEdit, setSelectedCourseForEdit] = useState<string>('');
   const [selectedVideoForEdit, setSelectedVideoForEdit] = useState<string>('');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newLog, setNewLog] = useState<Partial<LearningLog>>({
+    user_name: '',
+    user_email: '',
+    company: '',
+    department: '',
+    course_id: '',
+    course_title: '',
+    video_id: '',
+    video_title: '',
+    start_time: '',
+    end_time: '',
+    watch_duration: 0,
+    progress: 0,
+    status: 'not_started'
+  });
+  const [allUsers, setAllUsers] = useState<{ id: string; display_name: string; email: string; company?: string; department?: string }[]>([]);
   const itemsPerPage = 50;
 
   useEffect(() => {
     fetchLearningLogs();
     fetchFilters();
     fetchAllVideos();
+    fetchAllUsers();
   }, []);
 
   const fetchAllVideos = async () => {
@@ -94,6 +112,21 @@ export default function LearningLogsPage() {
       }
     } catch (error) {
       console.error('動画リスト取得エラー:', error);
+    }
+  };
+
+  const fetchAllUsers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('id, display_name, email, company, department')
+        .order('display_name');
+
+      if (data) {
+        setAllUsers(data);
+      }
+    } catch (error) {
+      console.error('ユーザーリスト取得エラー:', error);
     }
   };
 
@@ -257,12 +290,107 @@ export default function LearningLogsPage() {
     setSelectedVideoForEdit(log.video_id);
   };
 
+  const handleAddLog = async () => {
+    if (!newLog.user_id || !newLog.video_id || !newLog.course_id) {
+      alert('ユーザー、コース、動画を選択してください');
+      return;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      // 開始時刻と終了時刻から視聴時間を計算（設定されている場合）
+      let calculatedDuration = newLog.watch_duration || 0;
+      if (newLog.start_time && newLog.end_time) {
+        const calculateDurationFromTimes = () => {
+          const startStr = newLog.start_time!.replace('.000Z', '').replace('Z', '');
+          const endStr = newLog.end_time!.replace('.000Z', '').replace('Z', '');
+
+          const [startDate, startTime] = startStr.split('T');
+          const [endDate, endTime] = endStr.split('T');
+
+          const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+          const [startHour, startMin, startSec] = startTime.split(':').map(Number);
+
+          const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+          const [endHour, endMin, endSec] = endTime.split(':').map(Number);
+
+          let seconds = endSec - startSec;
+          let minutes = endMin - startMin;
+          let hours = endHour - startHour;
+          let days = endDay - startDay;
+
+          if (seconds < 0) {
+            seconds += 60;
+            minutes -= 1;
+          }
+          if (minutes < 0) {
+            minutes += 60;
+            hours -= 1;
+          }
+          if (hours < 0) {
+            hours += 24;
+            days -= 1;
+          }
+
+          return (days * 24 * 3600) + (hours * 3600) + (minutes * 60) + seconds;
+        };
+
+        const duration = calculateDurationFromTimes();
+        if (duration > 0) {
+          calculatedDuration = duration;
+        }
+      }
+
+      // video_view_logsテーブルに直接挿入
+      const { data, error } = await supabase
+        .from('video_view_logs')
+        .insert({
+          user_id: newLog.user_id,
+          video_id: newLog.video_id,
+          course_id: newLog.course_id,
+          start_time: newLog.start_time || new Date().toISOString(),
+          end_time: newLog.end_time || null,
+          total_watched_time: Math.round(calculatedDuration),
+          progress_percent: newLog.progress || 0,
+          status: newLog.status || 'not_started',
+        });
+
+      if (error) {
+        console.error('追加エラー:', error);
+        alert(`追加に失敗しました: ${error.message}`);
+      } else {
+        alert('学習ログを追加しました');
+        setShowAddModal(false);
+        setNewLog({
+          user_name: '',
+          user_email: '',
+          company: '',
+          department: '',
+          course_id: '',
+          course_title: '',
+          video_id: '',
+          video_title: '',
+          start_time: '',
+          end_time: '',
+          watch_duration: 0,
+          progress: 0,
+          status: 'not_started'
+        });
+        fetchLearningLogs();
+      }
+    } catch (error) {
+      console.error('追加エラー:', error);
+      alert('追加中にエラーが発生しました');
+    }
+  };
+
   const handleSaveLog = async () => {
     if (!editingLog) return;
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       // 開始時刻と終了時刻から視聴時間を計算（設定されている場合）
       let calculatedDuration = editingLog.watch_duration;
       if (editingLog.start_time && editingLog.end_time) {
@@ -525,6 +653,13 @@ export default function LearningLogsPage() {
                 </div>
               </div>
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                <Button
+                  onClick={() => setShowAddModal(true)}
+                  className="flex items-center justify-center w-full sm:w-auto bg-green-600 hover:bg-green-700 whitespace-nowrap"
+                >
+                  <PencilIcon className="h-4 w-4 mr-2 flex-shrink-0" />
+                  <span className="whitespace-nowrap">ログを追加</span>
+                </Button>
                 <Button
                   variant="outline"
                   onClick={async () => {
@@ -1326,6 +1461,393 @@ export default function LearningLogsPage() {
                     className="bg-indigo-600 hover:bg-indigo-700"
                   >
                     保存
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 追加モーダル */}
+          {showAddModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
+              <div className="bg-white dark:bg-neutral-900 rounded-xl p-6 max-w-2xl w-full mx-4 my-8">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                  学習ログを追加
+                </h3>
+
+                <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      ユーザーを選択 <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={newLog.user_id || ''}
+                      onChange={(e) => {
+                        const userId = e.target.value;
+                        const user = allUsers.find(u => u.id === userId);
+                        setNewLog({
+                          ...newLog,
+                          user_id: userId,
+                          user_name: user?.display_name || '',
+                          user_email: user?.email || '',
+                          company: user?.company || '',
+                          department: user?.department || ''
+                        });
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    >
+                      <option value="">ユーザーを選択してください</option>
+                      {allUsers.map(user => (
+                        <option key={user.id} value={user.id}>
+                          {user.display_name} ({user.email})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      コース <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={newLog.course_id || ''}
+                      onChange={(e) => {
+                        const courseId = e.target.value;
+                        const course = courses.find(c => c.id === courseId);
+                        setNewLog({
+                          ...newLog,
+                          course_id: courseId,
+                          course_title: course?.title || '',
+                          video_id: '',
+                          video_title: ''
+                        });
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    >
+                      <option value="">コースを選択してください</option>
+                      {courses.map(course => (
+                        <option key={course.id} value={course.id}>{course.title}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      動画 <span className="text-red-500">*</span>
+                    </label>
+                    <div className="space-y-2">
+                      <select
+                        value={newLog.video_id || ''}
+                        onChange={(e) => {
+                          const videoId = e.target.value;
+                          const video = allVideos.find(v => v.id === videoId);
+                          setNewLog({
+                            ...newLog,
+                            video_id: videoId,
+                            video_title: video?.title || ''
+                          });
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                        disabled={!newLog.course_id}
+                      >
+                        <option value="">動画を選択してください</option>
+                        {allVideos
+                          .filter(v => v.course_id === newLog.course_id)
+                          .map(video => (
+                            <option key={video.id} value={video.id}>{video.title}</option>
+                          ))}
+                      </select>
+                      {newLog.start_time && newLog.video_id && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const video = allVideos.find(v => v.id === newLog.video_id);
+                            if (video?.duration && newLog.start_time) {
+                              const startTimeStr = newLog.start_time.replace('Z', '').replace('.000', '');
+                              const [datePart, timePart] = startTimeStr.split('T');
+                              const [year, month, day] = datePart.split('-');
+                              const [hours, minutes, seconds] = timePart.split(':');
+
+                              let totalSeconds = parseInt(seconds) + video.duration;
+                              let totalMinutes = parseInt(minutes) + Math.floor(totalSeconds / 60);
+                              let totalHours = parseInt(hours) + Math.floor(totalMinutes / 60);
+                              let totalDays = parseInt(day) + Math.floor(totalHours / 24);
+
+                              const newSeconds = totalSeconds % 60;
+                              const newMinutes = totalMinutes % 60;
+                              const newHours = totalHours % 24;
+
+                              let newMonth = parseInt(month);
+                              let newYear = parseInt(year);
+                              let newDay = totalDays;
+
+                              const daysInMonth = new Date(newYear, newMonth, 0).getDate();
+                              if (newDay > daysInMonth) {
+                                newDay = newDay - daysInMonth;
+                                newMonth++;
+                                if (newMonth > 12) {
+                                  newMonth = 1;
+                                  newYear++;
+                                }
+                              }
+
+                              const pad = (num: number) => num.toString().padStart(2, '0');
+                              const endDateStr = `${newYear}-${pad(newMonth)}-${pad(newDay)}T${pad(newHours)}:${pad(newMinutes)}:${pad(newSeconds)}.000Z`;
+
+                              setNewLog({
+                                ...newLog,
+                                end_time: endDateStr,
+                                watch_duration: video.duration
+                              });
+                            }
+                          }}
+                          className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                        >
+                          動画時間から終了時刻を自動設定
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      開始時刻
+                    </label>
+                    <input
+                      type="datetime-local"
+                      step="1"
+                      value={(() => {
+                        if (!newLog.start_time) return '';
+                        const dateStr = newLog.start_time.replace('Z', '').replace('.000', '');
+                        return dateStr.substring(0, 19);
+                      })()}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          let dateTimeStr = e.target.value;
+                          if (dateTimeStr.length === 16) {
+                            dateTimeStr += ':00';
+                          }
+                          dateTimeStr += '.000Z';
+                          setNewLog({
+                            ...newLog,
+                            start_time: dateTimeStr
+                          });
+                        } else {
+                          setNewLog({
+                            ...newLog,
+                            start_time: ''
+                          });
+                        }
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      終了時刻
+                    </label>
+                    <input
+                      type="datetime-local"
+                      step="1"
+                      value={(() => {
+                        if (!newLog.end_time) return '';
+                        const dateStr = newLog.end_time.replace('Z', '').replace('.000', '');
+                        return dateStr.substring(0, 19);
+                      })()}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          let dateTimeStr = e.target.value;
+                          if (dateTimeStr.length === 16) {
+                            dateTimeStr += ':00';
+                          }
+                          dateTimeStr += '.000Z';
+                          setNewLog({
+                            ...newLog,
+                            end_time: dateTimeStr
+                          });
+                        } else {
+                          setNewLog({
+                            ...newLog,
+                            end_time: ''
+                          });
+                        }
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      視聴時間（分:秒）
+                    </label>
+                    <div className="flex items-center space-x-2">
+                      <div className="flex-1">
+                        <div className="flex items-center">
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="分"
+                            value={Math.floor((newLog.watch_duration || 0) / 60)}
+                            onChange={(e) => {
+                              const minutes = parseInt(e.target.value) || 0;
+                              const seconds = (newLog.watch_duration || 0) % 60;
+                              setNewLog({
+                                ...newLog,
+                                watch_duration: minutes * 60 + seconds
+                              });
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                          />
+                          <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">分</span>
+                        </div>
+                      </div>
+                      <span className="text-lg font-bold text-gray-600 dark:text-gray-400">:</span>
+                      <div className="flex-1">
+                        <div className="flex items-center">
+                          <input
+                            type="number"
+                            min="0"
+                            max="59"
+                            placeholder="秒"
+                            value={(newLog.watch_duration || 0) % 60}
+                            onChange={(e) => {
+                              const seconds = parseInt(e.target.value) || 0;
+                              const minutes = Math.floor((newLog.watch_duration || 0) / 60);
+                              setNewLog({
+                                ...newLog,
+                                watch_duration: minutes * 60 + Math.min(59, seconds)
+                              });
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                          />
+                          <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">秒</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-2 space-y-1">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        現在の視聴時間: {formatTime(newLog.watch_duration || 0)}
+                      </p>
+                      {newLog.start_time && newLog.end_time && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const calculateDuration = () => {
+                              const startStr = newLog.start_time!.replace('.000Z', '').replace('Z', '');
+                              const endStr = newLog.end_time!.replace('.000Z', '').replace('Z', '');
+
+                              const [startDate, startTime] = startStr.split('T');
+                              const [endDate, endTime] = endStr.split('T');
+
+                              const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+                              const [startHour, startMin, startSec] = startTime.split(':').map(Number);
+
+                              const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+                              const [endHour, endMin, endSec] = endTime.split(':').map(Number);
+
+                              let seconds = endSec - startSec;
+                              let minutes = endMin - startMin;
+                              let hours = endHour - startHour;
+                              let days = endDay - startDay;
+
+                              if (seconds < 0) {
+                                seconds += 60;
+                                minutes -= 1;
+                              }
+                              if (minutes < 0) {
+                                minutes += 60;
+                                hours -= 1;
+                              }
+                              if (hours < 0) {
+                                hours += 24;
+                                days -= 1;
+                              }
+
+                              return (days * 24 * 3600) + (hours * 3600) + (minutes * 60) + seconds;
+                            };
+
+                            const duration = calculateDuration();
+                            if (duration > 0) {
+                              setNewLog({
+                                ...newLog,
+                                watch_duration: duration
+                              });
+                            }
+                          }}
+                          className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                        >
+                          開始・終了時刻から自動計算
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      進捗率（%）
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={newLog.progress || 0}
+                      onChange={(e) => setNewLog({
+                        ...newLog,
+                        progress: parseInt(e.target.value) || 0
+                      })}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      ステータス
+                    </label>
+                    <select
+                      value={newLog.status || 'not_started'}
+                      onChange={(e) => setNewLog({
+                        ...newLog,
+                        status: e.target.value as any
+                      })}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    >
+                      <option value="not_started">未開始</option>
+                      <option value="in_progress">受講中</option>
+                      <option value="completed">完了</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3 mt-6">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowAddModal(false);
+                      setNewLog({
+                        user_name: '',
+                        user_email: '',
+                        company: '',
+                        department: '',
+                        course_id: '',
+                        course_title: '',
+                        video_id: '',
+                        video_title: '',
+                        start_time: '',
+                        end_time: '',
+                        watch_duration: 0,
+                        progress: 0,
+                        status: 'not_started'
+                      });
+                    }}
+                  >
+                    キャンセル
+                  </Button>
+                  <Button
+                    onClick={handleAddLog}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    追加
                   </Button>
                 </div>
               </div>
