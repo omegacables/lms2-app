@@ -1552,7 +1552,7 @@ export default function LearningLogsPage() {
                       >
                         <option value="">動画を選択してください</option>
                         {allVideos
-                          .filter(v => v.course_id === newLog.course_id)
+                          .filter(v => String(v.course_id) === String(newLog.course_id))
                           .map(video => (
                             <option key={video.id} value={video.id}>{video.title}</option>
                           ))}
