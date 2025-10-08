@@ -1613,34 +1613,85 @@ export default function LearningLogsPage() {
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       開始時刻
                     </label>
-                    <input
-                      type="datetime-local"
-                      step="1"
-                      value={(() => {
-                        if (!newLog.start_time) return '';
-                        const dateStr = newLog.start_time.replace('Z', '').replace('.000', '');
-                        return dateStr.substring(0, 19);
-                      })()}
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          let dateTimeStr = e.target.value;
-                          if (dateTimeStr.length === 16) {
-                            dateTimeStr += ':00';
+                    <div className="space-y-2">
+                      <input
+                        type="datetime-local"
+                        step="1"
+                        value={(() => {
+                          if (!newLog.start_time) return '';
+                          const dateStr = newLog.start_time.replace('Z', '').replace('.000', '');
+                          return dateStr.substring(0, 19);
+                        })()}
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            let dateTimeStr = e.target.value;
+                            if (dateTimeStr.length === 16) {
+                              dateTimeStr += ':00';
+                            }
+                            dateTimeStr += '.000Z';
+                            setNewLog({
+                              ...newLog,
+                              start_time: dateTimeStr
+                            });
+
+                            // 動画が選択されている場合、自動的に終了時刻を計算
+                            if (newLog.video_id) {
+                              const video = allVideos.find(v => v.id === newLog.video_id);
+                              if (video?.duration) {
+                                const startTimeStr = dateTimeStr.replace('Z', '').replace('.000', '');
+                                const [datePart, timePart] = startTimeStr.split('T');
+                                const [year, month, day] = datePart.split('-');
+                                const [hours, minutes, seconds] = timePart.split(':');
+
+                                let totalSeconds = parseInt(seconds) + video.duration;
+                                let totalMinutes = parseInt(minutes) + Math.floor(totalSeconds / 60);
+                                let totalHours = parseInt(hours) + Math.floor(totalMinutes / 60);
+                                let totalDays = parseInt(day) + Math.floor(totalHours / 24);
+
+                                const newSeconds = totalSeconds % 60;
+                                const newMinutes = totalMinutes % 60;
+                                const newHours = totalHours % 24;
+
+                                let newMonth = parseInt(month);
+                                let newYear = parseInt(year);
+                                let newDay = totalDays;
+
+                                const daysInMonth = new Date(newYear, newMonth, 0).getDate();
+                                if (newDay > daysInMonth) {
+                                  newDay = newDay - daysInMonth;
+                                  newMonth++;
+                                  if (newMonth > 12) {
+                                    newMonth = 1;
+                                    newYear++;
+                                  }
+                                }
+
+                                const pad = (num: number) => num.toString().padStart(2, '0');
+                                const endDateStr = `${newYear}-${pad(newMonth)}-${pad(newDay)}T${pad(newHours)}:${pad(newMinutes)}:${pad(newSeconds)}.000Z`;
+
+                                setNewLog({
+                                  ...newLog,
+                                  start_time: dateTimeStr,
+                                  end_time: endDateStr,
+                                  watch_duration: video.duration
+                                });
+                              }
+                            }
+                          } else {
+                            setNewLog({
+                              ...newLog,
+                              start_time: ''
+                            });
                           }
-                          dateTimeStr += '.000Z';
-                          setNewLog({
-                            ...newLog,
-                            start_time: dateTimeStr
-                          });
-                        } else {
-                          setNewLog({
-                            ...newLog,
-                            start_time: ''
-                          });
-                        }
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                    />
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                      />
+                      {newLog.video_id && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          ※ 開始時刻を設定すると、選択された動画の長さに基づいて終了時刻が自動計算されます
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   <div>
