@@ -252,17 +252,25 @@ export default function VideoPlayerPage() {
         return;
       }
 
+      // 視聴時間を計算：動画時間 × 進捗率（％を小数に変換）/ 100
+      // ただし、動画時間を超えないように制限
+      const calculatedWatchedTime = Math.min(
+        Math.floor(videoDuration * (progressPercent / 100)),
+        Math.floor(videoDuration)
+      );
+
       const updateData: any = {
         session_id: sessionId.current,
         current_position: Math.round(position),
         progress_percent: progressPercent,
+        total_watched_time: calculatedWatchedTime,
         status: isCompleted ? 'completed' as const : 'in_progress' as const,
         last_updated: new Date().toISOString(),
       };
 
       if (isCompleted && (!existingLog || existingLog?.status !== 'completed')) {
         updateData.completed_at = new Date().toISOString();
-        console.log('動画完了を検出！ 動画ID:', videoId, '進捗:', progressPercent, '%');
+        console.log('動画完了を検出！ 動画ID:', videoId, '進捗:', progressPercent, '%', '視聴時間:', calculatedWatchedTime, '秒');
 
         // 動画完了時にコース全体の完了状態を確認
         setTimeout(async () => {
@@ -272,9 +280,6 @@ export default function VideoPlayerPage() {
       }
 
       if (existingLog) {
-        // 総視聴時間を累積
-        updateData.total_watched_time = (existingLog.total_watched_time || 0) + 10; // 10秒ごとに更新
-
         await supabase
           .from('video_view_logs')
           .update(updateData)
@@ -289,7 +294,6 @@ export default function VideoPlayerPage() {
           user_id: user.id,
           video_id: videoId,
           course_id: courseId,
-          total_watched_time: 10,
         };
 
         const { data: newLog } = await supabase
