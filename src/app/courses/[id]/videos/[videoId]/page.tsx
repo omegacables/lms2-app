@@ -261,11 +261,8 @@ export default function VideoPlayerPage() {
         existingLog = logsData && logsData.length > 0 ? logsData[0] : null;
       }
 
-      // 完了済みの動画で、かつ新たに完了していない場合はスキップ
-      if (!existingLog && !isCompleted) {
-        console.log('未完了ログがないため、ログ更新をスキップします（完了時には新規作成されます）');
-        return;
-      }
+      // existingLogがない場合は新規作成が必要
+      // （初回視聴または完了後の再視聴）
 
       // 視聴時間を計算：動画時間 × 進捗率（％を小数に変換）/ 100
       // ただし、動画時間を超えないように制限
