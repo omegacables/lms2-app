@@ -79,13 +79,23 @@ export function EnhancedVideoPlayer({
 
   // 進捗更新（30秒ごと、Web Workerのように完全非同期で実行）
   useEffect(() => {
-    if (!isPlaying || !onProgressUpdate) return;
+    // 完了済みの動画は進捗更新をスキップ
+    if (!isPlaying || !onProgressUpdate || isCompleted) return;
 
     const interval = setInterval(() => {
       // 動画の現在位置を取得（読み取りのみ、変更しない）
       if (videoRef.current && !videoRef.current.paused && !videoRef.current.seeking) {
         const currentPos = videoRef.current.currentTime;
         const progressPercent = duration > 0 ? Math.floor((currentPos / duration) * 100) : 0;
+
+        // 完了閾値に到達したら進捗更新を停止
+        if (progressPercent >= completionThreshold) {
+          // 最後に一度だけ完了状態を送信
+          setTimeout(() => {
+            onProgressUpdate(currentPos, duration, progressPercent);
+          }, 0);
+          return; // これ以降の更新を停止
+        }
 
         // setTimeoutで完全に別スレッドのように実行
         setTimeout(() => {
@@ -95,7 +105,7 @@ export function EnhancedVideoPlayer({
     }, 30000); // 30秒ごとに更新（長くして影響を減らす）
 
     return () => clearInterval(interval);
-  }, [isPlaying, duration, onProgressUpdate]);
+  }, [isPlaying, duration, onProgressUpdate, isCompleted, completionThreshold]);
 
   // 動画のメタデータ読み込み
   const handleLoadedMetadata = () => {

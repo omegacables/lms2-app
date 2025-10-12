@@ -246,6 +246,12 @@ export default function VideoPlayerPage() {
         }
       }
 
+      // 既に完了済みの動画は更新しない（2回目以降の視聴はログを取らない）
+      if (existingLog && existingLog.status === 'completed') {
+        console.log('完了済み動画のため、ログ更新をスキップします');
+        return;
+      }
+
       const updateData: any = {
         session_id: sessionId.current,
         current_position: Math.round(position),
