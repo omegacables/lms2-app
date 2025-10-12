@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -25,7 +25,9 @@ import {
   BuildingOfficeIcon,
   PencilIcon,
   TrashIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
+  ChevronDownIcon,
+  ChevronUpIcon
 } from '@heroicons/react/24/outline';
 import {
   CheckCircleIcon as CheckCircleIconSolid
@@ -49,6 +51,9 @@ interface LearningLog {
   status: 'not_started' | 'in_progress' | 'completed';
   created_at: string;
   updated_at: string;
+  // 複数履歴用
+  history?: LearningLog[];
+  historyCount?: number;
 }
 
 type SortField = 'user_name' | 'company' | 'course_title' | 'video_title' | 'progress' | 'created_at';
@@ -75,6 +80,7 @@ export default function LearningLogsPage() {
   const [selectedCourseForEdit, setSelectedCourseForEdit] = useState<string>('');
   const [selectedVideoForEdit, setSelectedVideoForEdit] = useState<string>('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [newLog, setNewLog] = useState<Partial<LearningLog>>({
     user_name: '',
     user_email: '',
@@ -208,7 +214,41 @@ export default function LearningLogsPage() {
         };
       });
 
-      setLearningLogs(formattedLogs);
+      // 同じユーザー・動画の組み合わせでグループ化
+      const groupedLogs = new Map<string, LearningLog[]>();
+      formattedLogs.forEach(log => {
+        const key = `${log.user_id}_${log.video_id}`;
+        if (!groupedLogs.has(key)) {
+          groupedLogs.set(key, []);
+        }
+        groupedLogs.get(key)!.push(log);
+      });
+
+      // グループ化されたログを展開（最新のログを代表として、履歴を持つ）
+      const displayLogs: LearningLog[] = [];
+      groupedLogs.forEach(logs => {
+        // created_atで降順にソート（最新が先頭）
+        const sortedLogs = logs.sort((a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+
+        // 最新のログを代表として使用
+        const latestLog = sortedLogs[0];
+        if (sortedLogs.length > 1) {
+          // 複数ある場合は履歴として保存
+          console.log(`Multiple histories found for ${latestLog.user_name} - ${latestLog.video_title}: ${sortedLogs.length} records`);
+          displayLogs.push({
+            ...latestLog,
+            history: sortedLogs,
+            historyCount: sortedLogs.length
+          });
+        } else {
+          displayLogs.push(latestLog);
+        }
+      });
+
+      console.log('Display logs with history:', displayLogs.filter(log => log.historyCount && log.historyCount > 1));
+      setLearningLogs(displayLogs);
     } catch (error) {
       console.error('学習ログ取得エラー:', error);
     } finally {
@@ -493,24 +533,53 @@ export default function LearningLogsPage() {
         '終了時刻',
         '視聴時間',
         '進捗率（%）',
-        '受講状況'
+        '受講状況',
+        '履歴番号'
       ];
 
-      const csvData = filteredAndSortedLogs.map(log => [
-        new Date(log.created_at).toLocaleString('ja-JP'),
-        log.user_name,
-        log.user_email,
-        log.company,
-        log.department,
-        log.course_title,
-        log.video_title,
-        log.start_time ? new Date(log.start_time).toLocaleString('ja-JP') : '',
-        log.end_time ? new Date(log.end_time).toLocaleString('ja-JP') : '',
-        formatTime(log.watch_duration),
-        Math.round(log.progress),
-        log.status === 'completed' ? '完了' : 
-        log.status === 'in_progress' ? '受講中' : '未開始'
-      ]);
+      // 複数履歴がある場合は全て展開してCSVに含める
+      const csvData: string[][] = [];
+      filteredAndSortedLogs.forEach(log => {
+        if (log.history && log.history.length > 1) {
+          // 複数履歴がある場合は全て出力
+          log.history.forEach((historyLog, index) => {
+            csvData.push([
+              new Date(historyLog.created_at).toLocaleString('ja-JP'),
+              historyLog.user_name,
+              historyLog.user_email,
+              historyLog.company,
+              historyLog.department,
+              historyLog.course_title,
+              historyLog.video_title,
+              historyLog.start_time ? new Date(historyLog.start_time).toLocaleString('ja-JP') : '',
+              historyLog.end_time ? new Date(historyLog.end_time).toLocaleString('ja-JP') : '',
+              formatTime(historyLog.watch_duration),
+              Math.round(historyLog.progress).toString(),
+              historyLog.status === 'completed' ? '完了' :
+              historyLog.status === 'in_progress' ? '受講中' : '未開始',
+              `${index + 1}/${log.history.length}`
+            ]);
+          });
+        } else {
+          // 単一ログの場合
+          csvData.push([
+            new Date(log.created_at).toLocaleString('ja-JP'),
+            log.user_name,
+            log.user_email,
+            log.company,
+            log.department,
+            log.course_title,
+            log.video_title,
+            log.start_time ? new Date(log.start_time).toLocaleString('ja-JP') : '',
+            log.end_time ? new Date(log.end_time).toLocaleString('ja-JP') : '',
+            formatTime(log.watch_duration),
+            Math.round(log.progress).toString(),
+            log.status === 'completed' ? '完了' :
+            log.status === 'in_progress' ? '受講中' : '未開始',
+            '1/1'
+          ]);
+        }
+      });
 
       const csvContent = [headers, ...csvData]
         .map(row => row.map(cell => `"${cell}"`).join(','))
@@ -525,7 +594,7 @@ export default function LearningLogsPage() {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
+
       alert('学習ログをCSVファイルとしてエクスポートしました。');
     } catch (error) {
       console.error('CSV出力エラー:', error);
@@ -533,6 +602,18 @@ export default function LearningLogsPage() {
     } finally {
       setExportingCSV(false);
     }
+  };
+
+  const toggleRowExpansion = (logId: string) => {
+    setExpandedRows(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(logId)) {
+        newSet.delete(logId);
+      } else {
+        newSet.add(logId);
+      }
+      return newSet;
+    });
   };
 
   const formatTime = (seconds: number) => {
@@ -876,13 +957,17 @@ export default function LearningLogsPage() {
                           ステータス
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          履歴
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           アクション
                         </th>
                       </tr>
                     </thead>
                     <tbody className="bg-white dark:bg-neutral-900 divide-y divide-gray-200 dark:divide-neutral-800">
                       {paginatedLogs.map((log) => (
-                        <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <React.Fragment key={log.id}>
+                        <tr className="hover:bg-gray-50 dark:hover:bg-gray-700">
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div>
                               <div className="text-sm font-medium text-gray-900 dark:text-white">
@@ -955,6 +1040,24 @@ export default function LearningLogsPage() {
                             {getStatusBadge(log.status)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
+                            {log.historyCount && log.historyCount > 1 ? (
+                              <button
+                                onClick={() => toggleRowExpansion(log.id)}
+                                className="flex items-center space-x-1 text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300"
+                                title="履歴を表示"
+                              >
+                                <span className="text-sm font-medium">{log.historyCount}件</span>
+                                {expandedRows.has(log.id) ? (
+                                  <ChevronUpIcon className="h-4 w-4" />
+                                ) : (
+                                  <ChevronDownIcon className="h-4 w-4" />
+                                )}
+                              </button>
+                            ) : (
+                              <span className="text-sm text-gray-500 dark:text-gray-400">-</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center space-x-2">
                               <button
                                 onClick={() => handleEditLog(log)}
@@ -978,6 +1081,83 @@ export default function LearningLogsPage() {
                             </div>
                           </td>
                         </tr>
+                        {/* 履歴の展開行 */}
+                        {expandedRows.has(log.id) && log.history && log.history.length > 1 && (
+                          <tr>
+                            <td colSpan={11} className="px-6 py-4 bg-gray-50 dark:bg-gray-800">
+                              <div className="space-y-2">
+                                <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">視聴履歴 ({log.history.length}件)</h4>
+                                <div className="overflow-x-auto">
+                                  <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                    <thead className="bg-gray-100 dark:bg-gray-900">
+                                      <tr>
+                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-400">記録日時</th>
+                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-400">開始時刻</th>
+                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-400">終了時刻</th>
+                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-400">視聴時間</th>
+                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-400">進捗率</th>
+                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-400">ステータス</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                      {log.history.map((historyLog, index) => (
+                                        <tr key={historyLog.id} className={index === 0 ? 'bg-indigo-50 dark:bg-indigo-900/20' : ''}>
+                                          <td className="px-4 py-2 text-sm text-gray-900 dark:text-gray-100">
+                                            {new Date(historyLog.created_at).toLocaleString('ja-JP', {
+                                              year: 'numeric',
+                                              month: '2-digit',
+                                              day: '2-digit',
+                                              hour: '2-digit',
+                                              minute: '2-digit',
+                                              second: '2-digit'
+                                            })}
+                                            {index === 0 && <span className="ml-2 text-xs text-indigo-600 dark:text-indigo-400 font-semibold">(最新)</span>}
+                                          </td>
+                                          <td className="px-4 py-2 text-sm text-gray-900 dark:text-gray-100">
+                                            {historyLog.start_time ? new Date(historyLog.start_time).toLocaleString('ja-JP', {
+                                              month: '2-digit',
+                                              day: '2-digit',
+                                              hour: '2-digit',
+                                              minute: '2-digit',
+                                              second: '2-digit'
+                                            }) : '-'}
+                                          </td>
+                                          <td className="px-4 py-2 text-sm text-gray-900 dark:text-gray-100">
+                                            {historyLog.end_time ? new Date(historyLog.end_time).toLocaleString('ja-JP', {
+                                              month: '2-digit',
+                                              day: '2-digit',
+                                              hour: '2-digit',
+                                              minute: '2-digit',
+                                              second: '2-digit'
+                                            }) : '-'}
+                                          </td>
+                                          <td className="px-4 py-2 text-sm text-gray-900 dark:text-gray-100">
+                                            {formatTime(historyLog.watch_duration)}
+                                          </td>
+                                          <td className="px-4 py-2 text-sm text-gray-900 dark:text-gray-100">
+                                            <div className="flex items-center space-x-2">
+                                              <span>{Math.round(historyLog.progress)}%</span>
+                                              <div className="w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
+                                                <div
+                                                  className="bg-blue-600 h-1.5 rounded-full"
+                                                  style={{ width: `${historyLog.progress}%` }}
+                                                />
+                                              </div>
+                                            </div>
+                                          </td>
+                                          <td className="px-4 py-2 text-sm">
+                                            {getStatusBadge(historyLog.status)}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        </React.Fragment>
                       ))}
                     </tbody>
                   </table>
