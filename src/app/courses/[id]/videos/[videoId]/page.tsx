@@ -208,6 +208,7 @@ export default function VideoPlayerPage() {
         }
       } else {
         // 新規作成（完了済みの場合、または初回の場合）
+        const now = new Date().toISOString();
         const { data, error } = await supabase
           .from('video_view_logs')
           .insert({
@@ -219,7 +220,8 @@ export default function VideoPlayerPage() {
             total_watched_time: 0,
             progress_percent: 0,
             status: 'in_progress',
-            last_updated: new Date().toISOString(),
+            start_time: now, // 開始時刻を記録
+            last_updated: now,
           })
           .select()
           .single();
@@ -241,7 +243,8 @@ export default function VideoPlayerPage() {
   const saveProgressToDatabase = async (position: number, videoDuration: number, progressPercent: number) => {
     if (!user || !video) return;
 
-    const isCompleted = progressPercent >= (course?.completion_threshold || 95);
+    // 進捗率100%で記録終了
+    const isCompleted = progressPercent >= 100;
 
     try {
       // 既存の未完了ログをキャッシュから取得または確認
@@ -261,8 +264,11 @@ export default function VideoPlayerPage() {
         existingLog = logsData && logsData.length > 0 ? logsData[0] : null;
       }
 
-      // existingLogがない場合は新規作成が必要
-      // （初回視聴または完了後の再視聴）
+      // 進捗率100%に達したら、それ以上記録しない
+      if (existingLog && existingLog.status === 'completed') {
+        console.log('すでに完了済みのログです。記録をスキップします。');
+        return;
+      }
 
       // 視聴時間を計算：動画時間 × 進捗率（％を小数に変換）/ 100
       // ただし、動画時間を超えないように制限
@@ -271,17 +277,24 @@ export default function VideoPlayerPage() {
         Math.floor(videoDuration)
       );
 
+      const now = new Date().toISOString();
       const updateData: any = {
         session_id: sessionId.current,
         current_position: Math.round(position),
         progress_percent: progressPercent,
         total_watched_time: calculatedWatchedTime,
         status: isCompleted ? 'completed' as const : 'in_progress' as const,
-        last_updated: new Date().toISOString(),
+        last_updated: now,
+        end_time: now, // 毎回終了時刻を記録
       };
 
+      // 開始時刻が未設定の場合は設定
+      if (existingLog && !existingLog.start_time) {
+        updateData.start_time = now;
+      }
+
       if (isCompleted && (!existingLog || existingLog?.status !== 'completed')) {
-        updateData.completed_at = new Date().toISOString();
+        updateData.completed_at = now;
         console.log('動画完了を検出！ 動画ID:', videoId, '進捗:', progressPercent, '%', '視聴時間:', calculatedWatchedTime, '秒');
 
         // 動画完了時にコース全体の完了状態を確認
@@ -319,6 +332,7 @@ export default function VideoPlayerPage() {
           user_id: user.id,
           video_id: videoId,
           course_id: courseId,
+          start_time: now, // 開始時刻を記録
         };
 
         const { data: newLog } = await supabase
