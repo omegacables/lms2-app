@@ -62,6 +62,26 @@ export default function VideoPlayerPage() {
   const progressUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingUpdateRef = useRef<{ position: number; videoDuration: number; progressPercent: number } | null>(null);
 
+  // 日本時間（JST）のタイムスタンプを取得する関数
+  const getJSTTimestamp = () => {
+    const now = new Date();
+    // 日本時間に変換（UTC+9）
+    const jstOffset = 9 * 60; // 9時間を分に変換
+    const localOffset = now.getTimezoneOffset(); // ローカルタイムゾーンのオフセット（分）
+    const jstTime = new Date(now.getTime() + (jstOffset + localOffset) * 60 * 1000);
+
+    // YYYY-MM-DD HH:mm:ss.SSS 形式で返す（タイムゾーン情報なし）
+    const year = jstTime.getFullYear();
+    const month = String(jstTime.getMonth() + 1).padStart(2, '0');
+    const day = String(jstTime.getDate()).padStart(2, '0');
+    const hours = String(jstTime.getHours()).padStart(2, '0');
+    const minutes = String(jstTime.getMinutes()).padStart(2, '0');
+    const seconds = String(jstTime.getSeconds()).padStart(2, '0');
+    const milliseconds = String(jstTime.getMilliseconds()).padStart(3, '0');
+
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
+  };
+
   // ファイルダウンロード関数
   const handleDownload = async (fileUrl: string, fileName: string) => {
     try {
@@ -186,7 +206,7 @@ export default function VideoPlayerPage() {
 
       // 完了済みログがある場合は、常に新規ログを作成（複数回視聴履歴を保存）
       if (hasCompletedLog) {
-        const now = new Date().toISOString();
+        const now = getJSTTimestamp();
         const { data, error } = await supabase
           .from('video_view_logs')
           .insert({
@@ -236,7 +256,7 @@ export default function VideoPlayerPage() {
           .update({
             session_id: sessionId.current,
             status: 'in_progress',
-            last_updated: new Date().toISOString(),
+            last_updated: getJSTTimestamp(),
           })
           .eq('id', existingLog.id)
           .select()
@@ -250,7 +270,7 @@ export default function VideoPlayerPage() {
         }
       } else {
         // 初回視聴の場合は新規作成
-        const now = new Date().toISOString();
+        const now = getJSTTimestamp();
         const { data, error } = await supabase
           .from('video_view_logs')
           .insert({
@@ -319,7 +339,7 @@ export default function VideoPlayerPage() {
         Math.floor(videoDuration)
       );
 
-      const now = new Date().toISOString();
+      const now = getJSTTimestamp();
       const updateData: any = {
         session_id: sessionId.current,
         current_position: Math.round(position),
