@@ -291,7 +291,20 @@ export default function VideoPlayerPage() {
         }, 2000);
       }
 
-      if (existingLog) {
+      // 完了時は新規レコードを作成（複数回の視聴履歴を残すため）
+      if (isCompleted && existingLog && existingLog.status !== 'completed') {
+        // 既存の未完了ログを完了状態で更新
+        await supabase
+          .from('video_view_logs')
+          .update(updateData)
+          .eq('id', existingLog.id);
+
+        // ローカルステートを更新
+        setViewLog({ ...existingLog, ...updateData });
+
+        console.log('視聴ログを完了状態に更新しました:', existingLog.id);
+      } else if (!isCompleted && existingLog) {
+        // 未完了時は既存ログを更新
         await supabase
           .from('video_view_logs')
           .update(updateData)
@@ -300,7 +313,7 @@ export default function VideoPlayerPage() {
         // ローカルステートを更新
         setViewLog({ ...existingLog, ...updateData });
       } else {
-        // 新規作成
+        // 新規作成（初回視聴 or 完了後の再視聴）
         const insertData = {
           ...updateData,
           user_id: user.id,
@@ -316,6 +329,7 @@ export default function VideoPlayerPage() {
 
         if (newLog) {
           setViewLog(newLog);
+          console.log('新規視聴ログを作成しました:', newLog.id);
         }
       }
     } catch (err) {
