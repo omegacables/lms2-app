@@ -172,13 +172,54 @@ export default function VideoPlayerPage() {
     if (!user || !video) return;
 
     try {
-      // 既存の未完了ログを確認
-      const { data: existingLogs, error: checkError } = await supabase
+      // 完了済みログがあるか確認
+      const { data: completedLogs } = await supabase
         .from('video_view_logs')
         .select('*')
         .eq('user_id', user.id)
         .eq('video_id', videoId)
-        .neq('status', 'completed')
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      const hasCompletedLog = completedLogs && completedLogs.length > 0;
+
+      // 完了済みログがある場合は、常に新規ログを作成（複数回視聴履歴を保存）
+      if (hasCompletedLog) {
+        const now = new Date().toISOString();
+        const { data, error } = await supabase
+          .from('video_view_logs')
+          .insert({
+            user_id: user.id,
+            video_id: videoId,
+            course_id: courseId,
+            session_id: sessionId.current,
+            current_position: 0,
+            total_watched_time: 0,
+            progress_percent: 0,
+            status: 'in_progress',
+            start_time: now,
+            last_updated: now,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error('視聴セッション作成エラー:', error);
+        } else if (data) {
+          setViewLog(data);
+          console.log('完了済み動画の再視聴セッションを作成しました:', data.id);
+        }
+        return;
+      }
+
+      // 未完了ログを確認
+      const { data: inProgressLogs, error: checkError } = await supabase
+        .from('video_view_logs')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('video_id', videoId)
+        .eq('status', 'in_progress')
         .order('created_at', { ascending: false });
 
       if (checkError && checkError.code !== 'PGRST116') {
@@ -186,7 +227,7 @@ export default function VideoPlayerPage() {
         return;
       }
 
-      const existingLog = existingLogs && existingLogs.length > 0 ? existingLogs[0] : null;
+      const existingLog = inProgressLogs && inProgressLogs.length > 0 ? inProgressLogs[0] : null;
 
       if (existingLog) {
         // 既存の未完了ログがある場合は更新
@@ -205,9 +246,10 @@ export default function VideoPlayerPage() {
           console.error('視聴セッション更新エラー:', error);
         } else if (data) {
           setViewLog(data);
+          console.log('既存の未完了セッションを再開しました:', data.id);
         }
       } else {
-        // 新規作成（完了済みの場合、または初回の場合）
+        // 初回視聴の場合は新規作成
         const now = new Date().toISOString();
         const { data, error } = await supabase
           .from('video_view_logs')
@@ -220,7 +262,7 @@ export default function VideoPlayerPage() {
             total_watched_time: 0,
             progress_percent: 0,
             status: 'in_progress',
-            start_time: now, // 開始時刻を記録
+            start_time: now,
             last_updated: now,
           })
           .select()
@@ -304,9 +346,8 @@ export default function VideoPlayerPage() {
         }, 2000);
       }
 
-      // 完了時は新規レコードを作成（複数回の視聴履歴を残すため）
-      if (isCompleted && existingLog && existingLog.status !== 'completed') {
-        // 既存の未完了ログを完了状態で更新
+      // existingLogがある場合は更新、ない場合は新規作成
+      if (existingLog) {
         await supabase
           .from('video_view_logs')
           .update(updateData)
@@ -315,24 +356,17 @@ export default function VideoPlayerPage() {
         // ローカルステートを更新
         setViewLog({ ...existingLog, ...updateData });
 
-        console.log('視聴ログを完了状態に更新しました:', existingLog.id);
-      } else if (!isCompleted && existingLog) {
-        // 未完了時は既存ログを更新
-        await supabase
-          .from('video_view_logs')
-          .update(updateData)
-          .eq('id', existingLog.id);
-
-        // ローカルステートを更新
-        setViewLog({ ...existingLog, ...updateData });
+        if (isCompleted) {
+          console.log('視聴ログを完了状態に更新しました:', existingLog.id);
+        }
       } else {
-        // 新規作成（初回視聴 or 完了後の再視聴）
+        // 新規作成（通常は発生しないが、念のため）
         const insertData = {
           ...updateData,
           user_id: user.id,
           video_id: videoId,
           course_id: courseId,
-          start_time: now, // 開始時刻を記録
+          start_time: now,
         };
 
         const { data: newLog } = await supabase
