@@ -204,32 +204,10 @@ export default function VideoPlayerPage() {
 
       const hasCompletedLog = completedLogs && completedLogs.length > 0;
 
-      // 完了済みログがある場合は、常に新規ログを作成（複数回視聴履歴を保存）
+      // 完了済みログがある場合は、ログを作成せず既存ログを使用
       if (hasCompletedLog) {
-        const now = getJSTTimestamp();
-        const { data, error } = await supabase
-          .from('video_view_logs')
-          .insert({
-            user_id: user.id,
-            video_id: videoId,
-            course_id: courseId,
-            session_id: sessionId.current,
-            current_position: 0,
-            total_watched_time: 0,
-            progress_percent: 0,
-            status: 'in_progress',
-            start_time: now,
-            last_updated: now,
-          })
-          .select()
-          .single();
-
-        if (error) {
-          console.error('視聴セッション作成エラー:', error);
-        } else if (data) {
-          setViewLog(data);
-          console.log('完了済み動画の再視聴セッションを作成しました:', data.id);
-        }
+        setViewLog(completedLogs[0]);
+        console.log('完了済み動画です。新しいログは作成しません:', completedLogs[0].id);
         return;
       }
 
