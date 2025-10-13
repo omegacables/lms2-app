@@ -192,25 +192,6 @@ export default function VideoPlayerPage() {
     if (!user || !video) return;
 
     try {
-      // 完了済みログがあるか確認
-      const { data: completedLogs } = await supabase
-        .from('video_view_logs')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('video_id', videoId)
-        .eq('status', 'completed')
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      const hasCompletedLog = completedLogs && completedLogs.length > 0;
-
-      // 完了済みログがある場合は、ログを作成せず既存ログを使用
-      if (hasCompletedLog) {
-        setViewLog(completedLogs[0]);
-        console.log('完了済み動画です。新しいログは作成しません:', completedLogs[0].id);
-        return;
-      }
-
       // 未完了ログを確認
       const { data: inProgressLogs, error: checkError } = await supabase
         .from('video_view_logs')
@@ -228,7 +209,7 @@ export default function VideoPlayerPage() {
       const existingLog = inProgressLogs && inProgressLogs.length > 0 ? inProgressLogs[0] : null;
 
       if (existingLog) {
-        // 既存の未完了ログがある場合は更新
+        // 既存の未完了ログがある場合は更新（同じ視聴セッションを継続）
         const { data, error } = await supabase
           .from('video_view_logs')
           .update({
@@ -247,7 +228,7 @@ export default function VideoPlayerPage() {
           console.log('既存の未完了セッションを再開しました:', data.id);
         }
       } else {
-        // 初回視聴の場合は新規作成
+        // 未完了ログがない場合は常に新規作成（完了済みの場合も新しいログを作成）
         const now = getJSTTimestamp();
         const { data, error } = await supabase
           .from('video_view_logs')
