@@ -363,6 +363,59 @@ export default function StudentsManagePage() {
     document.body.removeChild(link);
   };
 
+  // RFC 4180準拠のCSVパーサー
+  const parseCSV = (csv: string): string[][] => {
+    const rows: string[][] = [];
+    let currentRow: string[] = [];
+    let currentField = '';
+    let insideQuotes = false;
+
+    for (let i = 0; i < csv.length; i++) {
+      const char = csv[i];
+      const nextChar = csv[i + 1];
+
+      if (char === '"') {
+        if (insideQuotes && nextChar === '"') {
+          // エスケープされた引用符（""）
+          currentField += '"';
+          i++; // 次の引用符をスキップ
+        } else {
+          // 引用符の開始または終了
+          insideQuotes = !insideQuotes;
+        }
+      } else if (char === ',' && !insideQuotes) {
+        // フィールドの終了
+        currentRow.push(currentField.trim());
+        currentField = '';
+      } else if ((char === '\n' || char === '\r') && !insideQuotes) {
+        // 行の終了
+        if (char === '\r' && nextChar === '\n') {
+          i++; // \r\nの場合、\nをスキップ
+        }
+        if (currentField || currentRow.length > 0) {
+          currentRow.push(currentField.trim());
+          if (currentRow.some(field => field !== '')) {
+            rows.push(currentRow);
+          }
+          currentRow = [];
+          currentField = '';
+        }
+      } else {
+        currentField += char;
+      }
+    }
+
+    // 最後のフィールドと行を追加
+    if (currentField || currentRow.length > 0) {
+      currentRow.push(currentField.trim());
+      if (currentRow.some(field => field !== '')) {
+        rows.push(currentRow);
+      }
+    }
+
+    return rows;
+  };
+
   const handleCSVImport = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -372,8 +425,14 @@ export default function StudentsManagePage() {
     reader.onload = async (e) => {
       try {
         const csv = e.target?.result as string;
-        const lines = csv.split('\n').filter(line => line.trim());
-        const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
+        const rows = parseCSV(csv);
+
+        if (rows.length === 0) {
+          alert('CSVファイルが空です。');
+          return;
+        }
+
+        const headers = rows[0];
 
         // 必須フィールドと任意フィールドを定義
         const requiredHeaders = ['メールアドレス'];
@@ -397,8 +456,8 @@ export default function StudentsManagePage() {
         const studentsToImport = [];
         const errors = [];
 
-        for (let i = 1; i < lines.length; i++) {
-          const values = lines[i].split(',').map(v => v.replace(/"/g, '').trim());
+        for (let i = 1; i < rows.length; i++) {
+          const values = rows[i];
           const email = values[headerIndices['メールアドレス']];
 
           if (!email) {

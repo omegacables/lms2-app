@@ -59,20 +59,38 @@ export async function GET(
       }
     }
 
-    // 視聴ログの取得または作成
-    const { data: viewLog, error: logError } = await supabase
+    // 完了済みログが存在するかチェック
+    const { data: completedLogs, error: completedError } = await supabase
       .from('video_view_logs')
       .select('*')
       .eq('user_id', user.id)
       .eq('video_id', video.id)
-      .single();
+      .eq('status', 'completed')
+      .limit(1);
 
-    if (logError && logError.code !== 'PGRST116') { // PGRST116 = not found
+    if (completedError && completedError.code !== 'PGRST116') {
+      console.error('Error fetching completed log:', completedError);
+    }
+
+    const hasCompleted = completedLogs && completedLogs.length > 0;
+
+    // 最新の視聴ログを取得
+    const { data: viewLogs, error: logError } = await supabase
+      .from('video_view_logs')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('video_id', video.id)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (logError && logError.code !== 'PGRST116') {
       console.error('Error fetching view log:', logError);
     }
 
-    // 視聴ログがない場合は作成
-    if (!viewLog) {
+    const latestLog = viewLogs && viewLogs.length > 0 ? viewLogs[0] : null;
+
+    // 100%完了していない場合のみ、新規ログを作成
+    if (!hasCompleted && !latestLog) {
       await supabase
         .from('video_view_logs')
         .insert({
@@ -86,9 +104,9 @@ export async function GET(
     return NextResponse.json({
       ...video,
       signed_url: signedUrl,
-      current_position: viewLog?.current_position || 0,
-      progress_percent: viewLog?.progress_percent || 0,
-      watch_status: viewLog?.status || 'not_started'
+      current_position: latestLog?.current_position || 0,
+      progress_percent: latestLog?.progress_percent || 0,
+      watch_status: latestLog?.status || 'not_started'
     });
   } catch (error) {
     console.error('Error in GET /api/videos/[id]:', error);
@@ -234,31 +252,98 @@ export async function PATCH(
       status = 'not_started';
     }
 
-    // 視聴ログを更新（upsert）
-    const updateData: any = {
-      user_id: user.id,
-      video_id: parseInt(videoId),
-      course_id: video.course_id,
-      last_updated: new Date().toISOString()
-    };
+    // 完了済みログが存在するかチェック
+    const { data: completedLogs, error: completedError } = await supabase
+      .from('video_view_logs')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('video_id', parseInt(videoId))
+      .eq('status', 'completed')
+      .limit(1);
 
-    if (current_position !== undefined) updateData.current_position = current_position;
-    if (total_watched_time !== undefined) updateData.total_watched_time = total_watched_time;
-    if (calculatedProgress !== undefined) updateData.progress_percent = calculatedProgress;
-    if (status) updateData.status = status;
-    
-    // 完了時刻の設定
-    if (status === 'completed') {
-      updateData.completed_at = new Date().toISOString();
+    if (completedError && completedError.code !== 'PGRST116') {
+      console.error('Error fetching completed log:', completedError);
     }
 
-    const { data, error } = await supabase
+    const hasCompleted = completedLogs && completedLogs.length > 0;
+
+    // すでに100%完了している場合は、更新しない
+    if (hasCompleted) {
+      return NextResponse.json({
+        message: 'この動画は既に完了しています',
+        progress: completedLogs[0]
+      });
+    }
+
+    // 最新の視聴ログを取得
+    const { data: latestLogs, error: fetchError } = await supabase
       .from('video_view_logs')
-      .upsert(updateData, {
-        onConflict: 'user_id,video_id'
-      })
-      .select()
-      .single();
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('video_id', parseInt(videoId))
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (fetchError) {
+      console.error('Error fetching latest log:', fetchError);
+      return NextResponse.json({ error: '視聴ログの取得に失敗しました' }, { status: 500 });
+    }
+
+    const latestLog = latestLogs && latestLogs.length > 0 ? latestLogs[0] : null;
+
+    let data;
+    let error;
+
+    if (latestLog) {
+      // 既存ログを更新
+      const updateData: any = {
+        last_updated: new Date().toISOString()
+      };
+
+      if (current_position !== undefined) updateData.current_position = current_position;
+      if (total_watched_time !== undefined) updateData.total_watched_time = total_watched_time;
+      if (calculatedProgress !== undefined) updateData.progress_percent = calculatedProgress;
+      if (status) updateData.status = status;
+
+      if (status === 'completed') {
+        updateData.completed_at = new Date().toISOString();
+      }
+
+      const result = await supabase
+        .from('video_view_logs')
+        .update(updateData)
+        .eq('id', latestLog.id)
+        .select()
+        .single();
+
+      data = result.data;
+      error = result.error;
+    } else {
+      // ログが存在しない場合は新規作成
+      const insertData: any = {
+        user_id: user.id,
+        video_id: parseInt(videoId),
+        course_id: video.course_id,
+        current_position: current_position || 0,
+        total_watched_time: total_watched_time || 0,
+        progress_percent: calculatedProgress || 0,
+        status: status || 'not_started',
+        last_updated: new Date().toISOString()
+      };
+
+      if (status === 'completed') {
+        insertData.completed_at = new Date().toISOString();
+      }
+
+      const result = await supabase
+        .from('video_view_logs')
+        .insert(insertData)
+        .select()
+        .single();
+
+      data = result.data;
+      error = result.error;
+    }
 
     if (error) {
       console.error('Error updating video progress:', error);

@@ -80,8 +80,8 @@ CREATE TABLE video_view_logs (
   status VARCHAR(20) DEFAULT 'not_started' CHECK (status IN ('not_started', 'in_progress', 'completed')),
   completed_at TIMESTAMP,
   last_updated TIMESTAMP DEFAULT NOW(),
-  created_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(user_id, video_id)
+  created_at TIMESTAMP DEFAULT NOW()
+  -- UNIQUE制約を削除: 完了まで複数ログを記録するため
 );
 
 -- コース完了記録（要件ID: CERT-01対応）
@@ -224,6 +224,8 @@ CREATE INDEX idx_system_settings_category ON system_settings(category);
 CREATE INDEX idx_system_settings_public ON system_settings(is_public);
 CREATE INDEX idx_video_view_logs_user_course ON video_view_logs(user_id, course_id);
 CREATE INDEX idx_video_view_logs_progress ON video_view_logs(progress_percent, status);
+CREATE INDEX idx_video_view_logs_user_video_created ON video_view_logs(user_id, video_id, created_at DESC);
+CREATE INDEX idx_video_view_logs_latest ON video_view_logs(user_id, video_id, status, created_at DESC);
 CREATE INDEX idx_courses_status_category ON courses(status, category);
 CREATE INDEX idx_videos_course_order ON videos(course_id, order_index);
 CREATE INDEX idx_certificates_user ON certificates(user_id);
