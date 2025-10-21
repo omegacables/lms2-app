@@ -434,6 +434,9 @@ export default function StudentsManagePage() {
 
         const headers = rows[0];
 
+        console.log('[CSV Import] Headers:', headers);
+        console.log('[CSV Import] Total rows:', rows.length);
+
         // 必須フィールドと任意フィールドを定義
         const requiredHeaders = ['メールアドレス'];
         const optionalHeaders = ['氏名', '表示名', '会社名', '部署', 'パスワード'];
@@ -443,6 +446,8 @@ export default function StudentsManagePage() {
         headers.forEach((header, index) => {
           headerIndices[header] = index;
         });
+
+        console.log('[CSV Import] Header indices:', headerIndices);
 
         // 必須フィールドが存在するか確認
         const hasRequiredFields = requiredHeaders.every(h => headerIndices[h] !== undefined);
@@ -456,8 +461,33 @@ export default function StudentsManagePage() {
         const studentsToImport = [];
         const errors = [];
 
+        // 強固なデフォルトパスワードを生成（大文字・小文字・数字・記号を含む12文字以上）
+        const generateStrongPassword = () => {
+          const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+          const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+          const numbers = '0123456789';
+          const symbols = '!@#$%^&*';
+
+          let password = '';
+          password += uppercase[Math.floor(Math.random() * uppercase.length)];
+          password += lowercase[Math.floor(Math.random() * lowercase.length)];
+          password += numbers[Math.floor(Math.random() * numbers.length)];
+          password += symbols[Math.floor(Math.random() * symbols.length)];
+
+          const allChars = uppercase + lowercase + numbers + symbols;
+          for (let i = 0; i < 8; i++) {
+            password += allChars[Math.floor(Math.random() * allChars.length)];
+          }
+
+          // シャッフル
+          return password.split('').sort(() => Math.random() - 0.5).join('');
+        };
+
         for (let i = 1; i < rows.length; i++) {
           const values = rows[i];
+
+          console.log(`[CSV Import] Row ${i} values:`, values);
+
           const email = values[headerIndices['メールアドレス']];
 
           if (!email) {
@@ -472,37 +502,22 @@ export default function StudentsManagePage() {
             continue;
           }
 
-          // 強固なデフォルトパスワードを生成（大文字・小文字・数字・記号を含む12文字以上）
-          const generateStrongPassword = () => {
-            const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-            const lowercase = 'abcdefghijklmnopqrstuvwxyz';
-            const numbers = '0123456789';
-            const symbols = '!@#$%^&*';
+          const companyValue = values[headerIndices['会社名']];
+          const departmentValue = values[headerIndices['部署']];
 
-            let password = '';
-            password += uppercase[Math.floor(Math.random() * uppercase.length)];
-            password += lowercase[Math.floor(Math.random() * lowercase.length)];
-            password += numbers[Math.floor(Math.random() * numbers.length)];
-            password += symbols[Math.floor(Math.random() * symbols.length)];
-
-            const allChars = uppercase + lowercase + numbers + symbols;
-            for (let i = 0; i < 8; i++) {
-              password += allChars[Math.floor(Math.random() * allChars.length)];
-            }
-
-            // シャッフル
-            return password.split('').sort(() => Math.random() - 0.5).join('');
-          };
+          console.log(`[CSV Import] Row ${i} - company field: "${companyValue}", department field: "${departmentValue}"`);
 
           const studentData: any = {
             email,
             display_name: values[headerIndices['表示名']] || values[headerIndices['氏名']] || email.split('@')[0],
-            company: values[headerIndices['会社名']] || '',
-            department: values[headerIndices['部署']] || '',
+            company: companyValue || null,
+            department: departmentValue || null,
             password: values[headerIndices['パスワード']] || generateStrongPassword(),
             role: 'student',
             is_active: true
           };
+
+          console.log(`[CSV Import] Row ${i} - studentData:`, studentData);
 
           studentsToImport.push(studentData);
         }

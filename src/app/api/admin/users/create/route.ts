@@ -52,13 +52,16 @@ export async function POST(req: Request) {
       id: authData.user.id,
       email,
       display_name: display_name || email.split('@')[0],
-      company: company || '',
-      department: department || '',
+      company: company || null,
+      department: department || null,
       role: role || 'student',
       is_active: is_active !== undefined ? is_active : true,
     };
 
-    console.log('[User Create] Creating profile with:', profilePayload);
+    console.log('[User Create] Creating profile with:', {
+      ...profilePayload,
+      password: '***hidden***'
+    });
 
     const { data: profileData, error: profileError } = await supabase
       .from('user_profiles')
