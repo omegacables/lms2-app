@@ -47,10 +47,8 @@ export async function POST(req: Request) {
       );
     }
 
-    // プロフィールの作成
+    // プロフィールの更新（トリガーで既に作成されているため）
     const profilePayload = {
-      id: authData.user.id,
-      email,
       display_name: display_name || email.split('@')[0],
       company: company || null,
       department: department || null,
@@ -58,15 +56,18 @@ export async function POST(req: Request) {
       is_active: is_active !== undefined ? is_active : true,
     };
 
-    console.log('[User Create] Creating profile with:', {
+    console.log('[User Create] Updating profile with:', {
+      id: authData.user.id,
       ...profilePayload,
       password: '***hidden***'
     });
 
     // adminSupabaseを使用してRLSポリシーをバイパス
+    // トリガーで既に作成されたプロフィールを更新
     const { data: profileData, error: profileError } = await adminSupabase
       .from('user_profiles')
-      .insert(profilePayload)
+      .update(profilePayload)
+      .eq('id', authData.user.id)
       .select()
       .single();
 
