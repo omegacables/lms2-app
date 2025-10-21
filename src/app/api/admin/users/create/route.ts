@@ -63,7 +63,8 @@ export async function POST(req: Request) {
       password: '***hidden***'
     });
 
-    const { data: profileData, error: profileError } = await supabase
+    // adminSupabaseを使用してRLSポリシーをバイパス
+    const { data: profileData, error: profileError } = await adminSupabase
       .from('user_profiles')
       .insert(profilePayload)
       .select()
