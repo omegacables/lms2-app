@@ -472,12 +472,34 @@ export default function StudentsManagePage() {
             continue;
           }
 
+          // 強固なデフォルトパスワードを生成（大文字・小文字・数字・記号を含む12文字以上）
+          const generateStrongPassword = () => {
+            const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+            const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+            const numbers = '0123456789';
+            const symbols = '!@#$%^&*';
+
+            let password = '';
+            password += uppercase[Math.floor(Math.random() * uppercase.length)];
+            password += lowercase[Math.floor(Math.random() * lowercase.length)];
+            password += numbers[Math.floor(Math.random() * numbers.length)];
+            password += symbols[Math.floor(Math.random() * symbols.length)];
+
+            const allChars = uppercase + lowercase + numbers + symbols;
+            for (let i = 0; i < 8; i++) {
+              password += allChars[Math.floor(Math.random() * allChars.length)];
+            }
+
+            // シャッフル
+            return password.split('').sort(() => Math.random() - 0.5).join('');
+          };
+
           const studentData: any = {
             email,
             display_name: values[headerIndices['表示名']] || values[headerIndices['氏名']] || email.split('@')[0],
             company: values[headerIndices['会社名']] || '',
             department: values[headerIndices['部署']] || '',
-            password: values[headerIndices['パスワード']] || Math.random().toString(36).slice(-8) + 'Aa1!', // デフォルトパスワード生成
+            password: values[headerIndices['パスワード']] || generateStrongPassword(),
             role: 'student',
             is_active: true
           };
@@ -512,6 +534,7 @@ export default function StudentsManagePage() {
 
         for (const student of studentsToImport) {
           try {
+            console.log('Creating user:', { email: student.email, display_name: student.display_name, company: student.company });
             // APIエンドポイントを呼び出してユーザーを作成
             const { data: { session } } = await supabase.auth.getSession();
             const response = await fetch('/api/admin/users/create', {
@@ -527,7 +550,9 @@ export default function StudentsManagePage() {
               successCount++;
             } else {
               const error = await response.json();
-              importErrors.push(`${student.email}: ${error.message || 'インポート失敗'}`);
+              const errorMessage = error.error || error.message || 'インポート失敗';
+              console.error('Import error for', student.email, ':', errorMessage);
+              importErrors.push(`${student.email}: ${errorMessage}`);
             }
           } catch (error) {
             importErrors.push(`${student.email}: ネットワークエラー`);

@@ -7,6 +7,17 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { email, display_name, company, department, password, role, is_active } = body;
 
+    console.log('[User Create] Request received:', { email, display_name, company, department, role });
+
+    // 入力検証
+    if (!email || !password) {
+      console.error('[User Create] Missing required fields');
+      return NextResponse.json(
+        { error: 'メールアドレスとパスワードは必須です' },
+        { status: 400 }
+      );
+    }
+
     // 管理者権限の確認（実際のプロジェクトでは認証チェックを追加）
 
     // 新規ユーザーの作成
@@ -17,7 +28,12 @@ export async function POST(req: Request) {
     });
 
     if (authError) {
-      console.error('Auth creation error:', authError);
+      console.error('[User Create] Auth creation error:', {
+        email,
+        error: authError.message,
+        code: authError.status,
+        details: authError
+      });
       return NextResponse.json(
         { error: `ユーザー作成エラー: ${authError.message}` },
         { status: 400 }
@@ -32,22 +48,33 @@ export async function POST(req: Request) {
     }
 
     // プロフィールの作成
+    const profilePayload = {
+      id: authData.user.id,
+      email,
+      display_name: display_name || email.split('@')[0],
+      company: company || '',
+      department: department || '',
+      role: role || 'student',
+      is_active: is_active !== undefined ? is_active : true,
+    };
+
+    console.log('[User Create] Creating profile with:', profilePayload);
+
     const { data: profileData, error: profileError } = await supabase
       .from('user_profiles')
-      .insert({
-        id: authData.user.id,
-        email,
-        display_name: display_name || email.split('@')[0],
-        company: company || '',
-        department: department || '',
-        role: role || 'student',
-        is_active: is_active !== undefined ? is_active : true,
-      })
+      .insert(profilePayload)
       .select()
       .single();
 
     if (profileError) {
-      console.error('Profile creation error:', profileError);
+      console.error('[User Create] Profile creation error:', {
+        email,
+        error: profileError.message,
+        code: profileError.code,
+        details: profileError.details,
+        hint: profileError.hint,
+        payload: profilePayload
+      });
       // Authユーザーを削除（ロールバック）
       await adminSupabase.auth.admin.deleteUser(authData.user.id);
       return NextResponse.json(
@@ -55,6 +82,8 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    console.log('[User Create] Success:', { email, id: authData.user.id });
 
     return NextResponse.json({
       success: true,
