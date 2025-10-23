@@ -361,9 +361,13 @@ export default function VideoPlayerOptimized({
 
   if (error) {
     return (
-      <div className="bg-gray-900 rounded-lg p-8 text-center">
-        <p className="text-red-500 mb-2">動画の読み込みに失敗しました</p>
-        <p className="text-gray-400 text-sm">{error}</p>
+      <div className="bg-gray-900 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
+        <div className="w-full h-full flex items-center justify-center p-8">
+          <div className="text-center">
+            <p className="text-red-500 mb-2">動画の読み込みに失敗しました</p>
+            <p className="text-gray-400 text-sm">{error}</p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -385,9 +389,11 @@ export default function VideoPlayerOptimized({
         )}
       </div>
 
+      {/* アスペクト比を維持するコンテナ（16:9） */}
       <div
         ref={containerRef}
-        className="relative"
+        className="relative w-full"
+        style={{ aspectRatio: '16/9' }}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
       >
@@ -395,7 +401,7 @@ export default function VideoPlayerOptimized({
         <video
           ref={videoRef}
           src={videoUrl}
-          className="w-full h-auto"
+          className="absolute inset-0 w-full h-full object-contain"
           onLoadedMetadata={handleLoadedMetadata}
           onTimeUpdate={handleTimeUpdate}
           onPlay={handlePlay}
