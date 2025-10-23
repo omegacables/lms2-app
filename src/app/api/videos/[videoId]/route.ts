@@ -59,22 +59,7 @@ export async function GET(
       }
     }
 
-    // 完了済みログが存在するかチェック
-    const { data: completedLogs, error: completedError } = await supabase
-      .from('video_view_logs')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('video_id', video.id)
-      .eq('status', 'completed')
-      .limit(1);
-
-    if (completedError && completedError.code !== 'PGRST116') {
-      console.error('Error fetching completed log:', completedError);
-    }
-
-    const hasCompleted = completedLogs && completedLogs.length > 0;
-
-    // 最新の視聴ログを取得
+    // 最新の視聴ログを取得（完了済みかどうかに関わらず）
     const { data: viewLogs, error: logError } = await supabase
       .from('video_view_logs')
       .select('*')
@@ -89,8 +74,8 @@ export async function GET(
 
     const latestLog = viewLogs && viewLogs.length > 0 ? viewLogs[0] : null;
 
-    // 100%完了していない場合のみ、新規ログを作成
-    if (!hasCompleted && !latestLog) {
+    // ログが存在しない場合のみ新規作成
+    if (!latestLog) {
       await supabase
         .from('video_view_logs')
         .insert({
@@ -252,29 +237,6 @@ export async function PATCH(
       status = 'not_started';
     }
 
-    // 完了済みログが存在するかチェック
-    const { data: completedLogs, error: completedError } = await supabase
-      .from('video_view_logs')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('video_id', parseInt(videoId))
-      .eq('status', 'completed')
-      .limit(1);
-
-    if (completedError && completedError.code !== 'PGRST116') {
-      console.error('Error fetching completed log:', completedError);
-    }
-
-    const hasCompleted = completedLogs && completedLogs.length > 0;
-
-    // すでに100%完了している場合は、更新しない
-    if (hasCompleted) {
-      return NextResponse.json({
-        message: 'この動画は既に完了しています',
-        progress: completedLogs[0]
-      });
-    }
-
     // 最新の視聴ログを取得
     const { data: latestLogs, error: fetchError } = await supabase
       .from('video_view_logs')
@@ -291,11 +253,24 @@ export async function PATCH(
 
     const latestLog = latestLogs && latestLogs.length > 0 ? latestLogs[0] : null;
 
+    // 最新ログが既に完了済みの場合は、一切更新しない
+    if (latestLog && latestLog.status === 'completed') {
+      console.log('[Video Progress] 完了済みの動画です。ログを更新しません。', {
+        user_id: user.id,
+        video_id: videoId,
+        log_id: latestLog.id
+      });
+      return NextResponse.json({
+        message: 'この動画は既に完了しています',
+        progress: latestLog
+      });
+    }
+
     let data;
     let error;
 
-    if (latestLog) {
-      // 既存ログを更新
+    if (latestLog && latestLog.status !== 'completed') {
+      // 完了していないログのみ更新
       const updateData: any = {
         last_updated: new Date().toISOString()
       };
@@ -307,6 +282,11 @@ export async function PATCH(
 
       if (status === 'completed') {
         updateData.completed_at = new Date().toISOString();
+        console.log('[Video Progress] 動画を完了としてマーク', {
+          user_id: user.id,
+          video_id: videoId,
+          log_id: latestLog.id
+        });
       }
 
       const result = await supabase
@@ -319,7 +299,7 @@ export async function PATCH(
       data = result.data;
       error = result.error;
     } else {
-      // ログが存在しない場合は新規作成
+      // ログが存在しない場合のみ新規作成
       const insertData: any = {
         user_id: user.id,
         video_id: parseInt(videoId),

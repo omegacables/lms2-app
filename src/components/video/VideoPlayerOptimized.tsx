@@ -82,9 +82,13 @@ export default function VideoPlayerOptimized({
     debounce((currentTime: number, totalWatched: number, progress: number) => {
       if (!onProgressUpdate) return;
 
-      // 既に完了している場合は、再視聴として扱い、進捗を更新しない
-      if (hasCompletedOnce && status === '受講完了') {
-        console.log('[VideoPlayer] 既に完了済み。進捗更新をスキップ');
+      // 既に完了している場合は、進捗を一切更新しない
+      if (hasCompletedOnce || status === '受講完了') {
+        console.log('[VideoPlayer] 既に完了済み。進捗更新をスキップ', {
+          hasCompletedOnce,
+          status,
+          progress
+        });
         return;
       }
 
@@ -95,6 +99,7 @@ export default function VideoPlayerOptimized({
       if (isNowComplete && !hasCompletedOnce) {
         setHasCompletedOnce(true);
         setStatus('受講完了');
+        console.log('[VideoPlayer] 動画を完了としてマーク', { progress });
       } else if (!isNowComplete && !hasCompletedOnce) {
         setStatus('受講中');
       }
@@ -123,6 +128,12 @@ export default function VideoPlayerOptimized({
   const updateProgress = useCallback(() => {
     if (!videoRef.current) return;
 
+    // 完了済みの場合は進捗更新をスキップ
+    if (hasCompletedOnce || status === '受講完了') {
+      console.log('[VideoPlayer] 完了済みのため進捗更新をスキップ');
+      return;
+    }
+
     const currentTime = videoRef.current.currentTime;
     const videoDuration = videoRef.current.duration;
 
@@ -141,7 +152,7 @@ export default function VideoPlayerOptimized({
       // デバウンスされた更新を呼び出し
       debouncedProgressUpdate(currentTime, totalWatchedTime, progress);
     }
-  }, [lastUpdateTime, totalWatchedTime, debouncedProgressUpdate]);
+  }, [lastUpdateTime, totalWatchedTime, debouncedProgressUpdate, hasCompletedOnce, status]);
 
   // 時間の更新（UI更新のみ、進捗送信はしない）
   const handleTimeUpdate = () => {
@@ -197,6 +208,12 @@ export default function VideoPlayerOptimized({
     setIsPlaying(true);
     hideControlsAfterDelay();
 
+    // 完了済みの場合は進捗更新タイマーを開始しない
+    if (hasCompletedOnce || status === '受講完了') {
+      console.log('[VideoPlayer] 完了済みのため進捗更新タイマーを開始しません');
+      return;
+    }
+
     // 長い間隔で進捗を更新（負荷軽減）
     if (!progressUpdateRef.current) {
       progressUpdateRef.current = setInterval(updateProgress, PROGRESS_UPDATE_INTERVAL);
@@ -205,7 +222,10 @@ export default function VideoPlayerOptimized({
 
   // 動画の一時停止時
   const handlePause = () => {
-    updateProgress(); // 最終的な進捗を更新
+    // 完了していない場合のみ進捗を更新
+    if (!hasCompletedOnce && status !== '受講完了') {
+      updateProgress(); // 最終的な進捗を更新
+    }
     setIsPlaying(false);
     setShowControls(true);
 
@@ -221,7 +241,10 @@ export default function VideoPlayerOptimized({
 
   // 動画終了時
   const handleEnded = () => {
-    updateProgress();
+    // 完了していない場合のみ進捗を更新
+    if (!hasCompletedOnce && status !== '受講完了') {
+      updateProgress();
+    }
     setIsPlaying(false);
     setShowControls(true);
 
