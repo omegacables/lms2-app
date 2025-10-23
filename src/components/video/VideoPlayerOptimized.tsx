@@ -300,22 +300,77 @@ export default function VideoPlayerOptimized({
     }
   };
 
-  // フルスクリーン切り替え
+  // フルスクリーン切り替え（モバイル対応）
   const toggleFullscreen = async () => {
-    if (!containerRef.current) return;
+    if (!videoRef.current) return;
 
     try {
-      if (!document.fullscreenElement) {
-        await containerRef.current.requestFullscreen();
+      const video = videoRef.current as any;
+
+      // フルスクリーン状態の確認（各ブラウザ対応）
+      const isInFullscreen =
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement;
+
+      if (!isInFullscreen) {
+        // フルスクリーン化（各ブラウザのAPIを順に試行）
+        if (video.requestFullscreen) {
+          await video.requestFullscreen();
+        } else if (video.webkitRequestFullscreen) {
+          await video.webkitRequestFullscreen(); // Safari iOS
+        } else if (video.webkitEnterFullscreen) {
+          video.webkitEnterFullscreen(); // 古いiOS Safari
+        } else if (video.mozRequestFullScreen) {
+          await video.mozRequestFullScreen(); // Firefox
+        } else if (video.msRequestFullscreen) {
+          await video.msRequestFullscreen(); // IE/Edge
+        }
         setIsFullscreen(true);
       } else {
-        await document.exitFullscreen();
+        // フルスクリーン解除
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if ((document as any).webkitExitFullscreen) {
+          await (document as any).webkitExitFullscreen();
+        } else if ((document as any).mozCancelFullScreen) {
+          await (document as any).mozCancelFullScreen();
+        } else if ((document as any).msExitFullscreen) {
+          await (document as any).msExitFullscreen();
+        }
         setIsFullscreen(false);
       }
     } catch (error) {
       console.error('Fullscreen error:', error);
     }
   };
+
+  // フルスクリーン状態の監視
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isInFullscreen =
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement;
+
+      setIsFullscreen(!!isInFullscreen);
+    };
+
+    // 各ブラウザのフルスクリーン変更イベントを監視
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+    };
+  }, []);
 
   // クリーンアップ
   useEffect(() => {
@@ -402,12 +457,18 @@ export default function VideoPlayerOptimized({
           ref={videoRef}
           src={videoUrl}
           className="absolute inset-0 w-full h-full object-contain"
+          playsInline
+          preload="metadata"
+          controlsList="nodownload"
           onLoadedMetadata={handleLoadedMetadata}
           onTimeUpdate={handleTimeUpdate}
           onPlay={handlePlay}
           onPause={handlePause}
           onEnded={handleEnded}
           onError={() => handleError('動画の読み込みに失敗しました')}
+          onWaiting={() => console.log('動画バッファリング中...')}
+          onCanPlay={() => console.log('動画再生可能')}
+          onStalled={() => console.error('動画読み込みが停止しました')}
         />
 
         {/* ローディング表示 */}
