@@ -192,6 +192,28 @@ export default function VideoPlayerPage() {
     if (!user || !video) return;
 
     try {
+      // まず完了済みログを確認
+      const { data: completedLogs, error: completedCheckError } = await supabase
+        .from('video_view_logs')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('video_id', videoId)
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (completedCheckError && completedCheckError.code !== 'PGRST116') {
+        console.error('完了済みログ確認エラー:', completedCheckError);
+        return;
+      }
+
+      // 既に完了済みのログがある場合は、新しいログを作成せず、表示のみに使用
+      if (completedLogs && completedLogs.length > 0) {
+        setViewLog(completedLogs[0]);
+        console.log('既に完了済みの動画です。新しいログは作成しません:', completedLogs[0].id);
+        return;
+      }
+
       // 未完了ログを確認
       const { data: inProgressLogs, error: checkError } = await supabase
         .from('video_view_logs')
@@ -228,7 +250,7 @@ export default function VideoPlayerPage() {
           console.log('既存の未完了セッションを再開しました:', data.id);
         }
       } else {
-        // 未完了ログがない場合は常に新規作成（完了済みの場合も新しいログを作成）
+        // 未完了ログも完了済みログもない場合は新規作成
         const now = getJSTTimestamp();
         const { data, error } = await supabase
           .from('video_view_logs')
@@ -264,10 +286,25 @@ export default function VideoPlayerPage() {
   const saveProgressToDatabase = async (position: number, videoDuration: number, progressPercent: number) => {
     if (!user || !video) return;
 
-    // 進捗率100%で記録終了
-    const isCompleted = progressPercent >= 100;
-
     try {
+      // まず完了済みのログがあるか確認
+      const { data: completedLogs } = await supabase
+        .from('video_view_logs')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('video_id', videoId)
+        .eq('status', 'completed')
+        .limit(1);
+
+      // 既に完了済みのログがある場合は一切記録しない
+      if (completedLogs && completedLogs.length > 0) {
+        console.log('[完了済み動画] 既に完了済みのため、進捗記録をスキップします。');
+        return;
+      }
+
+      // 進捗率100%で記録終了
+      const isCompleted = progressPercent >= 100;
+
       // 既存の未完了ログをキャッシュから取得または確認
       let existingLog = viewLog;
 
@@ -285,7 +322,7 @@ export default function VideoPlayerPage() {
         existingLog = logsData && logsData.length > 0 ? logsData[0] : null;
       }
 
-      // 進捗率100%に達したら、それ以上記録しない
+      // 二重チェック：進捗率100%に達したら、それ以上記録しない
       if (existingLog && existingLog.status === 'completed') {
         console.log('すでに完了済みのログです。記録をスキップします。');
         return;
@@ -368,6 +405,12 @@ export default function VideoPlayerPage() {
   // デバウンスされた進捗更新（動画に影響を与えない）
   const updateProgress = async (position: number, videoDuration: number, progressPercent: number) => {
     if (!user || !video) return;
+
+    // 既に完了済みの場合は進捗更新をスキップ
+    if (viewLog?.status === 'completed') {
+      console.log('[完了済み動画] 既に完了済みのため、進捗更新をスキップします。');
+      return;
+    }
 
     // 最新の値を保存
     pendingUpdateRef.current = { position, videoDuration, progressPercent };

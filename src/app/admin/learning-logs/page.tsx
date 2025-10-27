@@ -1097,6 +1097,7 @@ export default function LearningLogsPage() {
                                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-400">視聴時間</th>
                                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-400">進捗率</th>
                                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-400">ステータス</th>
+                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-400">操作</th>
                                       </tr>
                                     </thead>
                                     <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -1147,6 +1148,28 @@ export default function LearningLogsPage() {
                                           </td>
                                           <td className="px-4 py-2 text-sm">
                                             {getStatusBadge(historyLog.status)}
+                                          </td>
+                                          <td className="px-4 py-2 text-sm">
+                                            <div className="flex space-x-2">
+                                              <button
+                                                onClick={() => setEditingLog(historyLog)}
+                                                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                                                title="編集"
+                                              >
+                                                <PencilIcon className="h-4 w-4" />
+                                              </button>
+                                              <button
+                                                onClick={async () => {
+                                                  if (confirm('この履歴ログを削除してもよろしいですか？')) {
+                                                    await handleDeleteLog(historyLog.id);
+                                                  }
+                                                }}
+                                                className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                                                title="削除"
+                                              >
+                                                <TrashIcon className="h-4 w-4" />
+                                              </button>
+                                            </div>
                                           </td>
                                         </tr>
                                       ))}
