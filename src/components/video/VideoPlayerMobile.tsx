@@ -556,21 +556,21 @@ export default function VideoPlayerMobile({
             }`}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* プログレスバー */}
-            <div className="relative mb-2 sm:mb-3">
+            {/* プログレスバー - スマホで操作しやすく */}
+            <div className="relative mb-2 sm:mb-3 py-2">
               <input
                 type="range"
                 min={0}
                 max={duration || 0}
                 value={currentTime}
                 onChange={handleSeek}
-                className="w-full h-2 sm:h-3 bg-gray-600 rounded-full appearance-none cursor-pointer"
+                className="w-full h-3 sm:h-3 bg-gray-600 rounded-full appearance-none cursor-pointer touch-manipulation"
                 style={{
                   background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${(currentTime / duration) * 100}%, #4b5563 ${(currentTime / duration) * 100}%, #4b5563 ${(buffered / duration) * 100}%, #1f2937 ${(buffered / duration) * 100}%, #1f2937 100%)`
                 }}
               />
               {/* 進捗率表示 */}
-              <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-black/75 px-2 py-1 rounded text-xs text-white">
+              <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 bg-black/90 px-3 py-1 rounded-full text-xs sm:text-sm font-bold text-white shadow-lg">
                 {progressPercent}%
               </div>
             </div>
@@ -578,20 +578,21 @@ export default function VideoPlayerMobile({
             {/* コントロールボタン */}
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 sm:gap-3 flex-1">
-                {/* 再生/一時停止ボタン */}
+                {/* 再生/一時停止ボタン - スマホで押しやすく */}
                 <button
                   onClick={togglePlay}
-                  className="text-white hover:text-blue-400 transition-colors p-1 touch-manipulation"
+                  className="text-white hover:text-blue-400 active:text-blue-500 transition-colors p-2 sm:p-2.5 touch-manipulation bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-lg"
+                  aria-label={isPlaying ? "一時停止" : "再生"}
                 >
                   {isPlaying ? (
-                    <PauseIcon className="h-7 w-7 sm:h-8 sm:w-8" />
+                    <PauseIcon className="h-8 w-8 sm:h-9 sm:w-9" />
                   ) : (
-                    <PlayIcon className="h-7 w-7 sm:h-8 sm:w-8" />
+                    <PlayIcon className="h-8 w-8 sm:h-9 sm:w-9" />
                   )}
                 </button>
 
                 {/* 時間表示 */}
-                <div className="text-white text-xs sm:text-sm whitespace-nowrap">
+                <div className="text-white text-xs sm:text-sm font-medium whitespace-nowrap">
                   {formatTime(currentTime)} / {formatTime(duration)}
                 </div>
 
@@ -621,31 +622,33 @@ export default function VideoPlayerMobile({
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2">
                 {/* モバイルでのミュートボタン */}
                 {isMobile && (
                   <button
                     onClick={toggleMute}
-                    className="text-white hover:text-blue-400 transition-colors p-1 touch-manipulation"
+                    className="text-white hover:text-blue-400 active:text-blue-500 transition-colors p-2 sm:p-2.5 touch-manipulation bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-lg"
+                    aria-label={isMuted ? "ミュート解除" : "ミュート"}
                   >
                     {isMuted ? (
-                      <SpeakerXMarkIcon className="h-6 w-6" />
+                      <SpeakerXMarkIcon className="h-7 w-7 sm:h-8 sm:w-8" />
                     ) : (
-                      <SpeakerWaveIcon className="h-6 w-6" />
+                      <SpeakerWaveIcon className="h-7 w-7 sm:h-8 sm:w-8" />
                     )}
                   </button>
                 )}
 
-                {/* フルスクリーンボタン */}
+                {/* フルスクリーンボタン - スマホで押しやすく大きめに */}
                 <button
                   onClick={toggleFullscreen}
-                  className="text-white hover:text-blue-400 transition-colors p-1 touch-manipulation"
+                  className="text-white hover:text-blue-400 active:text-blue-500 transition-colors p-2 sm:p-2.5 touch-manipulation bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-lg"
                   title={isFullscreen ? "全画面を終了" : "全画面表示"}
+                  aria-label={isFullscreen ? "全画面を終了" : "全画面表示"}
                 >
                   {isFullscreen ? (
-                    <ArrowsPointingInIcon className="h-6 w-6 sm:h-7 sm:w-7" />
+                    <ArrowsPointingInIcon className="h-8 w-8 sm:h-10 sm:w-10" />
                   ) : (
-                    <ArrowsPointingOutIcon className="h-6 w-6 sm:h-7 sm:w-7" />
+                    <ArrowsPointingOutIcon className="h-8 w-8 sm:h-10 sm:w-10" />
                   )}
                 </button>
               </div>
