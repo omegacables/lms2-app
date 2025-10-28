@@ -1,5 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/database/supabase';
+import { createClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
+
+// Supabaseクライアントを認証付きで作成
+async function createAuthenticatedClient() {
+  const cookieStore = await cookies();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    global: {
+      headers: {
+        cookie: cookieStore.toString(),
+      },
+    },
+  });
+
+  return supabase;
+}
 
 export async function GET(
   request: NextRequest,
@@ -11,6 +29,7 @@ export async function GET(
 
     console.log('\u30eaソース取得リクエスト - videoId:', videoId);
 
+    const supabase = await createAuthenticatedClient();
     const { data, error } = await supabase
       .from('video_resources')
       .select('*')
@@ -88,6 +107,7 @@ export async function POST(
 
     console.log('挿入データ:', insertData);
 
+    const supabase = await createAuthenticatedClient();
     const { data, error } = await supabase
       .from('video_resources')
       .insert(insertData)
@@ -148,6 +168,7 @@ export async function PUT(
       );
     }
 
+    const supabase = await createAuthenticatedClient();
     const { data, error } = await supabase
       .from('video_resources')
       .update(updateData)
@@ -182,6 +203,7 @@ export async function DELETE(
       );
     }
 
+    const supabase = await createAuthenticatedClient();
     const { error } = await supabase
       .from('video_resources')
       .delete()
