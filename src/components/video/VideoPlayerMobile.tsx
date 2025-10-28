@@ -408,23 +408,103 @@ export default function VideoPlayerMobile({
 
   // フルスクリーン切り替え
   const toggleFullscreen = async () => {
-    if (!containerRef.current) return;
+    if (!videoRef.current && !containerRef.current) return;
 
     try {
-      if (!document.fullscreenElement) {
-        // iOS Safari の場合は動画要素自体をフルスクリーンにする
-        if (videoRef.current && 'webkitEnterFullscreen' in videoRef.current) {
-          (videoRef.current as any).webkitEnterFullscreen();
-        } else {
-          await containerRef.current.requestFullscreen();
+      console.log('[VideoPlayer] フルスクリーン切り替え開始', {
+        isFullscreen,
+        hasFullscreenElement: !!document.fullscreenElement,
+        isMobile,
+        userAgent: navigator.userAgent
+      });
+
+      // すでにフルスクリーンの場合は終了
+      if (document.fullscreenElement || (document as any).webkitFullscreenElement) {
+        console.log('[VideoPlayer] フルスクリーン終了');
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if ((document as any).webkitExitFullscreen) {
+          (document as any).webkitExitFullscreen();
         }
-        setIsFullscreen(true);
-      } else {
-        await document.exitFullscreen();
         setIsFullscreen(false);
+        return;
       }
-    } catch (err) {
+
+      // フルスクリーンを開始
+      let fullscreenSuccess = false;
+
+      // 方法1: iOS Safari - 動画要素のネイティブ全画面
+      if (videoRef.current && 'webkitEnterFullscreen' in videoRef.current) {
+        console.log('[VideoPlayer] iOS Safari フルスクリーン (webkitEnterFullscreen)');
+        try {
+          (videoRef.current as any).webkitEnterFullscreen();
+          setIsFullscreen(true);
+          fullscreenSuccess = true;
+        } catch (err) {
+          console.warn('[VideoPlayer] webkitEnterFullscreen 失敗:', err);
+        }
+      }
+
+      // 方法2: Fullscreen API (container)
+      if (!fullscreenSuccess && containerRef.current) {
+        if (containerRef.current.requestFullscreen) {
+          console.log('[VideoPlayer] 標準 Fullscreen API (container)');
+          await containerRef.current.requestFullscreen();
+          setIsFullscreen(true);
+          fullscreenSuccess = true;
+        } else if ((containerRef.current as any).webkitRequestFullscreen) {
+          console.log('[VideoPlayer] Webkit Fullscreen API (container)');
+          await (containerRef.current as any).webkitRequestFullscreen();
+          setIsFullscreen(true);
+          fullscreenSuccess = true;
+        } else if ((containerRef.current as any).mozRequestFullScreen) {
+          console.log('[VideoPlayer] Moz Fullscreen API (container)');
+          await (containerRef.current as any).mozRequestFullScreen();
+          setIsFullscreen(true);
+          fullscreenSuccess = true;
+        } else if ((containerRef.current as any).msRequestFullscreen) {
+          console.log('[VideoPlayer] MS Fullscreen API (container)');
+          await (containerRef.current as any).msRequestFullscreen();
+          setIsFullscreen(true);
+          fullscreenSuccess = true;
+        }
+      }
+
+      // 方法3: Fullscreen API (video)
+      if (!fullscreenSuccess && videoRef.current) {
+        if ((videoRef.current as any).requestFullscreen) {
+          console.log('[VideoPlayer] 標準 Fullscreen API (video)');
+          await (videoRef.current as any).requestFullscreen();
+          setIsFullscreen(true);
+          fullscreenSuccess = true;
+        } else if ((videoRef.current as any).webkitRequestFullscreen) {
+          console.log('[VideoPlayer] Webkit Fullscreen API (video)');
+          await (videoRef.current as any).webkitRequestFullscreen();
+          setIsFullscreen(true);
+          fullscreenSuccess = true;
+        }
+      }
+
+      if (!fullscreenSuccess) {
+        console.error('[VideoPlayer] すべてのフルスクリーン方法が失敗しました');
+        // エラーメッセージを表示
+        alert('このブラウザでは全画面表示がサポートされていません。\n\n別のブラウザ（Chrome、Safari）をお試しください。');
+      }
+
+    } catch (err: any) {
       console.error('[VideoPlayer] フルスクリーンエラー:', err);
+      console.error('[VideoPlayer] エラー詳細:', {
+        name: err.name,
+        message: err.message,
+        stack: err.stack
+      });
+
+      // ユーザーフレンドリーなエラーメッセージ
+      if (err.name === 'TypeError' && err.message.includes('fullscreen')) {
+        alert('このデバイスでは全画面表示がサポートされていません。');
+      } else {
+        alert('全画面表示に切り替えることができませんでした。\n\nページをリロードして再度お試しください。');
+      }
     }
   };
 
@@ -724,17 +804,17 @@ export default function VideoPlayerMobile({
                   </button>
                 )}
 
-                {/* フルスクリーンボタン - スマホで押しやすく大きめに */}
+                {/* フルスクリーンボタン - スマホで押しやすく大きく目立つ */}
                 <button
                   onClick={toggleFullscreen}
-                  className="text-white hover:text-blue-400 active:text-blue-500 transition-colors p-2 sm:p-2.5 touch-manipulation bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-lg"
+                  className="text-white hover:text-blue-400 active:text-blue-500 transition-all duration-200 p-3 touch-manipulation bg-blue-600/80 hover:bg-blue-600 active:bg-blue-700 rounded-lg shadow-lg active:scale-95"
                   title={isFullscreen ? "全画面を終了" : "全画面表示"}
                   aria-label={isFullscreen ? "全画面を終了" : "全画面表示"}
                 >
                   {isFullscreen ? (
-                    <ArrowsPointingInIcon className="h-8 w-8 sm:h-10 sm:w-10" />
+                    <ArrowsPointingInIcon className="h-9 w-9 sm:h-11 sm:w-11" />
                   ) : (
-                    <ArrowsPointingOutIcon className="h-8 w-8 sm:h-10 sm:w-10" />
+                    <ArrowsPointingOutIcon className="h-9 w-9 sm:h-11 sm:w-11" />
                   )}
                 </button>
               </div>
