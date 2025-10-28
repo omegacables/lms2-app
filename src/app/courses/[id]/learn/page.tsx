@@ -148,7 +148,7 @@ export default function CourseLearnPage() {
     ).length;
 
     const totalWatchTime = logs.reduce(
-      (sum, log) => sum + (log.total_watched || 0),
+      (sum, log) => sum + (log.total_watched_time || 0),
       0
     );
 
@@ -203,15 +203,17 @@ export default function CourseLearnPage() {
     setIsSaving(true);
 
     try {
+      const now = new Date().toISOString();
       const logData = {
         user_id: user.id,
         course_id: courseId,
         video_id: currentVideo.id,
         current_position: position,
-        total_watched: totalWatched,
+        total_watched_time: totalWatched, // 正しいカラム名
         progress_percent: progressPercent,
-        completed_at: isComplete ? new Date().toISOString() : null,
-        updated_at: new Date().toISOString(),
+        completed_at: isComplete ? now : null,
+        end_time: now, // 終了時刻を必ず記録
+        last_updated: now, // last_updatedも更新
       };
 
       if (existingLog) {
@@ -225,19 +227,37 @@ export default function CourseLearnPage() {
 
         if (error) throw error;
 
+        console.log('[Learn] 進捗更新完了:', {
+          videoId: currentVideo.id,
+          position: position.toFixed(2),
+          progress: progressPercent,
+          endTime: now
+        });
+
         // ローカル状態を更新
         setViewLogs(prev => prev.map(log =>
           log.id === existingLog.id ? data : log
         ));
       } else {
-        // 新規ログを作成
+        // 新規ログを作成（start_timeも設定）
+        const newLogData = {
+          ...logData,
+          start_time: now, // 開始時刻を記録
+        };
+
         const { data, error } = await supabase
           .from('video_view_logs')
-          .insert(logData)
+          .insert(newLogData)
           .select()
           .single();
 
         if (error) throw error;
+
+        console.log('[Learn] 新規ログ作成:', {
+          videoId: currentVideo.id,
+          startTime: now,
+          endTime: now
+        });
 
         // ローカル状態に追加
         setViewLogs(prev => [...prev, data]);
@@ -279,10 +299,11 @@ export default function CourseLearnPage() {
         .from('video_view_logs')
         .update({
           current_position: 0,
-          total_watched: 0,
+          total_watched_time: 0,
           progress_percent: 0,
           completed_at: null,
-          updated_at: new Date().toISOString(),
+          end_time: null,
+          last_updated: new Date().toISOString(),
         })
         .eq('id', existingLog.id)
         .select()
