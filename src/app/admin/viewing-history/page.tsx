@@ -27,6 +27,8 @@ interface ViewingHistoryRecord {
   total_watched_time: number;
   progress_percent: number;
   status: 'not_started' | 'in_progress' | 'completed';
+  start_time: string;
+  end_time: string;
   last_updated: string;
   user_profiles: { display_name: string };
   videos: { title: string };
@@ -408,7 +410,10 @@ export default function ViewingHistoryPage() {
                         ステータス
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        最終更新
+                        視聴開始
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        視聴終了
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         アクション
@@ -468,7 +473,20 @@ export default function ViewingHistoryPage() {
                           {getStatusBadge(record.status)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                          {new Date(record.last_updated).toLocaleString('ja-JP')}
+                          {record.start_time ? new Date(record.start_time).toLocaleString('ja-JP', {
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          }) : '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                          {record.end_time ? new Date(record.end_time).toLocaleString('ja-JP', {
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          }) : '-'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <button
