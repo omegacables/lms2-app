@@ -428,75 +428,10 @@ export default function CourseLearnPage() {
           </div>
         </div>
 
-        <div className="container mx-auto px-4 py-8">
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            {/* サイドバー - 動画リスト */}
-            <div className="lg:col-span-1 order-2 lg:order-1">
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-                <h2 className="font-semibold text-gray-900 dark:text-white mb-4">
-                  動画一覧
-                </h2>
-                <div className="space-y-2">
-                  {videos.map((video, index) => {
-                    const status = getVideoStatus(video);
-                    const isActive = index === currentVideoIndex;
-
-                    return (
-                      <button
-                        key={video.id}
-                        onClick={() => handleSelectVideo(index)}
-                        className={`w-full text-left p-3 rounded-lg transition-colors ${
-                          isActive
-                            ? 'bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-600'
-                            : 'hover:bg-gray-50 dark:hover:bg-gray-700'
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="flex-shrink-0 mt-1">
-                            {status === '受講完了' ? (
-                              <CheckCircleIcon className="w-5 h-5 text-green-600" />
-                            ) : status === '受講中' ? (
-                              <ClockIcon className="w-5 h-5 text-yellow-600" />
-                            ) : (
-                              <PlayCircleIcon className="w-5 h-5 text-gray-400" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className={`text-sm font-medium truncate ${
-                              isActive
-                                ? 'text-blue-600 dark:text-blue-400'
-                                : 'text-gray-900 dark:text-white'
-                            }`}>
-                              {index + 1}. {video.title}
-                            </p>
-                            {video.duration && (
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                {Math.floor(video.duration / 60)}分
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* 修了証セクション */}
-              {showCertificate && userProfile && (
-                <div className="mt-6">
-                  <CourseCertificate
-                    course={course}
-                    user={userProfile}
-                    completionDate={courseProgress.completionDate || new Date()}
-                    progress={courseProgress}
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* メインコンテンツ - 動画プレーヤー */}
-            <div className="lg:col-span-3 order-1 lg:order-2">
+        <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8">
+          <div className="flex flex-col lg:grid lg:grid-cols-4 gap-4 lg:gap-6">
+            {/* メインコンテンツ - 動画プレーヤー（モバイルで最初に表示） */}
+            <div className="lg:col-span-3 order-1">
               {currentVideo && (
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
                   {/* 動画タイトル */}
@@ -552,6 +487,71 @@ export default function CourseLearnPage() {
                       </Button>
                     </div>
                   </div>
+                </div>
+              )}
+            </div>
+
+            {/* サイドバー - 動画リスト（モバイルで2番目に表示） */}
+            <div className="lg:col-span-1 order-2">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                <h2 className="font-semibold text-gray-900 dark:text-white mb-4">
+                  動画一覧
+                </h2>
+                <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                  {videos.map((video, index) => {
+                    const status = getVideoStatus(video);
+                    const isActive = index === currentVideoIndex;
+
+                    return (
+                      <button
+                        key={video.id}
+                        onClick={() => handleSelectVideo(index)}
+                        className={`w-full text-left p-3 rounded-lg transition-colors ${
+                          isActive
+                            ? 'bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-600'
+                            : 'hover:bg-gray-50 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0 mt-1">
+                            {status === '受講完了' ? (
+                              <CheckCircleIcon className="w-5 h-5 text-green-600" />
+                            ) : status === '受講中' ? (
+                              <ClockIcon className="w-5 h-5 text-yellow-600" />
+                            ) : (
+                              <PlayCircleIcon className="w-5 h-5 text-gray-400" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-medium truncate ${
+                              isActive
+                                ? 'text-blue-600 dark:text-blue-400'
+                                : 'text-gray-900 dark:text-white'
+                            }`}>
+                              {index + 1}. {video.title}
+                            </p>
+                            {video.duration && (
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {Math.floor(video.duration / 60)}分
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 修了証セクション */}
+              {showCertificate && userProfile && (
+                <div className="mt-6">
+                  <CourseCertificate
+                    course={course}
+                    user={userProfile}
+                    completionDate={courseProgress.completionDate || new Date()}
+                    progress={courseProgress}
+                  />
                 </div>
               )}
             </div>

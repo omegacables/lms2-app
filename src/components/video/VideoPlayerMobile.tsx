@@ -106,7 +106,7 @@ export default function VideoPlayerMobile({
   // 進捗を保存（バックグラウンドで非同期に実行）
   const saveProgress = useCallback((isUrgent: boolean = false) => {
     if (!videoRef.current || !onProgressUpdate) return;
-    if (hasCompletedOnce) return; // 完了済みの場合はスキップ
+    // 完了済みでも進捗を保存する（end_time更新のため）
 
     const currentTime = videoRef.current.currentTime;
     const videoDuration = videoRef.current.duration;
@@ -161,7 +161,7 @@ export default function VideoPlayerMobile({
 
   // 定期的な進捗保存（10秒ごと）
   useEffect(() => {
-    if (isPlaying && !hasCompletedOnce) {
+    if (isPlaying) {
       progressSaveTimerRef.current = setInterval(() => {
         saveProgress();
       }, 10000); // 10秒ごと
@@ -172,7 +172,7 @@ export default function VideoPlayerMobile({
         }
       };
     }
-  }, [isPlaying, saveProgress, hasCompletedOnce]);
+  }, [isPlaying, saveProgress]);
 
   // 再生時間のトラッキング
   useEffect(() => {
@@ -215,10 +215,19 @@ export default function VideoPlayerMobile({
         isCompleted: hasCompletedOnce
       });
 
-      // 前回の視聴位置から再開（完了していない場合のみ）
-      if (!hasCompletedOnce && currentPosition > 0 && currentPosition < videoDuration) {
+      // 前回の視聴位置から再開
+      if (currentPosition > 0 && currentPosition < videoDuration) {
         videoRef.current.currentTime = currentPosition;
         lastPositionRef.current = currentPosition;
+
+        // 続きから再生する場合、初回のログを保存
+        console.log('[VideoPlayer] 続きから再生 - 初回ログ保存', {
+          currentPosition
+        });
+        // 少し遅延させて、確実に currentTime が設定されてから保存
+        setTimeout(() => {
+          saveProgress(false);
+        }, 500);
       } else {
         lastPositionRef.current = 0;
       }
@@ -289,6 +298,12 @@ export default function VideoPlayerMobile({
 
     if (videoRef.current) {
       lastPositionRef.current = videoRef.current.currentTime;
+
+      // 再生開始時に初回ログを保存（視聴開始の記録）
+      console.log('[VideoPlayer] 再生開始 - 初回ログ保存');
+      setTimeout(() => {
+        saveProgress(false);
+      }, 1000); // 1秒後に保存
     }
 
     hideControlsAfterDelay();
@@ -300,10 +315,8 @@ export default function VideoPlayerMobile({
     setIsPlaying(false);
     setShowControls(true);
 
-    // 一時停止時に進捗を保存
-    if (!hasCompletedOnce) {
-      saveProgress();
-    }
+    // 一時停止時に進捗を保存（常に実行）
+    saveProgress();
 
     if (hideControlsTimer.current) {
       clearTimeout(hideControlsTimer.current);
@@ -327,10 +340,8 @@ export default function VideoPlayerMobile({
     setIsPlaying(false);
     setShowControls(true);
 
-    // 最終的な進捗を保存
-    if (!hasCompletedOnce) {
-      saveProgress();
-    }
+    // 最終的な進捗を保存（常に実行）
+    saveProgress();
 
     if (hideControlsTimer.current) {
       clearTimeout(hideControlsTimer.current);
@@ -526,8 +537,8 @@ export default function VideoPlayerMobile({
   // コンポーネントのアンマウント時
   useEffect(() => {
     return () => {
-      // 最終的な進捗を保存
-      if (!hasCompletedOnce && videoRef.current) {
+      // 最終的な進捗を保存（常に実行）
+      if (videoRef.current) {
         saveProgress(true); // 緊急保存
       }
 
@@ -542,33 +553,40 @@ export default function VideoPlayerMobile({
         clearInterval(playTimeTrackingRef.current);
       }
     };
-  }, [saveProgress, hasCompletedOnce]);
+  }, [saveProgress]);
 
   // ページを離れる前に進捗を保存
   useEffect(() => {
-    let hasUnsavedProgress = false;
-
     // 再生中または一時停止中は保存が必要
     const checkUnsavedProgress = () => {
-      if (videoRef.current && !hasCompletedOnce) {
+      if (videoRef.current) {
         const currentTime = videoRef.current.currentTime;
-        return currentTime > 0;
+        return currentTime > 0 && !isNaN(currentTime);
       }
       return false;
     };
 
     // beforeunload: ページを離れる前の確認ダイアログ
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      hasUnsavedProgress = checkUnsavedProgress();
+      const hasUnsaved = checkUnsavedProgress();
 
-      if (hasUnsavedProgress) {
+      console.log('[VideoPlayer] beforeunload イベント', {
+        hasUnsaved,
+        currentTime: videoRef.current?.currentTime,
+        hasCompletedOnce
+      });
+
+      if (hasUnsaved) {
         console.log('[VideoPlayer] ページ離脱前 - 進捗保存を試行');
-        saveProgress(true); // 緊急保存
 
-        // ブラウザに確認ダイアログを表示
+        // 緊急保存（同期的に実行）
+        saveProgress(true);
+
+        // 確認ダイアログを表示（最新のブラウザ標準）
+        const message = '動画の視聴履歴を保存していますか？\nページを離れると進捗が失われる可能性があります。';
         e.preventDefault();
-        e.returnValue = '視聴履歴が保存されていない可能性があります。ページを離れますか？';
-        return e.returnValue;
+        e.returnValue = message;
+        return message;
       }
     };
 
@@ -637,7 +655,7 @@ export default function VideoPlayerMobile({
         saveProgress(true); // 緊急保存
       }
     };
-  }, [saveProgress, hasCompletedOnce]);
+  }, [saveProgress]);
 
   // 時間フォーマット
   const formatTime = (seconds: number) => {
