@@ -61,6 +61,26 @@ export default function CourseLearnPage() {
     }
   }, [courseId, user]);
 
+  // ページ離脱時の確認ダイアログ
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // 動画が再生されている、または一時停止中の場合
+      const videoElement = document.querySelector('video');
+      if (videoElement && videoElement.currentTime > 0) {
+        console.log('[Learn] beforeunload - 動画視聴中のため確認ダイアログを表示');
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
+
   const fetchCourseData = async () => {
     if (!user) return;
 
@@ -361,6 +381,34 @@ export default function CourseLearnPage() {
   const handleSelectVideo = (index: number) => {
     setCurrentVideoIndex(index);
   };
+
+  // 動画が切り替わった時に初回ログを保存
+  useEffect(() => {
+    if (!user || !videos[currentVideoIndex]) return;
+
+    const currentVideo = videos[currentVideoIndex];
+    const existingLog = viewLogs.find(log => log.video_id === currentVideo.id);
+
+    // 既存のログがあり、続きから再生する場合、初回ログを保存
+    if (existingLog && existingLog.current_position > 0) {
+      console.log('[Learn] 動画切り替え - 続きから再生のため初回ログ保存', {
+        videoId: currentVideo.id,
+        currentPosition: existingLog.current_position
+      });
+
+      // 2秒後に初回ログを保存（動画がロードされるまで待つ）
+      const timer = setTimeout(() => {
+        handleProgressUpdate(
+          existingLog.current_position,
+          existingLog.total_watched_time || 0,
+          existingLog.progress_percent || 0,
+          false
+        );
+      }, 2000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [currentVideoIndex, user, videos, viewLogs]);
 
   // 動画の状態を取得
   const getVideoStatus = (video: Video): '未受講' | '受講中' | '受講完了' => {
