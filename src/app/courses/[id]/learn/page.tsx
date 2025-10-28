@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { AuthGuard } from '@/components/auth/AuthGuard';
-import VideoPlayerOptimized from '@/components/video/VideoPlayerOptimized';
+import VideoPlayerMobile from '@/components/video/VideoPlayerMobile';
 import { CourseCertificate } from '@/components/certificate/CourseCertificate';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Button } from '@/components/ui/Button';
@@ -475,14 +475,13 @@ export default function CourseLearnPage() {
 
                   {/* 動画プレーヤー */}
                   <div className="p-4">
-                    <VideoPlayerOptimized
+                    <VideoPlayerMobile
                       videoId={currentVideo.id.toString()}
                       videoUrl={currentVideo.video_url || undefined}
                       title={currentVideo.title}
                       currentPosition={currentVideoLog?.current_position || 0}
                       isCompleted={(currentVideoLog?.progress_percent || 0) >= COMPLETION_THRESHOLD}
                       onProgressUpdate={handleProgressUpdate}
-                      onResetProgress={handleResetProgress}
                       onError={(error) => console.error('Video error:', error)}
                     />
                   </div>
