@@ -1,22 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { createServerSupabaseClient } from '@/lib/database/supabase';
 
 // Supabaseクライアントを認証付きで作成
 async function createAuthenticatedClient() {
   const cookieStore = await cookies();
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: {
-      headers: {
-        cookie: cookieStore.toString(),
-      },
-    },
-  });
-
-  return supabase;
+  return createServerSupabaseClient(cookieStore);
 }
 
 export async function GET(
@@ -90,6 +79,46 @@ export async function POST(
       );
     }
 
+    // Supabaseクライアントを作成
+    const supabase = await createAuthenticatedClient();
+
+    // 認証情報を確認
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      console.error('認証エラー:', authError);
+      return NextResponse.json(
+        { error: '認証が必要です', details: authError?.message || 'Not authenticated' },
+        { status: 401 }
+      );
+    }
+
+    console.log('認証ユーザー:', { id: user.id, email: user.email });
+
+    // ユーザーの権限を確認
+    const { data: profile, error: profileError } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError) {
+      console.error('プロフィール取得エラー:', profileError);
+      return NextResponse.json(
+        { error: 'ユーザー情報の取得に失敗しました', details: profileError.message },
+        { status: 500 }
+      );
+    }
+
+    console.log('ユーザー権限:', profile?.role);
+
+    if (!profile || !['admin', 'instructor'].includes(profile.role)) {
+      return NextResponse.json(
+        { error: '権限がありません', details: `Your role is: ${profile?.role}. Required: admin or instructor` },
+        { status: 403 }
+      );
+    }
+
     // created_byは不要（RLSで自動設定されるか、NULL許可）
     const insertData = {
       video_id: videoId,
@@ -102,12 +131,12 @@ export async function POST(
       file_type: body.file_type || null,
       content: body.content || null,
       display_order: body.display_order || 0,
-      is_required: body.is_required || false
+      is_required: body.is_required || false,
+      created_by: user.id
     };
 
     console.log('挿入データ:', insertData);
 
-    const supabase = await createAuthenticatedClient();
     const { data, error } = await supabase
       .from('video_resources')
       .insert(insertData)
