@@ -194,44 +194,51 @@ export default function CourseLearnPage() {
     // 既存のログを確認
     const existingLog = viewLogs.find(log => log.video_id === currentVideo.id);
 
-    // 既に完了している場合は更新しない
-    if (existingLog && (existingLog.progress_percent || 0) >= COMPLETION_THRESHOLD) {
-      console.log('[Learn] Video already completed, skipping update');
-      return;
-    }
+    // 完了済みでも視聴履歴（end_time）を更新するため、スキップしない
+    // ただし、完了済みの場合は completed_at は変更しない
 
     setIsSaving(true);
 
     try {
       const now = new Date().toISOString();
-      const logData = {
-        user_id: user.id,
-        course_id: courseId,
-        video_id: currentVideo.id,
-        current_position: position,
-        total_watched_time: totalWatched, // 正しいカラム名
-        progress_percent: progressPercent,
-        completed_at: isComplete ? now : null,
-        end_time: now, // 終了時刻を必ず記録
-        last_updated: now, // last_updatedも更新
-      };
 
       if (existingLog) {
-        // 既存のログを更新
+        // 既存のログを更新（IDフィールドは更新しない）
+        // 既に完了済みの場合は completed_at を上書きしない
+        const wasCompleted = (existingLog.progress_percent || 0) >= COMPLETION_THRESHOLD;
+
+        const updateData = {
+          current_position: position,
+          total_watched_time: totalWatched,
+          progress_percent: progressPercent,
+          // 既に完了済みの場合は completed_at を維持、新規完了の場合のみ設定
+          completed_at: wasCompleted
+            ? existingLog.completed_at
+            : (isComplete ? now : null),
+          end_time: now, // 終了時刻を必ず記録
+          last_updated: now,
+        };
+
         const { data, error } = await supabase
           .from('video_view_logs')
-          .update(logData)
+          .update(updateData)
           .eq('id', existingLog.id)
           .select()
           .single();
 
-        if (error) throw error;
+        if (error) {
+          console.error('[Learn] 進捗更新エラー:', error);
+          throw error;
+        }
 
         console.log('[Learn] 進捗更新完了:', {
           videoId: currentVideo.id,
+          logId: existingLog.id,
           position: position.toFixed(2),
           progress: progressPercent,
-          endTime: now
+          totalWatched: totalWatched.toFixed(2),
+          endTime: now,
+          isComplete
         });
 
         // ローカル状態を更新
@@ -239,36 +246,46 @@ export default function CourseLearnPage() {
           log.id === existingLog.id ? data : log
         ));
       } else {
-        // 新規ログを作成（start_timeも設定）
-        const newLogData = {
-          ...logData,
+        // 新規ログを作成
+        const insertData = {
+          user_id: user.id,
+          course_id: courseId,
+          video_id: currentVideo.id,
+          current_position: position,
+          total_watched_time: totalWatched,
+          progress_percent: progressPercent,
+          completed_at: isComplete ? now : null,
           start_time: now, // 開始時刻を記録
+          end_time: now, // 終了時刻も記録
+          last_updated: now,
         };
 
         const { data, error } = await supabase
           .from('video_view_logs')
-          .insert(newLogData)
+          .insert(insertData)
           .select()
           .single();
 
-        if (error) throw error;
+        if (error) {
+          console.error('[Learn] 新規ログ作成エラー:', error);
+          throw error;
+        }
 
         console.log('[Learn] 新規ログ作成:', {
           videoId: currentVideo.id,
+          logId: data.id,
           startTime: now,
-          endTime: now
+          endTime: now,
+          position: position.toFixed(2),
+          progress: progressPercent
         });
 
         // ローカル状態に追加
         setViewLogs(prev => [...prev, data]);
       }
 
-      // 進捗を再計算
-      const updatedLogs = existingLog
-        ? viewLogs.map(log => log.id === existingLog.id ? { ...log, ...logData } : log)
-        : [...viewLogs, logData as VideoViewLog];
-
-      calculateCourseProgress(videos, updatedLogs);
+      // 進捗を再計算（viewLogsは既にsetViewLogsで更新されているので、それを使用）
+      calculateCourseProgress(videos, viewLogs);
 
       // 動画が完了し、次の動画がある場合は自動的に次へ
       if (isComplete && currentVideoIndex < videos.length - 1) {
