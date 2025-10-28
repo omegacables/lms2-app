@@ -104,7 +104,7 @@ export default function VideoPlayerMobile({
   };
 
   // 進捗を保存（バックグラウンドで非同期に実行）
-  const saveProgress = useCallback(() => {
+  const saveProgress = useCallback((isUrgent: boolean = false) => {
     if (!videoRef.current || !onProgressUpdate) return;
     if (hasCompletedOnce) return; // 完了済みの場合はスキップ
 
@@ -127,20 +127,35 @@ export default function VideoPlayerMobile({
         console.log('[VideoPlayer] 動画完了', { progress, actualWatchedTime });
       }
 
-      // 非同期で進捗を送信（動画再生に影響を与えない）
-      setTimeout(() => {
+      // 緊急時（ページ離脱時）は即座に同期的に実行
+      if (isUrgent) {
         try {
           onProgressUpdate(currentTime, actualWatchedTime, progress, isNowComplete);
-          console.log('[VideoPlayer] 進捗保存', {
+          console.log('[VideoPlayer] 緊急進捗保存（同期）', {
             currentTime: currentTime.toFixed(2),
             watchedTime: actualWatchedTime.toFixed(2),
             progress,
             isComplete: isNowComplete
           });
         } catch (err) {
-          console.error('[VideoPlayer] 進捗保存エラー:', err);
+          console.error('[VideoPlayer] 緊急進捗保存エラー:', err);
         }
-      }, 0);
+      } else {
+        // 通常時は非同期で進捗を送信（動画再生に影響を与えない）
+        setTimeout(() => {
+          try {
+            onProgressUpdate(currentTime, actualWatchedTime, progress, isNowComplete);
+            console.log('[VideoPlayer] 進捗保存', {
+              currentTime: currentTime.toFixed(2),
+              watchedTime: actualWatchedTime.toFixed(2),
+              progress,
+              isComplete: isNowComplete
+            });
+          } catch (err) {
+            console.error('[VideoPlayer] 進捗保存エラー:', err);
+          }
+        }, 0);
+      }
     }
   }, [onProgressUpdate, hasCompletedOnce]);
 
@@ -433,7 +448,7 @@ export default function VideoPlayerMobile({
     return () => {
       // 最終的な進捗を保存
       if (!hasCompletedOnce && videoRef.current) {
-        saveProgress();
+        saveProgress(true); // 緊急保存
       }
 
       // タイマーをクリア
@@ -447,29 +462,100 @@ export default function VideoPlayerMobile({
         clearInterval(playTimeTrackingRef.current);
       }
     };
-  }, []);
+  }, [saveProgress, hasCompletedOnce]);
 
   // ページを離れる前に進捗を保存
   useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (!hasCompletedOnce) {
-        saveProgress();
+    let hasUnsavedProgress = false;
+
+    // 再生中または一時停止中は保存が必要
+    const checkUnsavedProgress = () => {
+      if (videoRef.current && !hasCompletedOnce) {
+        const currentTime = videoRef.current.currentTime;
+        return currentTime > 0;
+      }
+      return false;
+    };
+
+    // beforeunload: ページを離れる前の確認ダイアログ
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      hasUnsavedProgress = checkUnsavedProgress();
+
+      if (hasUnsavedProgress) {
+        console.log('[VideoPlayer] ページ離脱前 - 進捗保存を試行');
+        saveProgress(true); // 緊急保存
+
+        // ブラウザに確認ダイアログを表示
+        e.preventDefault();
+        e.returnValue = '視聴履歴が保存されていない可能性があります。ページを離れますか？';
+        return e.returnValue;
       }
     };
 
-    // visibilitychange イベントで保存（バックグラウンドに移る時）
-    const handleVisibilityChange = () => {
-      if (document.hidden && !hasCompletedOnce) {
-        saveProgress();
+    // pagehide: ページが完全にアンロードされる直前（最後のチャンス）
+    const handlePageHide = (e: PageTransitionEvent) => {
+      if (checkUnsavedProgress()) {
+        console.log('[VideoPlayer] ページ離脱 (pagehide) - 最終保存');
+        saveProgress(true); // 緊急保存
       }
+    };
+
+    // visibilitychange: バックグラウンドに移る時（タブ切り替え、ホーム画面など）
+    const handleVisibilityChange = () => {
+      if (document.hidden && checkUnsavedProgress()) {
+        console.log('[VideoPlayer] バックグラウンド移行 - 進捗保存');
+        saveProgress(true); // 緊急保存
+      }
+    };
+
+    // freeze: モバイルでページがフリーズされる前（PWA、バックグラウンド）
+    const handleFreeze = () => {
+      if (checkUnsavedProgress()) {
+        console.log('[VideoPlayer] ページフリーズ前 - 進捗保存');
+        saveProgress(true); // 緊急保存
+      }
+    };
+
+    // スマホでのスクロール検出（ページ内遷移の可能性）
+    let scrollTimeout: NodeJS.Timeout | null = null;
+    const handleScroll = () => {
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        if (checkUnsavedProgress()) {
+          console.log('[VideoPlayer] スクロール検出 - 進捗保存');
+          saveProgress(false); // 通常保存
+        }
+      }, 2000); // 2秒間スクロールが止まったら保存
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handlePageHide);
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('freeze', handleFreeze);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+
+    // 定期的な自動保存（10秒ごと）- フォールバック
+    const autoSaveInterval = setInterval(() => {
+      if (checkUnsavedProgress()) {
+        console.log('[VideoPlayer] 定期自動保存');
+        saveProgress();
+      }
+    }, 10000);
 
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handlePageHide);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('freeze', handleFreeze);
+      window.removeEventListener('scroll', handleScroll);
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      clearInterval(autoSaveInterval);
+
+      // アンマウント時の最終保存
+      if (checkUnsavedProgress()) {
+        console.log('[VideoPlayer] コンポーネントアンマウント - 最終保存');
+        saveProgress(true); // 緊急保存
+      }
     };
   }, [saveProgress, hasCompletedOnce]);
 
