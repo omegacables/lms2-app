@@ -227,10 +227,17 @@ export default function EditVideoPage() {
         body: JSON.stringify(newResource)
       });
 
-      const result = await response.json();
+      let result;
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        console.error('JSON解析エラー:', jsonError);
+        throw new Error('サーバーからの応答が不正です');
+      }
 
       if (!response.ok) {
         console.error('APIエラーレスポンス:', result);
+        console.error('HTTPステータス:', response.status);
         throw new Error(result.details || result.error || 'リソースの追加に失敗しました');
       }
 

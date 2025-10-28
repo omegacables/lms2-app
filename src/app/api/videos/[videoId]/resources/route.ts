@@ -42,9 +42,34 @@ export async function POST(
   try {
     const { videoId: videoIdParam } = await params;
     const videoId = parseInt(videoIdParam);
-    const body = await request.json();
+
+    // バリデーション
+    if (isNaN(videoId)) {
+      return NextResponse.json(
+        { error: '無効な動画IDです', details: 'Invalid video ID' },
+        { status: 400 }
+      );
+    }
+
+    let body;
+    try {
+      body = await request.json();
+    } catch (e) {
+      return NextResponse.json(
+        { error: 'リクエストボディが不正です', details: 'Invalid JSON' },
+        { status: 400 }
+      );
+    }
 
     console.log('リソース作成リクエスト:', { videoId, body });
+
+    // バリデーション
+    if (!body.resource_type || !body.title) {
+      return NextResponse.json(
+        { error: '必須フィールドが不足しています', details: 'Missing required fields: resource_type, title' },
+        { status: 400 }
+      );
+    }
 
     // created_byは不要（RLSで自動設定されるか、NULL許可）
     const insertData = {
@@ -70,18 +95,38 @@ export async function POST(
       .single();
 
     if (error) {
-      console.error('Supabaseエラー:', error);
-      throw error;
+      console.error('Supabaseエラー:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+
+      return NextResponse.json(
+        {
+          error: 'データベースエラー',
+          details: error.message,
+          hint: error.hint,
+          code: error.code
+        },
+        { status: 500 }
+      );
     }
 
     console.log('作成成功:', data);
-    return NextResponse.json({ data });
+    return NextResponse.json({ data, success: true });
   } catch (error) {
     console.error('リソース作成エラー:', error);
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : undefined;
+
+    console.error('エラー詳細:', { message: errorMessage, stack: errorStack });
+
     return NextResponse.json(
       {
         error: 'リソースの作成に失敗しました',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: errorMessage
       },
       { status: 500 }
     );
