@@ -175,6 +175,17 @@ export default function EditVideoPage() {
   };
 
   const addResource = async () => {
+    // バリデーション
+    if (!resourceForm.title?.trim()) {
+      alert('タイトルを入力してください');
+      return;
+    }
+
+    if ((resourceForm.resource_type === 'explanation' || resourceForm.resource_type === 'assignment') && !resourceForm.content?.trim()) {
+      alert('内容を入力してください');
+      return;
+    }
+
     setSaving(true);
     try {
       let fileUrl = null;
@@ -184,6 +195,7 @@ export default function EditVideoPage() {
 
       // ファイルがある場合はアップロード
       if (resourceFile) {
+        console.log('ファイルアップロード開始:', resourceFile.name);
         fileUrl = await uploadResourceFile(resourceFile);
         if (!fileUrl) {
           throw new Error('ファイルのアップロードに失敗しました');
@@ -191,17 +203,23 @@ export default function EditVideoPage() {
         fileName = resourceFile.name;
         fileSize = resourceFile.size;
         fileType = resourceFile.type;
+        console.log('ファイルアップロード成功:', fileUrl);
       }
 
-      const newResource: Partial<VideoResource> = {
-        ...resourceForm,
-        video_id: parseInt(videoId),
+      const newResource = {
+        resource_type: resourceForm.resource_type,
+        title: resourceForm.title,
+        description: resourceForm.description || '',
         file_url: fileUrl,
         file_name: fileName,
         file_size: fileSize,
         file_type: fileType,
-        display_order: resources.filter(r => r.resource_type === resourceForm.resource_type).length
+        content: resourceForm.content || '',
+        display_order: resources.filter(r => r.resource_type === resourceForm.resource_type).length,
+        is_required: resourceForm.is_required || false
       };
+
+      console.log('リソース追加リクエスト:', newResource);
 
       const response = await fetch(`/api/videos/${videoId}/resources`, {
         method: 'POST',
@@ -209,10 +227,15 @@ export default function EditVideoPage() {
         body: JSON.stringify(newResource)
       });
 
-      if (!response.ok) throw new Error('リソースの追加に失敗しました');
+      const result = await response.json();
 
-      const { data } = await response.json();
-      setResources([...resources, data]);
+      if (!response.ok) {
+        console.error('APIエラーレスポンス:', result);
+        throw new Error(result.details || result.error || 'リソースの追加に失敗しました');
+      }
+
+      console.log('リソース追加成功:', result.data);
+      setResources([...resources, result.data]);
 
       // フォームをリセット
       setResourceForm({
@@ -229,7 +252,8 @@ export default function EditVideoPage() {
       alert('リソースを追加しました');
     } catch (error) {
       console.error('リソース追加エラー:', error);
-      alert('リソースの追加に失敗しました');
+      const errorMessage = error instanceof Error ? error.message : 'リソースの追加に失敗しました';
+      alert(errorMessage);
     } finally {
       setSaving(false);
     }

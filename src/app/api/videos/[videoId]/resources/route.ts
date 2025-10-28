@@ -44,22 +44,45 @@ export async function POST(
     const videoId = parseInt(videoIdParam);
     const body = await request.json();
 
+    console.log('リソース作成リクエスト:', { videoId, body });
+
+    // created_byは不要（RLSで自動設定されるか、NULL許可）
+    const insertData = {
+      video_id: videoId,
+      resource_type: body.resource_type,
+      title: body.title,
+      description: body.description || null,
+      file_url: body.file_url || null,
+      file_name: body.file_name || null,
+      file_size: body.file_size || null,
+      file_type: body.file_type || null,
+      content: body.content || null,
+      display_order: body.display_order || 0,
+      is_required: body.is_required || false
+    };
+
+    console.log('挿入データ:', insertData);
+
     const { data, error } = await supabase
       .from('video_resources')
-      .insert({
-        video_id: videoId,
-        ...body
-      })
+      .insert(insertData)
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabaseエラー:', error);
+      throw error;
+    }
 
+    console.log('作成成功:', data);
     return NextResponse.json({ data });
   } catch (error) {
     console.error('リソース作成エラー:', error);
     return NextResponse.json(
-      { error: 'リソースの作成に失敗しました' },
+      {
+        error: 'リソースの作成に失敗しました',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }
