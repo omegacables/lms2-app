@@ -98,6 +98,13 @@ CREATE POLICY "Admin and instructors can manage resources" ON video_resources
       WHERE user_profiles.id = auth.uid()
       AND user_profiles.role IN ('admin', 'instructor')
     )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM user_profiles
+      WHERE user_profiles.id = auth.uid()
+      AND user_profiles.role IN ('admin', 'instructor')
+    )
   );
 
 -- assignment_submissions policies
@@ -106,7 +113,8 @@ DROP POLICY IF EXISTS "Users can manage own submissions" ON assignment_submissio
 CREATE POLICY "Users can manage own submissions" ON assignment_submissions
   FOR ALL
   TO authenticated
-  USING (user_id = auth.uid());
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
 
 -- 管理者とインストラクターは全ての提出を閲覧可能
 DROP POLICY IF EXISTS "Admin and instructors can view all submissions" ON assignment_submissions;
@@ -127,6 +135,13 @@ CREATE POLICY "Admin and instructors can update submissions" ON assignment_submi
   FOR UPDATE
   TO authenticated
   USING (
+    EXISTS (
+      SELECT 1 FROM user_profiles
+      WHERE user_profiles.id = auth.uid()
+      AND user_profiles.role IN ('admin', 'instructor')
+    )
+  )
+  WITH CHECK (
     EXISTS (
       SELECT 1 FROM user_profiles
       WHERE user_profiles.id = auth.uid()
