@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 import VideoPlayerMobile from '@/components/video/VideoPlayerMobile';
@@ -32,6 +32,9 @@ export default function CourseLearnPage() {
   const router = useRouter();
   const { user, isAdmin } = useAuth();
   const courseId = parseInt(params.id as string);
+
+  // 動画プレーヤーへの参照
+  const saveProgressRef = useRef<(() => void) | null>(null);
 
   // コースと動画の状態
   const [course, setCourse] = useState<Course | null>(null);
@@ -431,7 +434,17 @@ export default function CourseLearnPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <button
-                  onClick={() => router.push(`/courses/${courseId}`)}
+                  onClick={() => {
+                    console.log('[Learn] コース詳細に戻る - 進捗保存');
+                    // 動画プレーヤーの進捗を保存
+                    if (saveProgressRef.current) {
+                      saveProgressRef.current();
+                    }
+                    // 少し待ってからページ遷移（保存を確実に完了させる）
+                    setTimeout(() => {
+                      router.push(`/courses/${courseId}`);
+                    }, 500);
+                  }}
                   className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
                 >
                   ← コース詳細に戻る
@@ -480,6 +493,7 @@ export default function CourseLearnPage() {
                       isCompleted={(currentVideoLog?.progress_percent || 0) >= COMPLETION_THRESHOLD}
                       onProgressUpdate={handleProgressUpdate}
                       onError={(error) => console.error('Video error:', error)}
+                      onSaveProgressRef={saveProgressRef}
                     />
                   </div>
 

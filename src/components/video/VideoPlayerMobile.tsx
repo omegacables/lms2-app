@@ -19,6 +19,7 @@ interface VideoPlayerMobileProps {
   isCompleted?: boolean;
   onProgressUpdate?: (position: number, totalWatched: number, progressPercent: number, isComplete: boolean) => void;
   onError?: (error: string) => void;
+  onSaveProgressRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 export default function VideoPlayerMobile({
@@ -28,7 +29,8 @@ export default function VideoPlayerMobile({
   currentPosition = 0,
   isCompleted = false,
   onProgressUpdate,
-  onError
+  onError,
+  onSaveProgressRef
 }: VideoPlayerMobileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -161,6 +163,52 @@ export default function VideoPlayerMobile({
     }
   }, [onProgressUpdate, hasCompletedOnce]);
 
+  // 親コンポーネントから進捗保存を呼び出せるようにする
+  useEffect(() => {
+    if (onSaveProgressRef) {
+      onSaveProgressRef.current = () => {
+        console.log('[VideoPlayer] 親コンポーネントから進捗保存を呼び出し');
+        saveProgress(true); // 緊急保存として実行
+      };
+    }
+    return () => {
+      if (onSaveProgressRef) {
+        onSaveProgressRef.current = null;
+      }
+    };
+  }, [saveProgress, onSaveProgressRef]);
+
+  // 続きから再生時の初回ログ保存
+  // 動画が読み込まれて、currentPositionがあり、まだ初回ログを保存していない場合
+  const hasLoggedResumeRef = useRef(false);
+  useEffect(() => {
+    // videoIdが変わったらリセット
+    hasLoggedResumeRef.current = false;
+  }, [videoId]);
+
+  useEffect(() => {
+    if (
+      videoRef.current &&
+      duration > 0 && // 動画のメタデータが読み込まれている
+      currentPosition > 0 && // 続きから再生
+      !hasLoggedResumeRef.current && // まだ初回ログを保存していない
+      !isLoading // ローディング中でない
+    ) {
+      console.log('[VideoPlayer] 📹 続きから再生 - 初回ログ保存', {
+        videoId,
+        currentPosition,
+        duration
+      });
+
+      hasLoggedResumeRef.current = true;
+
+      // 少し遅延させて確実に保存
+      setTimeout(() => {
+        saveProgress(false);
+      }, 1000);
+    }
+  }, [videoId, duration, currentPosition, isLoading, saveProgress]);
+
   // 定期的な進捗保存（10秒ごと）
   useEffect(() => {
     if (isPlaying) {
@@ -221,15 +269,10 @@ export default function VideoPlayerMobile({
       if (currentPosition > 0 && currentPosition < videoDuration) {
         videoRef.current.currentTime = currentPosition;
         lastPositionRef.current = currentPosition;
-
-        // 続きから再生する場合、初回のログを保存
-        console.log('[VideoPlayer] 続きから再生 - 初回ログ保存', {
+        console.log('[VideoPlayer] 続きから再生 - 位置設定', {
           currentPosition
         });
-        // 少し遅延させて、確実に currentTime が設定されてから保存
-        setTimeout(() => {
-          saveProgress(false);
-        }, 500);
+        // 初回ログ保存は useEffect で自動的に実行される
       } else {
         lastPositionRef.current = 0;
       }
@@ -248,19 +291,7 @@ export default function VideoPlayerMobile({
   const handleCanPlay = () => {
     console.log('[VideoPlayer] 動画再生可能');
     setIsLoading(false);
-
-    // 続きから再生の場合、再生可能になったタイミングで初回ログを保存
-    if (videoRef.current && currentPosition > 0) {
-      const currentTime = videoRef.current.currentTime;
-      console.log('[VideoPlayer] 続きから再生 - canPlay時の初回ログ', {
-        currentTime,
-        currentPosition
-      });
-      // 再生可能になってから少し待ってログを保存
-      setTimeout(() => {
-        saveProgress(false);
-      }, 800);
-    }
+    // 初回ログ保存は useEffect で自動的に実行される
   };
 
   // 時間の更新
@@ -842,10 +873,21 @@ export default function VideoPlayerMobile({
 
                 {/* フルスクリーンボタン - スマホで押しやすく大きく目立つ */}
                 <button
-                  onClick={toggleFullscreen}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    console.log('[VideoPlayer] 全画面ボタンクリック');
+                    toggleFullscreen();
+                  }}
+                  onTouchEnd={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    console.log('[VideoPlayer] 全画面ボタンタッチ');
+                    toggleFullscreen();
+                  }}
                   className="text-white hover:text-blue-400 active:text-blue-500 transition-all duration-200 p-3 touch-manipulation bg-blue-600/80 hover:bg-blue-600 active:bg-blue-700 rounded-lg shadow-lg active:scale-95"
                   title={isFullscreen ? "全画面を終了" : "全画面表示"}
                   aria-label={isFullscreen ? "全画面を終了" : "全画面表示"}
+                  type="button"
                 >
                   {isFullscreen ? (
                     <ArrowsPointingInIcon className="h-9 w-9 sm:h-11 sm:w-11" />
