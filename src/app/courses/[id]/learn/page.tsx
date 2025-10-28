@@ -447,7 +447,7 @@ export default function CourseLearnPage() {
                   </div>
 
                   {/* 動画プレーヤー */}
-                  <div className="p-4">
+                  <div className="p-0 sm:p-4">
                     <VideoPlayerMobile
                       videoId={currentVideo.id.toString()}
                       videoUrl={currentVideo.video_url || undefined}
@@ -495,9 +495,10 @@ export default function CourseLearnPage() {
             <div className="lg:col-span-1 order-2">
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
                 <h2 className="font-semibold text-gray-900 dark:text-white mb-4">
-                  動画一覧
+                  動画一覧 ({videos.length}件)
                 </h2>
-                <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                <div className="space-y-2 max-h-[400px] sm:max-h-[600px] lg:max-h-[70vh] overflow-y-auto pr-2"
+                     style={{scrollbarWidth: 'thin'}}>
                   {videos.map((video, index) => {
                     const status = getVideoStatus(video);
                     const isActive = index === currentVideoIndex;
