@@ -214,99 +214,69 @@ export default function CourseLearnPage() {
 
     const currentVideo = videos[currentVideoIndex];
 
-    // 既存のログを確認
-    const existingLog = viewLogs.find(log => log.video_id === currentVideo.id);
+    // 既存のログを確認（完了済みかどうかチェック用）
+    const existingLogs = viewLogs.filter(log => log.video_id === currentVideo.id);
+    const latestLog = existingLogs.length > 0
+      ? existingLogs.reduce((latest, current) =>
+          new Date(current.end_time || current.start_time) > new Date(latest.end_time || latest.start_time)
+            ? current
+            : latest
+        )
+      : null;
 
-    // 完了済みでも視聴履歴（end_time）を更新するため、スキップしない
-    // ただし、完了済みの場合は completed_at は変更しない
+    // ✅ 100%完了済みの場合は一切ログを保存しない
+    const wasCompleted = latestLog && (latestLog.progress_percent || 0) >= COMPLETION_THRESHOLD;
+    if (wasCompleted) {
+      console.log('[Learn] ⛔ 100%完了済み - ログ保存をスキップ', {
+        videoId: currentVideo.id,
+        latestProgress: latestLog?.progress_percent
+      });
+      return;
+    }
 
     setIsSaving(true);
 
     try {
       const now = new Date().toISOString();
 
-      if (existingLog) {
-        // 既存のログを更新（IDフィールドは更新しない）
-        // 既に完了済みの場合は completed_at を上書きしない
-        const wasCompleted = (existingLog.progress_percent || 0) >= COMPLETION_THRESHOLD;
+      // ✅ 100%未満の場合は常に新しいログを作成（履歴として残る）
+      const insertData = {
+        user_id: user.id,
+        course_id: courseId,
+        video_id: currentVideo.id,
+        current_position: position,
+        total_watched_time: totalWatched,
+        progress_percent: progressPercent,
+        completed_at: isComplete ? now : null,
+        start_time: now, // 視聴開始時刻
+        end_time: now, // 視聴終了時刻
+        last_updated: now,
+      };
 
-        const updateData = {
-          current_position: position,
-          total_watched_time: totalWatched,
-          progress_percent: progressPercent,
-          // 既に完了済みの場合は completed_at を維持、新規完了の場合のみ設定
-          completed_at: wasCompleted
-            ? existingLog.completed_at
-            : (isComplete ? now : null),
-          end_time: now, // 終了時刻を必ず記録
-          last_updated: now,
-        };
+      const { data, error } = await supabase
+        .from('video_view_logs')
+        .insert(insertData)
+        .select()
+        .single();
 
-        const { data, error } = await supabase
-          .from('video_view_logs')
-          .update(updateData)
-          .eq('id', existingLog.id)
-          .select()
-          .single();
-
-        if (error) {
-          console.error('[Learn] 進捗更新エラー:', error);
-          throw error;
-        }
-
-        console.log('[Learn] 進捗更新完了 (既存ログ更新):', {
-          videoId: currentVideo.id,
-          logId: existingLog.id,
-          position: position.toFixed(2),
-          progress: progressPercent,
-          totalWatched: totalWatched.toFixed(2),
-          startTime: existingLog.start_time, // 変更なし（初回視聴時のまま）
-          endTime: now, // 更新された終了時刻
-          isComplete
-        });
-
-        // ローカル状態を更新
-        setViewLogs(prev => prev.map(log =>
-          log.id === existingLog.id ? data : log
-        ));
-      } else {
-        // 新規ログを作成
-        const insertData = {
-          user_id: user.id,
-          course_id: courseId,
-          video_id: currentVideo.id,
-          current_position: position,
-          total_watched_time: totalWatched,
-          progress_percent: progressPercent,
-          completed_at: isComplete ? now : null,
-          start_time: now, // 開始時刻を記録
-          end_time: now, // 終了時刻も記録
-          last_updated: now,
-        };
-
-        const { data, error } = await supabase
-          .from('video_view_logs')
-          .insert(insertData)
-          .select()
-          .single();
-
-        if (error) {
-          console.error('[Learn] 新規ログ作成エラー:', error);
-          throw error;
-        }
-
-        console.log('[Learn] 新規ログ作成 (初回視聴):', {
-          videoId: currentVideo.id,
-          logId: data.id,
-          startTime: now, // 初回視聴開始時刻
-          endTime: now, // 初回視聴終了時刻
-          position: position.toFixed(2),
-          progress: progressPercent
-        });
-
-        // ローカル状態に追加
-        setViewLogs(prev => [...prev, data]);
+      if (error) {
+        console.error('[Learn] 新規ログ作成エラー:', error);
+        throw error;
       }
+
+      console.log('[Learn] 📝 新規ログ作成（履歴）:', {
+        videoId: currentVideo.id,
+        logId: data.id,
+        startTime: now,
+        endTime: now,
+        position: position.toFixed(2),
+        progress: progressPercent,
+        isComplete,
+        isNewCompletion: isComplete && !wasCompleted
+      });
+
+      // ローカル状態に追加
+      setViewLogs(prev => [...prev, data]);
 
       // 進捗を再計算（viewLogsは既にsetViewLogsで更新されているので、それを使用）
       calculateCourseProgress(videos, viewLogs);

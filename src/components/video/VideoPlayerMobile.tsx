@@ -108,7 +108,12 @@ export default function VideoPlayerMobile({
   // 進捗を保存（バックグラウンドで非同期に実行）
   const saveProgress = useCallback((isUrgent: boolean = false) => {
     if (!videoRef.current || !onProgressUpdate) return;
-    // 完了済みでも進捗を保存する（end_time更新のため）
+
+    // ✅ 既に100%完了済みの場合は一切保存しない
+    if (isCompleted) {
+      console.log('[VideoPlayer] ⛔ 100%完了済み - 進捗保存をスキップ');
+      return;
+    }
 
     const currentTime = videoRef.current.currentTime;
     const videoDuration = videoRef.current.duration;
@@ -126,7 +131,7 @@ export default function VideoPlayerMobile({
 
       if (isNowComplete && !hasCompletedOnce) {
         setHasCompletedOnce(true);
-        console.log('[VideoPlayer] 動画完了', { progress, actualWatchedTime });
+        console.log('[VideoPlayer] ✅ 動画完了 - これが最後のログ保存', { progress, actualWatchedTime });
       }
 
       // 緊急時（ページ離脱時）は即座に同期的に実行
@@ -161,7 +166,7 @@ export default function VideoPlayerMobile({
         }, 0);
       }
     }
-  }, [onProgressUpdate, hasCompletedOnce]);
+  }, [onProgressUpdate, hasCompletedOnce, isCompleted]);
 
   // 親コンポーネントから進捗保存を呼び出せるようにする
   useEffect(() => {
@@ -187,6 +192,12 @@ export default function VideoPlayerMobile({
   }, [videoId]);
 
   useEffect(() => {
+    // ✅ 100%完了済みの場合は初回ログも保存しない
+    if (isCompleted) {
+      console.log('[VideoPlayer] ⛔ 100%完了済み - 続きから再生ログをスキップ');
+      return;
+    }
+
     if (
       videoRef.current &&
       duration > 0 && // 動画のメタデータが読み込まれている
@@ -207,7 +218,7 @@ export default function VideoPlayerMobile({
         saveProgress(false);
       }, 1000);
     }
-  }, [videoId, duration, currentPosition, isLoading, saveProgress]);
+  }, [videoId, duration, currentPosition, isLoading, isCompleted, saveProgress]);
 
   // 定期的な進捗保存（10秒ごと）
   useEffect(() => {
