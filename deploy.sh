@@ -25,12 +25,16 @@ fi
 # 4. Commit changes
 echo "Committing changes to git..."
 git add -A
-git commit -m "Deploy: Fix video upload and deletion issues
+git commit -m "Deploy: Add video resource management features
 
-- Remove Service Role Key from client-side code
-- Fix video deletion to remove from storage and database
-- Add video duration calculation
-- Simplify video upload without chunking
+- Add video_resources table for materials, assignments, references, and explanations
+- Add assignment_submissions table for homework submissions
+- Create attachments storage bucket
+- Enhance video edit page with resource management UI
+- Improve description fields with character counts and placeholders
+- Add file upload with drag-and-drop interface
+- Add download buttons for resource files
+- Implement RLS policies for secure resource access
 
 🤖 Generated with Claude Code
 
