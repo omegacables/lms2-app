@@ -251,13 +251,14 @@ export default function CourseLearnPage() {
           throw error;
         }
 
-        console.log('[Learn] 進捗更新完了:', {
+        console.log('[Learn] 進捗更新完了 (既存ログ更新):', {
           videoId: currentVideo.id,
           logId: existingLog.id,
           position: position.toFixed(2),
           progress: progressPercent,
           totalWatched: totalWatched.toFixed(2),
-          endTime: now,
+          startTime: existingLog.start_time, // 変更なし（初回視聴時のまま）
+          endTime: now, // 更新された終了時刻
           isComplete
         });
 
@@ -291,11 +292,11 @@ export default function CourseLearnPage() {
           throw error;
         }
 
-        console.log('[Learn] 新規ログ作成:', {
+        console.log('[Learn] 新規ログ作成 (初回視聴):', {
           videoId: currentVideo.id,
           logId: data.id,
-          startTime: now,
-          endTime: now,
+          startTime: now, // 初回視聴開始時刻
+          endTime: now, // 初回視聴終了時刻
           position: position.toFixed(2),
           progress: progressPercent
         });
@@ -382,33 +383,8 @@ export default function CourseLearnPage() {
     setCurrentVideoIndex(index);
   };
 
-  // 動画が切り替わった時に初回ログを保存
-  useEffect(() => {
-    if (!user || !videos[currentVideoIndex]) return;
-
-    const currentVideo = videos[currentVideoIndex];
-    const existingLog = viewLogs.find(log => log.video_id === currentVideo.id);
-
-    // 既存のログがあり、続きから再生する場合、初回ログを保存
-    if (existingLog && existingLog.current_position > 0) {
-      console.log('[Learn] 動画切り替え - 続きから再生のため初回ログ保存', {
-        videoId: currentVideo.id,
-        currentPosition: existingLog.current_position
-      });
-
-      // 2秒後に初回ログを保存（動画がロードされるまで待つ）
-      const timer = setTimeout(() => {
-        handleProgressUpdate(
-          existingLog.current_position,
-          existingLog.total_watched_time || 0,
-          existingLog.progress_percent || 0,
-          false
-        );
-      }, 2000);
-
-      return () => clearTimeout(timer);
-    }
-  }, [currentVideoIndex, user, videos, viewLogs]);
+  // 動画が切り替わった時のログは、VideoPlayerMobileコンポーネントで自動的に記録される
+  // このuseEffectは不要（削除）
 
   // 動画の状態を取得
   const getVideoStatus = (video: Video): '未受講' | '受講中' | '受講完了' => {
