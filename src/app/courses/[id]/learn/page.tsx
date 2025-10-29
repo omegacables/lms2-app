@@ -252,7 +252,17 @@ export default function CourseLearnPage() {
     progressPercent: number,
     isComplete: boolean
   ) => {
-    if (!user || !videos[currentVideoIndex] || isSaving) return;
+    console.log('[Learn] 📥 handleProgressUpdate 呼び出し', {
+      position: position.toFixed(2),
+      totalWatched: totalWatched.toFixed(2),
+      progressPercent,
+      isComplete
+    });
+
+    if (!user || !videos[currentVideoIndex] || isSaving) {
+      console.log('[Learn] ⚠️ 保存条件を満たさず', { user: !!user, hasVideo: !!videos[currentVideoIndex], isSaving });
+      return;
+    }
 
     const currentVideo = videos[currentVideoIndex];
 
