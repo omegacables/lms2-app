@@ -67,10 +67,12 @@ export default function CourseLearnPage() {
   // ページ離脱時の確認ダイアログとログ保存
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      console.log('[Learn] beforeunload イベント発火');
+
       // 動画が再生されている、または一時停止中の場合
       const videoElement = document.querySelector('video');
       if (videoElement && videoElement.currentTime > 0) {
-        console.log('[Learn] 🚨 beforeunload - 進捗保存とダイアログ表示');
+        console.log('[Learn] 🚨 動画視聴中 - ダイアログ表示とログ保存');
 
         // 進捗を保存
         if (saveProgressRef.current) {
@@ -78,10 +80,11 @@ export default function CourseLearnPage() {
           saveProgressRef.current();
         }
 
-        // 確認ダイアログを表示
+        // 確認ダイアログを表示（モダンブラウザでは標準メッセージが表示される）
         e.preventDefault();
-        e.returnValue = '動画の進捗が保存されます。このページを離れますか？';
-        return '動画の進捗が保存されます。このページを離れますか？';
+        e.returnValue = '';
+      } else {
+        console.log('[Learn] 動画未視聴 - ダイアログなし');
       }
     };
 
