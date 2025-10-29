@@ -625,26 +625,19 @@ export default function VideoPlayerMobile({
       return true;
     };
 
-    // beforeunload: ページを離れる前の確認ダイアログ
+    // beforeunload: ページを離れる前の保存（ダイアログはlearn/page.tsxで管理）
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      console.log('[VideoPlayer] beforeunload イベント発火', {
+      console.log('[VideoPlayer] beforeunload - 進捗保存のみ実行', {
         currentTime: videoRef.current?.currentTime,
         duration: videoRef.current?.duration,
         isPlaying,
         isCompleted
       });
 
-      // ✅ 100%未完了の場合は必ず保存
+      // ✅ 100%未完了の場合は必ず保存（ダイアログは表示しない）
       if (shouldSave()) {
         console.log('[VideoPlayer] 🚨 ページ離脱前 - 緊急進捗保存');
         saveProgress(true); // 緊急保存
-
-        // 確認ダイアログを表示（動画視聴中の場合）
-        if (videoRef.current && videoRef.current.currentTime > 0) {
-          e.preventDefault();
-          e.returnValue = '';
-          return '';
-        }
       }
     };
 
