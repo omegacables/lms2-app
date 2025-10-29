@@ -64,44 +64,42 @@ export default function CourseLearnPage() {
     }
   }, [courseId, user]);
 
-  // ページ離脱時の確認ダイアログとログ保存
+  // ページ離脱時のログ保存（ポップアップなし）
   useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      console.log('[Learn] beforeunload イベント発火');
-
-      // 動画が再生されている、または一時停止中の場合
-      const videoElement = document.querySelector('video');
-      if (videoElement && videoElement.currentTime > 0) {
-        console.log('[Learn] 🚨 動画視聴中 - ダイアログ表示とログ保存');
-
-        // 進捗を保存
-        if (saveProgressRef.current) {
-          console.log('[Learn] 💾 進捗保存を実行');
-          saveProgressRef.current();
-        }
-
-        // 確認ダイアログを表示（モダンブラウザでは標準メッセージが表示される）
-        e.preventDefault();
-        e.returnValue = '';
-      } else {
-        console.log('[Learn] 動画未視聴 - ダイアログなし');
-      }
-    };
-
-    const handlePageHide = () => {
-      // ページが完全に隠れる前に保存（モバイル対応）
-      console.log('[Learn] 📱 pagehide - 最終保存');
+    const handleBeforeUnload = () => {
+      // 必ず進捗を保存（ポップアップは表示しない）
+      console.log('[Learn] 🚨 beforeunload - 進捗保存');
       if (saveProgressRef.current) {
         saveProgressRef.current();
       }
     };
 
+    const handlePageHide = () => {
+      // ページが完全に隠れる前に保存（モバイル対応）
+      console.log('[Learn] 📱 pagehide - 進捗保存');
+      if (saveProgressRef.current) {
+        saveProgressRef.current();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      // タブ切り替え時も保存
+      if (document.hidden) {
+        console.log('[Learn] 👁️ visibilitychange - 進捗保存');
+        if (saveProgressRef.current) {
+          saveProgressRef.current();
+        }
+      }
+    };
+
     window.addEventListener('beforeunload', handleBeforeUnload);
     window.addEventListener('pagehide', handlePageHide);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('pagehide', handlePageHide);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 
@@ -466,20 +464,8 @@ export default function CourseLearnPage() {
               <div className="flex items-center gap-4">
                 <button
                   onClick={() => {
-                    // 動画視聴中の場合は確認ダイアログを表示
-                    const videoElement = document.querySelector('video');
-                    const isWatching = videoElement && videoElement.currentTime > 0;
-
-                    if (isWatching) {
-                      const confirmed = window.confirm('動画の進捗を保存してコース詳細に戻りますか？');
-                      if (!confirmed) {
-                        console.log('[Learn] コース詳細に戻る - キャンセル');
-                        return;
-                      }
-                    }
-
                     console.log('[Learn] 🚪 コース詳細に戻る - 進捗保存');
-                    // 動画プレーヤーの進捗を保存
+                    // 必ず進捗を保存
                     if (saveProgressRef.current) {
                       console.log('[Learn] 💾 進捗保存を実行');
                       saveProgressRef.current();
