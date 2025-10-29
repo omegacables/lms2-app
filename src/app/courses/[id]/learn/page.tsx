@@ -64,23 +64,41 @@ export default function CourseLearnPage() {
     }
   }, [courseId, user]);
 
-  // ページ離脱時の確認ダイアログ
+  // ページ離脱時の確認ダイアログとログ保存
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       // 動画が再生されている、または一時停止中の場合
       const videoElement = document.querySelector('video');
       if (videoElement && videoElement.currentTime > 0) {
-        console.log('[Learn] beforeunload - 動画視聴中のため確認ダイアログを表示');
+        console.log('[Learn] 🚨 beforeunload - 進捗保存とダイアログ表示');
+
+        // 進捗を保存
+        if (saveProgressRef.current) {
+          console.log('[Learn] 💾 進捗保存を実行');
+          saveProgressRef.current();
+        }
+
+        // 確認ダイアログを表示
         e.preventDefault();
-        e.returnValue = '';
-        return '';
+        e.returnValue = '動画の進捗が保存されます。このページを離れますか？';
+        return '動画の進捗が保存されます。このページを離れますか？';
+      }
+    };
+
+    const handlePageHide = () => {
+      // ページが完全に隠れる前に保存（モバイル対応）
+      console.log('[Learn] 📱 pagehide - 最終保存');
+      if (saveProgressRef.current) {
+        saveProgressRef.current();
       }
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handlePageHide);
 
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handlePageHide);
     };
   }, []);
 
@@ -435,9 +453,22 @@ export default function CourseLearnPage() {
               <div className="flex items-center gap-4">
                 <button
                   onClick={() => {
-                    console.log('[Learn] コース詳細に戻る - 進捗保存');
+                    // 動画視聴中の場合は確認ダイアログを表示
+                    const videoElement = document.querySelector('video');
+                    const isWatching = videoElement && videoElement.currentTime > 0;
+
+                    if (isWatching) {
+                      const confirmed = window.confirm('動画の進捗を保存してコース詳細に戻りますか？');
+                      if (!confirmed) {
+                        console.log('[Learn] コース詳細に戻る - キャンセル');
+                        return;
+                      }
+                    }
+
+                    console.log('[Learn] 🚪 コース詳細に戻る - 進捗保存');
                     // 動画プレーヤーの進捗を保存
                     if (saveProgressRef.current) {
+                      console.log('[Learn] 💾 進捗保存を実行');
                       saveProgressRef.current();
                     }
                     // 少し待ってからページ遷移（保存を確実に完了させる）
