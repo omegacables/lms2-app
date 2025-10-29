@@ -107,17 +107,55 @@ export default function VideoPlayerMobile({
 
   // 進捗を保存（バックグラウンドで非同期に実行）
   const saveProgress = useCallback((isUrgent: boolean = false) => {
-    if (!videoRef.current || !onProgressUpdate) return;
+    if (!videoRef.current || !onProgressUpdate) {
+      console.log('[VideoPlayer] ⚠️ 保存不可 - videoRef or onProgressUpdate がない');
+      return;
+    }
 
-    // ✅ 既に100%完了済みの場合は一切保存しない
+    // ✅ 既に100%完了済みの場合は一切保存しない（ユーザー要求：100%になったら一切ログをとらない）
     if (isCompleted) {
-      console.log('[VideoPlayer] ⛔ 100%完了済み - 進捗保存をスキップ');
+      console.log('[VideoPlayer] ⛔ 100%完了済み - 進捗保存をスキップ', { isUrgent });
       return;
     }
 
     const currentTime = videoRef.current.currentTime;
     const videoDuration = videoRef.current.duration;
 
+    // 緊急保存の場合でも、有効な視聴データがある場合のみ保存
+    if (isUrgent) {
+      // メタデータが読み込まれていない、または有効な視聴時間がない場合はスキップ
+      if (videoDuration <= 0 || isNaN(videoDuration) || currentTime <= 0 || isNaN(currentTime)) {
+        console.log('[VideoPlayer] ⚠️ 緊急保存スキップ - 無効なメタデータ', {
+          videoDuration,
+          currentTime,
+          reason: videoDuration <= 0 ? 'duration未取得' : currentTime <= 0 ? 'currentTime未取得' : 'NaN値'
+        });
+        return;
+      }
+
+      const actualWatchedTime = calculateActualWatchedTime();
+      const progress = Math.min(Math.round((currentTime / videoDuration) * 100), 100);
+      const isNowComplete = progress >= COMPLETION_THRESHOLD;
+
+      console.log('[VideoPlayer] 🚨 緊急保存実行', {
+        currentTime: currentTime.toFixed(2),
+        videoDuration: videoDuration.toFixed(2),
+        watchedTime: actualWatchedTime.toFixed(2),
+        progress,
+        isComplete: isNowComplete
+      });
+
+      try {
+        onProgressUpdate(currentTime, actualWatchedTime, progress, isNowComplete);
+        console.log('[VideoPlayer] ✅ 緊急進捗保存完了');
+      } catch (err) {
+        console.error('[VideoPlayer] ❌ 緊急進捗保存エラー:', err);
+      }
+      return;
+    }
+
+    // 通常保存はメタデータチェック
+    // ✅ Normal save - only for non-urgent saves with valid metadata
     if (videoDuration > 0 && !isNaN(currentTime) && !isNaN(videoDuration)) {
       // 実際の視聴時間を計算
       const actualWatchedTime = calculateActualWatchedTime();
@@ -134,37 +172,20 @@ export default function VideoPlayerMobile({
         console.log('[VideoPlayer] ✅ 動画完了 - これが最後のログ保存', { progress, actualWatchedTime });
       }
 
-      // 緊急時（ページ離脱時）は即座に同期的に実行
-      if (isUrgent) {
+      // 通常時は非同期で進捗を送信（動画再生に影響を与えない）
+      setTimeout(() => {
         try {
-          console.log('[VideoPlayer] 🚨 緊急進捗保存開始（同期）', {
+          console.log('[VideoPlayer] 📝 通常進捗保存', {
             currentTime: currentTime.toFixed(2),
             watchedTime: actualWatchedTime.toFixed(2),
             progress,
-            isComplete: isNowComplete,
-            videoId: videoRef.current?.src
+            isComplete: isNowComplete
           });
           onProgressUpdate(currentTime, actualWatchedTime, progress, isNowComplete);
-          console.log('[VideoPlayer] ✅ 緊急進捗保存完了');
         } catch (err) {
-          console.error('[VideoPlayer] ❌ 緊急進捗保存エラー:', err);
+          console.error('[VideoPlayer] ❌ 進捗保存エラー:', err);
         }
-      } else {
-        // 通常時は非同期で進捗を送信（動画再生に影響を与えない）
-        setTimeout(() => {
-          try {
-            console.log('[VideoPlayer] 📝 通常進捗保存', {
-              currentTime: currentTime.toFixed(2),
-              watchedTime: actualWatchedTime.toFixed(2),
-              progress,
-              isComplete: isNowComplete
-            });
-            onProgressUpdate(currentTime, actualWatchedTime, progress, isNowComplete);
-          } catch (err) {
-            console.error('[VideoPlayer] ❌ 進捗保存エラー:', err);
-          }
-        }, 0);
-      }
+      }, 0);
     }
   }, [onProgressUpdate, hasCompletedOnce, isCompleted]);
 
