@@ -153,10 +153,18 @@ export default function CourseLearnPage() {
 
   // 開始する動画を見つける
   const findStartVideoIndex = (videos: Video[], logs: VideoViewLog[]): number => {
-    // 未完了の最初の動画を探す
+    // ✅ 各動画の最新ログを使って未完了の最初の動画を探す
     for (let i = 0; i < videos.length; i++) {
-      const log = logs.find(l => l.video_id === videos[i].id);
-      if (!log || (log.progress_percent || 0) < COMPLETION_THRESHOLD) {
+      const videoLogs = logs.filter(l => l.video_id === videos[i].id);
+      const latestLog = videoLogs.length > 0
+        ? videoLogs.reduce((latest, current) =>
+            new Date(current.end_time || current.start_time) > new Date(latest.end_time || latest.start_time)
+              ? current
+              : latest
+          )
+        : null;
+
+      if (!latestLog || (latestLog.progress_percent || 0) < COMPLETION_THRESHOLD) {
         return i;
       }
     }
@@ -166,11 +174,24 @@ export default function CourseLearnPage() {
 
   // コース全体の進捗を計算
   const calculateCourseProgress = (videos: Video[], logs: VideoViewLog[]) => {
-    const completedVideos = logs.filter(
+    // ✅ 各動画の最新ログのみを使って計算
+    const latestLogsPerVideo = new Map<number, VideoViewLog>();
+
+    logs.forEach(log => {
+      const existing = latestLogsPerVideo.get(log.video_id);
+      if (!existing ||
+          new Date(log.end_time || log.start_time) > new Date(existing.end_time || existing.start_time)) {
+        latestLogsPerVideo.set(log.video_id, log);
+      }
+    });
+
+    const latestLogs = Array.from(latestLogsPerVideo.values());
+
+    const completedVideos = latestLogs.filter(
       log => (log.progress_percent || 0) >= COMPLETION_THRESHOLD
     ).length;
 
-    const totalWatchTime = logs.reduce(
+    const totalWatchTime = latestLogs.reduce(
       (sum, log) => sum + (log.total_watched_time || 0),
       0
     );
@@ -181,12 +202,12 @@ export default function CourseLearnPage() {
     // 完了日を取得（最後の動画の完了日）
     let completionDate: Date | null = null;
     if (isCompleted) {
-      const latestLog = logs
+      const completedLatestLogs = latestLogs
         .filter(log => (log.progress_percent || 0) >= COMPLETION_THRESHOLD)
-        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
+        .sort((a, b) => new Date(b.updated_at || b.end_time).getTime() - new Date(a.updated_at || a.end_time).getTime());
 
-      if (latestLog) {
-        completionDate = new Date(latestLog.updated_at);
+      if (completedLatestLogs.length > 0) {
+        completionDate = new Date(completedLatestLogs[0].updated_at || completedLatestLogs[0].end_time);
       }
     }
 
@@ -393,7 +414,16 @@ export default function CourseLearnPage() {
   }
 
   const currentVideo = videos[currentVideoIndex];
-  const currentVideoLog = viewLogs.find(log => log.video_id === currentVideo?.id);
+
+  // ✅ 現在の動画の最新のログを取得（同じ動画の複数ログから最新のものを選ぶ）
+  const currentVideoLogs = viewLogs.filter(log => log.video_id === currentVideo?.id);
+  const currentVideoLog = currentVideoLogs.length > 0
+    ? currentVideoLogs.reduce((latest, current) =>
+        new Date(current.end_time || current.start_time) > new Date(latest.end_time || latest.start_time)
+          ? current
+          : latest
+      )
+    : undefined;
 
   return (
     <AuthGuard>
