@@ -83,24 +83,15 @@ export function EnhancedVideoPlayer({
 
   // 進捗を保存する関数（一時停止時、シーク時、終了時に呼ばれる）
   const saveProgress = () => {
-    // 完了済みの動画は進捗更新をスキップ
-    if (!onProgressUpdate || isCompleted || !videoRef.current || duration === 0) return;
+    if (!onProgressUpdate || !videoRef.current || duration === 0) return;
 
     const currentPos = videoRef.current.currentTime;
     const progressPercent = duration > 0 ? Math.floor((currentPos / duration) * 100) : 0;
 
-    // 完了閾値に到達したかチェック
-    if (progressPercent >= completionThreshold) {
-      // 完了状態を送信
-      setTimeout(() => {
-        onProgressUpdate(currentPos, duration, progressPercent);
-      }, 0);
-    } else {
-      // 進行中の状態を送信
-      setTimeout(() => {
-        onProgressUpdate(currentPos, duration, progressPercent);
-      }, 0);
-    }
+    // 進捗を親コンポーネントに送信
+    setTimeout(() => {
+      onProgressUpdate(currentPos, duration, progressPercent);
+    }, 0);
   };
 
   // 動画のメタデータ読み込み

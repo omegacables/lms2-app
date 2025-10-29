@@ -57,6 +57,7 @@ export default function VideoPlayerPage() {
   const [activeTab, setActiveTab] = useState<'description' | 'materials' | 'assignments' | 'references'>('description');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hasCompletedBefore, setHasCompletedBefore] = useState(false);
 
   const sessionId = useRef<string>(crypto.randomUUID());
   const progressUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -158,23 +159,19 @@ export default function VideoPlayerPage() {
       if (allVideosError) throw allVideosError;
       setAllVideos(allVideosData || []);
 
-      // 既存の視聴ログを取得（最新の未完了ログ、または完了済みの場合は最新のログ）
-      const { data: logsData, error: logError } = await supabase
+      // 過去に完了済みのログがあるか確認
+      const { data: completedLogs } = await supabase
         .from('video_view_logs')
         .select('*')
         .eq('user_id', user!.id)
         .eq('video_id', videoId)
-        .order('created_at', { ascending: false });
+        .eq('status', 'completed')
+        .limit(1);
 
-      if (logError && logError.code !== 'PGRST116') {
-        console.error('視聴ログ取得エラー:', logError);
-      } else if (logsData && logsData.length > 0) {
-        // 未完了のログがあればそれを使用、なければ最新のログ
-        const inProgressLog = logsData.find(log => log.status !== 'completed');
-        setViewLog(inProgressLog || logsData[0]);
-      }
+      // 完了済みフラグを設定
+      setHasCompletedBefore((completedLogs && completedLogs.length > 0) || false);
 
-      // 新しい視聴セッションを開始
+      // 新しい視聴セッション（新しいログ）を開始
       await startViewingSession();
 
       // リソースを取得
@@ -205,89 +202,30 @@ export default function VideoPlayerPage() {
     if (!user || !video) return;
 
     try {
-      // まず完了済みログを確認
-      const { data: completedLogs, error: completedCheckError } = await supabase
+      // 視聴履歴として毎回新しいログを作成
+      const now = getJSTTimestamp();
+      const { data, error } = await supabase
         .from('video_view_logs')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('video_id', videoId)
-        .eq('status', 'completed')
-        .order('created_at', { ascending: false })
-        .limit(1);
+        .insert({
+          user_id: user.id,
+          video_id: videoId,
+          course_id: courseId,
+          session_id: sessionId.current,
+          current_position: 0,
+          total_watched_time: 0,
+          progress_percent: 0,
+          status: 'in_progress',
+          start_time: now,
+          last_updated: now,
+        })
+        .select()
+        .single();
 
-      if (completedCheckError && completedCheckError.code !== 'PGRST116') {
-        console.error('完了済みログ確認エラー:', completedCheckError);
-        return;
-      }
-
-      // 既に完了済みのログがある場合は、新しいログを作成せず、表示のみに使用
-      if (completedLogs && completedLogs.length > 0) {
-        setViewLog(completedLogs[0]);
-        console.log('既に完了済みの動画です。新しいログは作成しません:', completedLogs[0].id);
-        return;
-      }
-
-      // 未完了ログを確認
-      const { data: inProgressLogs, error: checkError } = await supabase
-        .from('video_view_logs')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('video_id', videoId)
-        .eq('status', 'in_progress')
-        .order('created_at', { ascending: false });
-
-      if (checkError && checkError.code !== 'PGRST116') {
-        console.error('既存ログ確認エラー:', checkError);
-        return;
-      }
-
-      const existingLog = inProgressLogs && inProgressLogs.length > 0 ? inProgressLogs[0] : null;
-
-      if (existingLog) {
-        // 既存の未完了ログがある場合は更新（同じ視聴セッションを継続）
-        const { data, error } = await supabase
-          .from('video_view_logs')
-          .update({
-            session_id: sessionId.current,
-            status: 'in_progress',
-            last_updated: getJSTTimestamp(),
-          })
-          .eq('id', existingLog.id)
-          .select()
-          .single();
-
-        if (error) {
-          console.error('視聴セッション更新エラー:', error);
-        } else if (data) {
-          setViewLog(data);
-          console.log('既存の未完了セッションを再開しました:', data.id);
-        }
-      } else {
-        // 未完了ログも完了済みログもない場合は新規作成
-        const now = getJSTTimestamp();
-        const { data, error } = await supabase
-          .from('video_view_logs')
-          .insert({
-            user_id: user.id,
-            video_id: videoId,
-            course_id: courseId,
-            session_id: sessionId.current,
-            current_position: 0,
-            total_watched_time: 0,
-            progress_percent: 0,
-            status: 'in_progress',
-            start_time: now,
-            last_updated: now,
-          })
-          .select()
-          .single();
-
-        if (error) {
-          console.error('視聴セッション作成エラー:', error);
-        } else if (data) {
-          setViewLog(data);
-          console.log('新しい視聴セッションを作成しました:', data.id);
-        }
+      if (error) {
+        console.error('視聴セッション作成エラー:', error);
+      } else if (data) {
+        setViewLog(data);
+        console.log('新しい視聴セッションを作成しました:', data.id);
       }
     } catch (err) {
       console.error('視聴セッション開始エラー:', err);
@@ -297,49 +235,11 @@ export default function VideoPlayerPage() {
 
   // 実際の進捗保存処理（バックグラウンドで実行）
   const saveProgressToDatabase = async (position: number, videoDuration: number, progressPercent: number) => {
-    if (!user || !video) return;
+    if (!user || !video || !viewLog) return;
 
     try {
-      // まず完了済みのログがあるか確認
-      const { data: completedLogs } = await supabase
-        .from('video_view_logs')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('video_id', videoId)
-        .eq('status', 'completed')
-        .limit(1);
-
-      // 既に完了済みのログがある場合は一切記録しない
-      if (completedLogs && completedLogs.length > 0) {
-        console.log('[完了済み動画] 既に完了済みのため、進捗記録をスキップします。');
-        return;
-      }
-
-      // 進捗率100%で記録終了
+      // 進捗率100%で完了判定
       const isCompleted = progressPercent >= 100;
-
-      // 既存の未完了ログをキャッシュから取得または確認
-      let existingLog = viewLog;
-
-      if (!existingLog || existingLog.status === 'completed') {
-        // 未完了のログを取得
-        const { data: logsData } = await supabase
-          .from('video_view_logs')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('video_id', videoId)
-          .neq('status', 'completed')
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        existingLog = logsData && logsData.length > 0 ? logsData[0] : null;
-      }
-
-      // 二重チェック：進捗率100%に達したら、それ以上記録しない
-      if (existingLog && existingLog.status === 'completed') {
-        console.log('すでに完了済みのログです。記録をスキップします。');
-        return;
-      }
 
       // 視聴時間を計算：動画時間 × 進捗率（％を小数に変換）/ 100
       // ただし、動画時間を超えないように制限
@@ -360,12 +260,13 @@ export default function VideoPlayerPage() {
       };
 
       // 開始時刻が未設定の場合は設定
-      if (existingLog && !existingLog.start_time) {
+      if (!viewLog.start_time) {
         updateData.start_time = now;
       }
 
-      if (isCompleted && (!existingLog || existingLog?.status !== 'completed')) {
+      if (isCompleted && viewLog.status !== 'completed') {
         updateData.completed_at = now;
+        setHasCompletedBefore(true); // 完了フラグを更新
         console.log('動画完了を検出！ 動画ID:', videoId, '進捗:', progressPercent, '%', '視聴時間:', calculatedWatchedTime, '秒');
 
         // 動画完了時にコース全体の完了状態を確認
@@ -375,39 +276,18 @@ export default function VideoPlayerPage() {
         }, 2000);
       }
 
-      // existingLogがある場合は更新、ない場合は新規作成
-      if (existingLog) {
-        await supabase
-          .from('video_view_logs')
-          .update(updateData)
-          .eq('id', existingLog.id);
+      // 現在のセッションのログを更新
+      await supabase
+        .from('video_view_logs')
+        .update(updateData)
+        .eq('id', viewLog.id)
+        .eq('session_id', sessionId.current); // セッションIDも確認
 
-        // ローカルステートを更新
-        setViewLog({ ...existingLog, ...updateData });
+      // ローカルステートを更新
+      setViewLog({ ...viewLog, ...updateData });
 
-        if (isCompleted) {
-          console.log('視聴ログを完了状態に更新しました:', existingLog.id);
-        }
-      } else {
-        // 新規作成（通常は発生しないが、念のため）
-        const insertData = {
-          ...updateData,
-          user_id: user.id,
-          video_id: videoId,
-          course_id: courseId,
-          start_time: now,
-        };
-
-        const { data: newLog } = await supabase
-          .from('video_view_logs')
-          .insert(insertData)
-          .select()
-          .single();
-
-        if (newLog) {
-          setViewLog(newLog);
-          console.log('新規視聴ログを作成しました:', newLog.id);
-        }
+      if (isCompleted) {
+        console.log('視聴ログを完了状態に更新しました:', viewLog.id);
       }
     } catch (err) {
       // エラーが発生しても動画再生を妨げない
@@ -418,12 +298,6 @@ export default function VideoPlayerPage() {
   // デバウンスされた進捗更新（動画に影響を与えない）
   const updateProgress = async (position: number, videoDuration: number, progressPercent: number) => {
     if (!user || !video) return;
-
-    // 既に完了済みの場合は進捗更新をスキップ
-    if (viewLog?.status === 'completed') {
-      console.log('[完了済み動画] 既に完了済みのため、進捗更新をスキップします。');
-      return;
-    }
 
     // 最新の値を保存
     pendingUpdateRef.current = { position, videoDuration, progressPercent };
@@ -656,9 +530,9 @@ export default function VideoPlayerPage() {
               onComplete={handleVideoComplete}
               onBeforeUnload={saveProgressImmediately}
               onPlayStart={handlePlayStart}
-              enableSkipPrevention={!isAdmin} // 管理者の場合はスキップ防止を無効化
+              enableSkipPrevention={!isAdmin && !hasCompletedBefore} // 管理者または完了済みの場合はスキップ防止を無効化
               completionThreshold={course?.completion_threshold || 95}
-              isCompleted={viewLog?.status === 'completed'}
+              isCompleted={hasCompletedBefore}
             />
           </div>
 
