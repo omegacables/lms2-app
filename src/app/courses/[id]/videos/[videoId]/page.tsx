@@ -434,9 +434,44 @@ export default function VideoPlayerPage() {
 
   // 即座に進捗を保存（ブラウザバック・ページ離脱時用）
   const saveProgressImmediately = async () => {
-    if (pendingUpdateRef.current) {
+    if (pendingUpdateRef.current && viewLog) {
       const { position, videoDuration, progressPercent } = pendingUpdateRef.current;
-      await saveProgressToDatabase(position, videoDuration, progressPercent);
+
+      // sendBeacon APIを使って確実に送信
+      const now = getJSTTimestamp();
+      const isCompleted = progressPercent >= (course?.completion_threshold || 95);
+      const calculatedWatchedTime = Math.min(
+        Math.floor(videoDuration * (progressPercent / 100)),
+        Math.floor(videoDuration)
+      );
+
+      const payload = {
+        user_id: user!.id,
+        video_id: videoId,
+        course_id: courseId,
+        session_id: sessionId.current,
+        current_position: Math.round(position),
+        total_watched_time: calculatedWatchedTime,
+        progress_percent: progressPercent,
+        video_duration: videoDuration,
+        status: isCompleted ? 'completed' : 'in_progress',
+        start_time: viewLog.start_time || now,
+        end_time: now,
+        log_id: viewLog.id,
+      };
+
+      // sendBeacon を使って非同期送信（ページ離脱時でも送信が完了する）
+      const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+      const beaconSent = navigator.sendBeacon('/api/videos/save-progress', blob);
+
+      if (beaconSent) {
+        console.log('sendBeaconで進捗を送信しました');
+      } else {
+        // sendBeaconが失敗した場合は通常の方法で保存
+        console.log('sendBeacon失敗、通常の方法で保存します');
+        await saveProgressToDatabase(position, videoDuration, progressPercent);
+      }
+
       console.log('進捗を即座に保存しました');
     }
   };
