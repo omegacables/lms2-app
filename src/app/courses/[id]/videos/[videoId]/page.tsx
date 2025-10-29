@@ -107,6 +107,19 @@ export default function VideoPlayerPage() {
     }
   }, [courseId, videoId, user]);
 
+  // コンポーネントのアンマウント時に進捗を保存
+  useEffect(() => {
+    return () => {
+      // アンマウント時（ブラウザバック、ページ遷移時）に進捗を保存
+      if (pendingUpdateRef.current) {
+        const { position, videoDuration, progressPercent } = pendingUpdateRef.current;
+        // 同期的に保存
+        saveProgressImmediately();
+        console.log('コンポーネントアンマウント時に進捗を保存しました');
+      }
+    };
+  }, []);
+
 
   const fetchVideoDetails = async () => {
     try {

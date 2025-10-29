@@ -264,15 +264,11 @@ export function EnhancedVideoPlayer({
     }
   };
 
-  // ブラウザバック時・ページ離脱時の進捗保存
+  // ページ離脱時の進捗保存
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       // 進捗がある場合、確認ダイアログを表示して保存
       if (videoRef.current && duration > 0 && currentTime > 0) {
-        // 確認ダイアログを表示（ブラウザの標準機能）
-        e.preventDefault();
-        e.returnValue = '視聴進捗を保存しています。ページを離れますか？';
-
         // 進捗を保存
         saveProgress();
         // 親コンポーネントにも通知（即座に保存）
@@ -280,6 +276,9 @@ export function EnhancedVideoPlayer({
           onBeforeUnload();
         }
 
+        // 確認ダイアログを表示（ブラウザの標準機能）
+        e.preventDefault();
+        e.returnValue = '視聴進捗を保存しています。ページを離れますか？';
         return '視聴進捗を保存しています。ページを離れますか？';
       }
     };
@@ -304,52 +303,23 @@ export function EnhancedVideoPlayer({
       }
     };
 
-    let isNavigatingAway = false;
-
-    const handlePopState = (e: PopStateEvent) => {
-      // ナビゲーション中のイベントは無視
-      if (isNavigatingAway) return;
-
-      // ブラウザバック時に進捗を保存
-      if (videoRef.current && duration > 0 && currentTime > 0) {
-        // まず履歴を元に戻す（ナビゲーションをキャンセル）
-        window.history.pushState(null, '', window.location.href);
-
-        // 確認ダイアログを表示
-        const confirmLeave = window.confirm(
-          '視聴進捗を保存してからページを離れます。よろしいですか？'
-        );
-
-        if (confirmLeave) {
-          // 進捗を保存
-          saveProgress();
-          if (onBeforeUnload) {
-            onBeforeUnload();
-          }
-
-          // フラグを設定してから戻る
-          isNavigatingAway = true;
-          setTimeout(() => {
-            window.history.back();
-          }, 500); // 保存のために少し待つ
-        }
-      }
-    };
-
     // 各種イベントリスナーを登録
     window.addEventListener('beforeunload', handleBeforeUnload);
     window.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('pagehide', handlePageHide);
-    window.addEventListener('popstate', handlePopState);
-
-    // 初回マウント時に履歴エントリを追加（ブラウザバックを検知するため）
-    window.history.pushState(null, '', window.location.href);
 
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('pagehide', handlePageHide);
-      window.removeEventListener('popstate', handlePopState);
+
+      // コンポーネントのアンマウント時に保存
+      if (videoRef.current && duration > 0 && currentTime > 0) {
+        saveProgress();
+        if (onBeforeUnload) {
+          onBeforeUnload();
+        }
+      }
     };
   }, [isPlaying, duration, currentTime, onBeforeUnload]);
 
