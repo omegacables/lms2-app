@@ -20,6 +20,8 @@ interface EnhancedVideoPlayerProps {
   currentPosition?: number;
   onProgressUpdate?: (position: number, videoDuration: number, progressPercent: number) => void;
   onComplete?: () => void;
+  onBeforeUnload?: () => void;
+  onPlayStart?: () => void;
   enableSkipPrevention?: boolean;
   completionThreshold?: number;
   isCompleted?: boolean;
@@ -32,6 +34,8 @@ export function EnhancedVideoPlayer({
   currentPosition = 0,
   onProgressUpdate,
   onComplete,
+  onBeforeUnload,
+  onPlayStart,
   enableSkipPrevention = true,
   completionThreshold = 95,
   isCompleted = false
@@ -204,6 +208,10 @@ export function EnhancedVideoPlayer({
         // 一時停止時に進捗を保存
         saveProgress();
       } else {
+        // 再生開始時に親コンポーネントに通知（開始時刻を記録）
+        if (onPlayStart) {
+          onPlayStart();
+        }
         videoRef.current.play();
         setIsPlaying(true);
         hideControlsAfterDelay();
@@ -256,18 +264,38 @@ export function EnhancedVideoPlayer({
     }
   };
 
-  // ブラウザバック時の警告
+  // ブラウザバック時・ページ離脱時の進捗保存
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isPlaying) {
-        e.preventDefault();
-        e.returnValue = '視聴履歴を保存しますか？';
+      // 再生中または進捗がある場合、進捗を保存
+      if (videoRef.current && duration > 0) {
+        // 進捗を保存
+        saveProgress();
+        // 親コンポーネントにも通知（即座に保存）
+        if (onBeforeUnload) {
+          onBeforeUnload();
+        }
+      }
+    };
+
+    const handlePopState = () => {
+      // ブラウザバック時に進捗を保存
+      if (videoRef.current && duration > 0) {
+        saveProgress();
+        if (onBeforeUnload) {
+          onBeforeUnload();
+        }
       }
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isPlaying]);
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [isPlaying, duration, onBeforeUnload]);
 
   // 右クリック無効化（未完了動画のみ）
   const handleContextMenu = (e: React.MouseEvent) => {

@@ -432,6 +432,47 @@ export default function VideoPlayerPage() {
     }, 2000); // 2秒のデバウンス
   };
 
+  // 即座に進捗を保存（ブラウザバック・ページ離脱時用）
+  const saveProgressImmediately = async () => {
+    if (pendingUpdateRef.current) {
+      const { position, videoDuration, progressPercent } = pendingUpdateRef.current;
+      await saveProgressToDatabase(position, videoDuration, progressPercent);
+      console.log('進捗を即座に保存しました');
+    }
+  };
+
+  // 再生開始時のハンドラー（開始時刻を記録）
+  const handlePlayStart = async () => {
+    if (!user || !video || !viewLog) return;
+
+    try {
+      const now = getJSTTimestamp();
+
+      // 開始時刻が未設定の場合のみ記録
+      if (!viewLog.start_time) {
+        await supabase
+          .from('video_view_logs')
+          .update({
+            start_time: now,
+            last_updated: now,
+          })
+          .eq('id', viewLog.id);
+
+        setViewLog({ ...viewLog, start_time: now, last_updated: now });
+        console.log('再生開始時刻を記録しました:', now);
+      }
+    } catch (err) {
+      console.error('開始時刻記録エラー:', err);
+    }
+  };
+
+  // コースに戻るボタンのハンドラー
+  const handleBackToCourse = async () => {
+    // 進捗を保存してからナビゲート
+    await saveProgressImmediately();
+    router.push(`/courses/${courseId}`);
+  };
+
   const handleVideoComplete = () => {
     console.log('動画視聴完了');
     // コース完了確認と証明書生成
@@ -565,6 +606,8 @@ export default function VideoPlayerPage() {
               currentPosition={viewLog?.current_position || 0}
               onProgressUpdate={updateProgress}
               onComplete={handleVideoComplete}
+              onBeforeUnload={saveProgressImmediately}
+              onPlayStart={handlePlayStart}
               enableSkipPrevention={!isAdmin} // 管理者の場合はスキップ防止を無効化
               completionThreshold={course?.completion_threshold || 95}
               isCompleted={viewLog?.status === 'completed'}
@@ -806,12 +849,10 @@ export default function VideoPlayerPage() {
                       </Button>
                     </Link>
                   )}
-                  
-                  <Link href={`/courses/${courseId}`}>
-                    <Button variant="outline">
-                      コースに戻る
-                    </Button>
-                  </Link>
+
+                  <Button variant="outline" onClick={handleBackToCourse}>
+                    コースに戻る
+                  </Button>
 
                   {nextVideo && (
                     <Link href={`/courses/${courseId}/videos/${nextVideo.id}`}>
