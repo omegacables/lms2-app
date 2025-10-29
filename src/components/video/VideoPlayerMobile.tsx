@@ -614,62 +614,60 @@ export default function VideoPlayerMobile({
 
   // ページを離れる前に進捗を保存
   useEffect(() => {
-    // 再生中または一時停止中は保存が必要
-    const checkUnsavedProgress = () => {
-      if (videoRef.current) {
-        const currentTime = videoRef.current.currentTime;
-        return currentTime > 0 && !isNaN(currentTime);
+    // ✅ 100%完了済みでない場合は常に保存
+    const shouldSave = () => {
+      // 100%完了済みの場合は保存しない
+      if (isCompleted) {
+        console.log('[VideoPlayer] ⛔ 100%完了済み - 離脱時保存をスキップ');
+        return false;
       }
-      return false;
+      // それ以外は常に保存
+      return true;
     };
 
     // beforeunload: ページを離れる前の確認ダイアログ
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      const hasUnsaved = checkUnsavedProgress();
-
       console.log('[VideoPlayer] beforeunload イベント発火', {
-        hasUnsaved,
         currentTime: videoRef.current?.currentTime,
         duration: videoRef.current?.duration,
-        isPlaying
+        isPlaying,
+        isCompleted
       });
 
-      // 視聴中の場合は必ず保存を試みる
-      if (hasUnsaved) {
-        console.log('[VideoPlayer] ページ離脱前 - 緊急進捗保存');
+      // ✅ 100%未完了の場合は必ず保存
+      if (shouldSave()) {
+        console.log('[VideoPlayer] 🚨 ページ離脱前 - 緊急進捗保存');
+        saveProgress(true); // 緊急保存
 
-        // 同期的に保存を試みる
-        saveProgress(true);
-
-        // ブラウザのデフォルトダイアログを表示
-        // 注意: モダンブラウザではカスタムメッセージは表示されず、
-        // ブラウザ標準の「このページを離れますか？」が表示される
-        e.preventDefault();
-        e.returnValue = ''; // Chrome requires returnValue to be set
-        return ''; // 一部のブラウザでは戻り値が必要
+        // 確認ダイアログを表示（動画視聴中の場合）
+        if (videoRef.current && videoRef.current.currentTime > 0) {
+          e.preventDefault();
+          e.returnValue = '';
+          return '';
+        }
       }
     };
 
     // pagehide: ページが完全にアンロードされる直前（最後のチャンス）
     const handlePageHide = (e: PageTransitionEvent) => {
-      if (checkUnsavedProgress()) {
-        console.log('[VideoPlayer] ページ離脱 (pagehide) - 最終保存');
+      if (shouldSave()) {
+        console.log('[VideoPlayer] 🚨 ページ離脱 (pagehide) - 最終保存');
         saveProgress(true); // 緊急保存
       }
     };
 
     // visibilitychange: バックグラウンドに移る時（タブ切り替え、ホーム画面など）
     const handleVisibilityChange = () => {
-      if (document.hidden && checkUnsavedProgress()) {
-        console.log('[VideoPlayer] バックグラウンド移行 - 進捗保存');
+      if (document.hidden && shouldSave()) {
+        console.log('[VideoPlayer] 📱 バックグラウンド移行 - 進捗保存');
         saveProgress(true); // 緊急保存
       }
     };
 
     // freeze: モバイルでページがフリーズされる前（PWA、バックグラウンド）
     const handleFreeze = () => {
-      if (checkUnsavedProgress()) {
-        console.log('[VideoPlayer] ページフリーズ前 - 進捗保存');
+      if (shouldSave()) {
+        console.log('[VideoPlayer] 🧊 ページフリーズ前 - 進捗保存');
         saveProgress(true); // 緊急保存
       }
     };
@@ -679,8 +677,8 @@ export default function VideoPlayerMobile({
     const handleScroll = () => {
       if (scrollTimeout) clearTimeout(scrollTimeout);
       scrollTimeout = setTimeout(() => {
-        if (checkUnsavedProgress()) {
-          console.log('[VideoPlayer] スクロール検出 - 進捗保存');
+        if (shouldSave()) {
+          console.log('[VideoPlayer] 📜 スクロール検出 - 進捗保存');
           saveProgress(false); // 通常保存
         }
       }, 2000); // 2秒間スクロールが止まったら保存
@@ -694,8 +692,8 @@ export default function VideoPlayerMobile({
 
     // 定期的な自動保存（10秒ごと）- フォールバック
     const autoSaveInterval = setInterval(() => {
-      if (checkUnsavedProgress()) {
-        console.log('[VideoPlayer] 定期自動保存');
+      if (shouldSave()) {
+        console.log('[VideoPlayer] ⏰ 定期自動保存');
         saveProgress();
       }
     }, 10000);
@@ -710,12 +708,12 @@ export default function VideoPlayerMobile({
       clearInterval(autoSaveInterval);
 
       // アンマウント時の最終保存
-      if (checkUnsavedProgress()) {
-        console.log('[VideoPlayer] コンポーネントアンマウント - 最終保存');
+      if (shouldSave()) {
+        console.log('[VideoPlayer] 💀 コンポーネントアンマウント - 最終保存');
         saveProgress(true); // 緊急保存
       }
     };
-  }, [saveProgress]);
+  }, [saveProgress, isCompleted]);
 
   // 時間フォーマット
   const formatTime = (seconds: number) => {
