@@ -63,24 +63,9 @@ export default function VideoPlayerPage() {
   const progressUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingUpdateRef = useRef<{ position: number; videoDuration: number; progressPercent: number } | null>(null);
 
-  // 日本時間（JST）のタイムスタンプを取得する関数
+  // タイムスタンプを取得する関数（Supabase互換のISO 8601形式）
   const getJSTTimestamp = () => {
-    const now = new Date();
-    // 日本時間に変換（UTC+9）
-    const jstOffset = 9 * 60; // 9時間を分に変換
-    const localOffset = now.getTimezoneOffset(); // ローカルタイムゾーンのオフセット（分）
-    const jstTime = new Date(now.getTime() + (jstOffset + localOffset) * 60 * 1000);
-
-    // YYYY-MM-DD HH:mm:ss.SSS 形式で返す（タイムゾーン情報なし）
-    const year = jstTime.getFullYear();
-    const month = String(jstTime.getMonth() + 1).padStart(2, '0');
-    const day = String(jstTime.getDate()).padStart(2, '0');
-    const hours = String(jstTime.getHours()).padStart(2, '0');
-    const minutes = String(jstTime.getMinutes()).padStart(2, '0');
-    const seconds = String(jstTime.getSeconds()).padStart(2, '0');
-    const milliseconds = String(jstTime.getMilliseconds()).padStart(3, '0');
-
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
+    return new Date().toISOString();
   };
 
   // ファイルダウンロード関数
@@ -235,13 +220,12 @@ export default function VideoPlayerPage() {
 
   // 実際の進捗保存処理（バックグラウンドで実行）
   const saveProgressToDatabase = async (position: number, videoDuration: number, progressPercent: number) => {
-    if (!user || !video || !viewLog) return;
-
-    // 100%達成後は一切の上書きをしない
-    if (viewLog.status === 'completed') {
-      console.log('[進捗保存] 既に完了済みのため、上書きしません');
+    if (!user || !video || !viewLog) {
+      console.log('[進捗保存] スキップ:', { user: !!user, video: !!video, viewLog: !!viewLog });
       return;
     }
+
+    console.log('[進捗保存] 開始:', { position, progressPercent, viewLogId: viewLog.id });
 
     try {
       // 進捗率100%で完了判定
@@ -262,13 +246,8 @@ export default function VideoPlayerPage() {
         total_watched_time: calculatedWatchedTime,
         status: isCompleted ? 'completed' as const : 'in_progress' as const,
         last_updated: now,
-        end_time: now, // 毎回終了時刻を記録
+        end_time: now, // 毎回終了時刻を記録（進捗保存時、ページ離脱時）
       };
-
-      // 開始時刻が未設定の場合は設定
-      if (!viewLog.start_time) {
-        updateData.start_time = now;
-      }
 
       if (isCompleted && viewLog.status !== 'completed') {
         updateData.completed_at = now;
@@ -283,11 +262,18 @@ export default function VideoPlayerPage() {
       }
 
       // 現在のセッションのログを更新
-      await supabase
+      const { error: updateError } = await supabase
         .from('video_view_logs')
         .update(updateData)
         .eq('id', viewLog.id)
         .eq('session_id', sessionId.current); // セッションIDも確認
+
+      if (updateError) {
+        console.error('[進捗保存] 更新エラー:', updateError);
+        return;
+      }
+
+      console.log('[進捗保存] 成功:', { progressPercent, position });
 
       // ローカルステートを更新
       setViewLog({ ...viewLog, ...updateData });
@@ -305,12 +291,6 @@ export default function VideoPlayerPage() {
   const updateProgress = async (position: number, videoDuration: number, progressPercent: number) => {
     if (!user || !video) return;
 
-    // 100%達成後は進捗更新をスキップ
-    if (viewLog?.status === 'completed') {
-      console.log('[進捗更新] 既に完了済みのため、スキップします');
-      return;
-    }
-
     // 最新の値を保存
     pendingUpdateRef.current = { position, videoDuration, progressPercent };
 
@@ -319,7 +299,7 @@ export default function VideoPlayerPage() {
       clearTimeout(progressUpdateTimerRef.current);
     }
 
-    // 1秒後に実際の保存処理を実行（デバウンス）
+    // 2秒後に実際の保存処理を実行（デバウンス）
     progressUpdateTimerRef.current = setTimeout(() => {
       if (pendingUpdateRef.current) {
         const { position, videoDuration, progressPercent } = pendingUpdateRef.current;
@@ -328,18 +308,12 @@ export default function VideoPlayerPage() {
           saveProgressToDatabase(position, videoDuration, progressPercent);
         });
       }
-    }, 1000); // 1秒のデバウンス（再生中は常時保存）
+    }, 2000); // 2秒のデバウンス
   };
 
   // 即座に進捗を保存（ブラウザバック・ページ離脱時用）
   const saveProgressImmediately = async () => {
     if (pendingUpdateRef.current && viewLog) {
-      // 100%達成後は一切の上書きをしない
-      if (viewLog.status === 'completed') {
-        console.log('[即座保存] 既に完了済みのため、上書きしません');
-        return;
-      }
-
       const { position, videoDuration, progressPercent } = pendingUpdateRef.current;
 
       // sendBeacon APIを使って確実に送信
