@@ -184,9 +184,19 @@ export default function VideoPlayerPage() {
   };
 
   const startViewingSession = async () => {
-    if (!user || !video) return;
+    if (!user || !video) {
+      console.log('[セッション開始] スキップ:', { user: !!user, video: !!video });
+      return;
+    }
 
     try {
+      console.log('[セッション開始] 新しいログを作成します:', {
+        userId: user.id,
+        videoId,
+        courseId,
+        sessionId: sessionId.current
+      });
+
       // 視聴履歴として毎回新しいログを作成
       const now = getJSTTimestamp();
       const { data, error } = await supabase
@@ -207,13 +217,16 @@ export default function VideoPlayerPage() {
         .single();
 
       if (error) {
-        console.error('視聴セッション作成エラー:', error);
+        console.error('[セッション開始] 作成エラー:', error);
+        alert(`視聴ログの作成に失敗しました: ${error.message}`);
       } else if (data) {
         setViewLog(data);
-        console.log('新しい視聴セッションを作成しました:', data.id);
+        console.log('[セッション開始] 成功 - ログID:', data.id);
+      } else {
+        console.error('[セッション開始] データが返されませんでした');
       }
     } catch (err) {
-      console.error('視聴セッション開始エラー:', err);
+      console.error('[セッション開始] 予期しないエラー:', err);
     }
   };
 
@@ -289,7 +302,12 @@ export default function VideoPlayerPage() {
 
   // デバウンスされた進捗更新（動画に影響を与えない）
   const updateProgress = async (position: number, videoDuration: number, progressPercent: number) => {
-    if (!user || !video) return;
+    if (!user || !video) {
+      console.log('[進捗更新] スキップ:', { user: !!user, video: !!video });
+      return;
+    }
+
+    console.log('[進捗更新] 受信:', { position: position.toFixed(2), progressPercent: progressPercent.toFixed(2), viewLogId: viewLog?.id });
 
     // 最新の値を保存
     pendingUpdateRef.current = { position, videoDuration, progressPercent };
@@ -299,7 +317,7 @@ export default function VideoPlayerPage() {
       clearTimeout(progressUpdateTimerRef.current);
     }
 
-    // 2秒後に実際の保存処理を実行（デバウンス）
+    // 500ms後に実際の保存処理を実行（デバウンス）
     progressUpdateTimerRef.current = setTimeout(() => {
       if (pendingUpdateRef.current) {
         const { position, videoDuration, progressPercent } = pendingUpdateRef.current;
@@ -308,7 +326,7 @@ export default function VideoPlayerPage() {
           saveProgressToDatabase(position, videoDuration, progressPercent);
         });
       }
-    }, 2000); // 2秒のデバウンス
+    }, 500); // 500msのデバウンス（常に保存）
   };
 
   // 即座に進捗を保存（ブラウザバック・ページ離脱時用）
