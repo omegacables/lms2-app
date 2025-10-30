@@ -116,6 +116,11 @@ export function EnhancedVideoPlayer({
 
       const progressPercent = duration > 0 ? (current / duration) * 100 : 0;
       setProgress(progressPercent);
+
+      // 再生中は常時進捗を更新（親コンポーネント側でデバウンス処理）
+      if (onProgressUpdate && duration > 0) {
+        onProgressUpdate(current, duration, progressPercent);
+      }
     }
   };
 
