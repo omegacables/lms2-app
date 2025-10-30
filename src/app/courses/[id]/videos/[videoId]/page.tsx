@@ -237,6 +237,12 @@ export default function VideoPlayerPage() {
   const saveProgressToDatabase = async (position: number, videoDuration: number, progressPercent: number) => {
     if (!user || !video || !viewLog) return;
 
+    // 100%達成後は一切の上書きをしない
+    if (viewLog.status === 'completed') {
+      console.log('[進捗保存] 既に完了済みのため、上書きしません');
+      return;
+    }
+
     try {
       // 進捗率100%で完了判定
       const isCompleted = progressPercent >= 100;
@@ -299,6 +305,12 @@ export default function VideoPlayerPage() {
   const updateProgress = async (position: number, videoDuration: number, progressPercent: number) => {
     if (!user || !video) return;
 
+    // 100%達成後は進捗更新をスキップ
+    if (viewLog?.status === 'completed') {
+      console.log('[進捗更新] 既に完了済みのため、スキップします');
+      return;
+    }
+
     // 最新の値を保存
     pendingUpdateRef.current = { position, videoDuration, progressPercent };
 
@@ -307,7 +319,7 @@ export default function VideoPlayerPage() {
       clearTimeout(progressUpdateTimerRef.current);
     }
 
-    // 2秒後に実際の保存処理を実行（デバウンス）
+    // 1秒後に実際の保存処理を実行（デバウンス）
     progressUpdateTimerRef.current = setTimeout(() => {
       if (pendingUpdateRef.current) {
         const { position, videoDuration, progressPercent } = pendingUpdateRef.current;
@@ -316,12 +328,18 @@ export default function VideoPlayerPage() {
           saveProgressToDatabase(position, videoDuration, progressPercent);
         });
       }
-    }, 2000); // 2秒のデバウンス
+    }, 1000); // 1秒のデバウンス（再生中は常時保存）
   };
 
   // 即座に進捗を保存（ブラウザバック・ページ離脱時用）
   const saveProgressImmediately = async () => {
     if (pendingUpdateRef.current && viewLog) {
+      // 100%達成後は一切の上書きをしない
+      if (viewLog.status === 'completed') {
+        console.log('[即座保存] 既に完了済みのため、上書きしません');
+        return;
+      }
+
       const { position, videoDuration, progressPercent } = pendingUpdateRef.current;
 
       // sendBeacon APIを使って確実に送信
