@@ -216,48 +216,52 @@ export default function VideoPlayerPage() {
 
   const startViewingSession = async () => {
     if (!user || !video) {
-      console.log('[セッション開始] スキップ:', { user: !!user, video: !!video });
+      console.error('[セッション開始] スキップ:', { user: !!user, video: !!video, userId: user?.id });
       return;
     }
 
     try {
-      console.log('[セッション開始] 新しいログを作成します:', {
-        userId: user.id,
-        videoId,
-        courseId,
-        sessionId: sessionId.current
-      });
+      const insertData = {
+        user_id: user.id,
+        video_id: videoId,
+        course_id: courseId,
+        session_id: sessionId.current,
+        current_position: 0,
+        total_watched_time: 0,
+        progress_percent: 0,
+        status: 'in_progress' as const,
+        start_time: null,
+        last_updated: getJSTTimestamp(),
+      };
+
+      console.log('[セッション開始] 新しいログを作成します:', insertData);
 
       // 視聴履歴として毎回新しいログを作成
-      const now = getJSTTimestamp();
       const { data, error } = await supabase
         .from('video_view_logs')
-        .insert({
-          user_id: user.id,
-          video_id: videoId,
-          course_id: courseId,
-          session_id: sessionId.current,
-          current_position: 0,
-          total_watched_time: 0,
-          progress_percent: 0,
-          status: 'in_progress',
-          start_time: null, // 再生ボタンを押したときに設定
-          last_updated: now,
-        })
+        .insert(insertData)
         .select()
         .single();
 
       if (error) {
-        console.error('[セッション開始] 作成エラー:', error);
-        alert(`視聴ログの作成に失敗しました: ${error.message}`);
+        console.error('[セッション開始] 作成エラー:', {
+          error,
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
+        alert(`視聴ログの作成に失敗しました。\nエラー: ${error.message}\nコード: ${error.code}\n\n管理者に連絡してください。`);
       } else if (data) {
         setViewLog(data);
-        console.log('[セッション開始] 成功 - ログID:', data.id);
+        console.log('[セッション開始] 成功 - ログID:', data.id, 'ユーザーID:', user.id);
       } else {
         console.error('[セッション開始] データが返されませんでした');
+        alert('視聴ログの作成に失敗しました。データが返されませんでした。');
       }
     } catch (err) {
       console.error('[セッション開始] 予期しないエラー:', err);
+      alert(`視聴ログの作成で予期しないエラーが発生しました: ${err}`);
     }
   };
 
