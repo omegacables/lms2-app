@@ -74,6 +74,11 @@ export function EnhancedVideoPlayer({
     const sessionId = crypto.randomUUID();
     setViewingSession(sessionId);
 
+    // 再生開始時に親コンポーネントに通知（開始時刻を記録）
+    if (onPlayStart) {
+      onPlayStart();
+    }
+
     // 自動再生開始
     if (videoRef.current) {
       videoRef.current.play();
