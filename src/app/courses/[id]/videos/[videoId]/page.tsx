@@ -158,19 +158,24 @@ export default function VideoPlayerPage() {
       setHasCompletedBefore((completedLogs && completedLogs.length > 0) || false);
 
       // 最新の視聴ログから続きの位置を取得
-      const { data: latestLog } = await supabase
+      const { data: latestLogs, error: latestLogError } = await supabase
         .from('video_view_logs')
         .select('current_position')
         .eq('user_id', user!.id)
         .eq('video_id', videoId)
         .order('last_updated', { ascending: false })
-        .limit(1)
-        .single();
+        .limit(1);
+
+      if (latestLogError) {
+        console.error('[続きから再生] ログ取得エラー:', latestLogError);
+      }
 
       // 最後の視聴位置を設定（完了済みの場合は0から開始）
-      const startPosition = (completedLogs && completedLogs.length > 0) ? 0 : (latestLog?.current_position || 0);
+      const startPosition = (completedLogs && completedLogs.length > 0)
+        ? 0
+        : (latestLogs && latestLogs.length > 0 ? latestLogs[0].current_position : 0);
       setLastPosition(startPosition);
-      console.log('[続きから再生] 開始位置:', startPosition);
+      console.log('[続きから再生] 開始位置:', startPosition, '取得したログ:', latestLogs);
 
       // 新しい視聴セッション（新しいログ）を開始
       await startViewingSession();
