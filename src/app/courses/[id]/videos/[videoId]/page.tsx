@@ -67,13 +67,17 @@ export default function VideoPlayerPage() {
   // タイムスタンプを取得する関数（日本時間・タイムゾーン付きISO 8601形式）
   const getJSTTimestamp = () => {
     const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const date = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
+    // UTCから日本時間（UTC+9）に変換
+    const jstOffset = 9 * 60; // 9時間 = 540分
+    const jstTime = new Date(now.getTime() + jstOffset * 60 * 1000);
+
+    const year = jstTime.getUTCFullYear();
+    const month = String(jstTime.getUTCMonth() + 1).padStart(2, '0');
+    const date = String(jstTime.getUTCDate()).padStart(2, '0');
+    const hours = String(jstTime.getUTCHours()).padStart(2, '0');
+    const minutes = String(jstTime.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(jstTime.getUTCSeconds()).padStart(2, '0');
+    const milliseconds = String(jstTime.getUTCMilliseconds()).padStart(3, '0');
 
     // タイムゾーン情報（+09:00）を含むISO 8601形式
     return `${year}-${month}-${date}T${hours}:${minutes}:${seconds}.${milliseconds}+09:00`;
@@ -104,9 +108,33 @@ export default function VideoPlayerPage() {
     }
   }, [courseId, videoId, user]);
 
-  // コンポーネントのアンマウント時に進捗を保存
+  // コンポーネントのアンマウント時とページ離脱時に進捗を保存
   useEffect(() => {
+    // ページ離脱時（ブラウザを閉じる、タブを閉じる、ブラウザバック等）
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (pendingUpdateRef.current) {
+        // 同期的に保存
+        saveProgressImmediately();
+        console.log('beforeunload: 進捗を保存しました');
+      }
+    };
+
+    // visibilitychangeイベント（タブを切り替えた時など）
+    const handleVisibilityChange = () => {
+      if (document.hidden && pendingUpdateRef.current) {
+        saveProgressImmediately();
+        console.log('visibilitychange: 進捗を保存しました');
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
+      // イベントリスナーを削除
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+
       // アンマウント時（ブラウザバック、ページ遷移時）に進捗を保存
       if (pendingUpdateRef.current) {
         const { position, videoDuration, progressPercent } = pendingUpdateRef.current;
@@ -188,7 +216,7 @@ export default function VideoPlayerPage() {
       console.log('[続きから再生] 開始位置:', startPosition, '取得したログ:', latestLogs);
 
       // 新しい視聴セッション（新しいログ）を開始
-      await startViewingSession();
+      await startViewingSession(videoData);
 
       // リソースを取得
       try {
@@ -214,13 +242,14 @@ export default function VideoPlayerPage() {
     }
   };
 
-  const startViewingSession = async () => {
-    if (!user || !video) {
-      console.error('[セッション開始] スキップ:', { user: !!user, video: !!video, userId: user?.id });
+  const startViewingSession = async (videoData: Video) => {
+    if (!user || !videoData) {
+      console.error('[セッション開始] スキップ:', { user: !!user, video: !!videoData, userId: user?.id });
       return;
     }
 
     try {
+      const now = getJSTTimestamp();
       const insertData = {
         user_id: user.id,
         video_id: videoId,
@@ -230,8 +259,8 @@ export default function VideoPlayerPage() {
         total_watched_time: 0,
         progress_percent: 0,
         status: 'in_progress' as const,
-        start_time: null,
-        last_updated: getJSTTimestamp(),
+        start_time: now, // セッション開始時に開始時刻を記録
+        last_updated: now,
       };
 
       console.log('[セッション開始] 新しいログを作成します:', insertData);
