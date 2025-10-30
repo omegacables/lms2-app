@@ -64,9 +64,19 @@ export default function VideoPlayerPage() {
   const progressUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingUpdateRef = useRef<{ position: number; videoDuration: number; progressPercent: number } | null>(null);
 
-  // タイムスタンプを取得する関数（Supabase互換のISO 8601形式）
+  // タイムスタンプを取得する関数（日本時間・タイムゾーン付きISO 8601形式）
   const getJSTTimestamp = () => {
-    return new Date().toISOString();
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const date = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
+
+    // タイムゾーン情報（+09:00）を含むISO 8601形式
+    return `${year}-${month}-${date}T${hours}:${minutes}:${seconds}.${milliseconds}+09:00`;
   };
 
   // ファイルダウンロード関数
