@@ -117,14 +117,27 @@ export default function CourseDetailPage() {
   };
 
   const getVideoProgress = (videoId: number) => {
-    const log = viewLogs.find(log => log.video_id === videoId);
-    return log ? log.progress_percent : 0;
+    // 複数ログがある場合は最新のログ（last_updatedが最も新しい）を取得
+    const logs = viewLogs.filter(log => log.video_id === videoId);
+    if (logs.length === 0) return 0;
+
+    const latestLog = logs.sort((a, b) =>
+      new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime()
+    )[0];
+
+    return latestLog ? latestLog.progress_percent : 0;
   };
 
   const getVideoStatus = (videoId: number) => {
-    const log = viewLogs.find(log => log.video_id === videoId);
-    if (!log) return 'not_started';
-    return log.status;
+    // 複数ログがある場合は最新のログ（last_updatedが最も新しい）を取得
+    const logs = viewLogs.filter(log => log.video_id === videoId);
+    if (logs.length === 0) return 'not_started';
+
+    const latestLog = logs.sort((a, b) =>
+      new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime()
+    )[0];
+
+    return latestLog ? latestLog.status : 'not_started';
   };
 
   const formatDuration = (seconds: number) => {

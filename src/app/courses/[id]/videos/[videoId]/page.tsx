@@ -58,6 +58,7 @@ export default function VideoPlayerPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasCompletedBefore, setHasCompletedBefore] = useState(false);
+  const [lastPosition, setLastPosition] = useState<number>(0);
 
   const sessionId = useRef<string>(crypto.randomUUID());
   const progressUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -156,6 +157,21 @@ export default function VideoPlayerPage() {
       // 完了済みフラグを設定
       setHasCompletedBefore((completedLogs && completedLogs.length > 0) || false);
 
+      // 最新の視聴ログから続きの位置を取得
+      const { data: latestLog } = await supabase
+        .from('video_view_logs')
+        .select('current_position')
+        .eq('user_id', user!.id)
+        .eq('video_id', videoId)
+        .order('last_updated', { ascending: false })
+        .limit(1)
+        .single();
+
+      // 最後の視聴位置を設定（完了済みの場合は0から開始）
+      const startPosition = (completedLogs && completedLogs.length > 0) ? 0 : (latestLog?.current_position || 0);
+      setLastPosition(startPosition);
+      console.log('[続きから再生] 開始位置:', startPosition);
+
       // 新しい視聴セッション（新しいログ）を開始
       await startViewingSession();
 
@@ -210,7 +226,7 @@ export default function VideoPlayerPage() {
           total_watched_time: 0,
           progress_percent: 0,
           status: 'in_progress',
-          start_time: now,
+          start_time: null, // 再生ボタンを押したときに設定
           last_updated: now,
         })
         .select()
@@ -375,14 +391,18 @@ export default function VideoPlayerPage() {
 
   // 再生開始時のハンドラー（開始時刻を記録）
   const handlePlayStart = async () => {
-    if (!user || !video || !viewLog) return;
+    if (!user || !video || !viewLog) {
+      console.log('[再生開始] スキップ:', { user: !!user, video: !!video, viewLog: !!viewLog });
+      return;
+    }
 
     try {
       const now = getJSTTimestamp();
+      console.log('[再生開始] 呼び出されました:', { viewLogId: viewLog.id, currentStartTime: viewLog.start_time });
 
       // 開始時刻が未設定の場合のみ記録
       if (!viewLog.start_time) {
-        await supabase
+        const { error: updateError } = await supabase
           .from('video_view_logs')
           .update({
             start_time: now,
@@ -390,11 +410,19 @@ export default function VideoPlayerPage() {
           })
           .eq('id', viewLog.id);
 
+        if (updateError) {
+          console.error('[再生開始] 更新エラー:', updateError);
+          alert(`開始時刻の記録に失敗しました: ${updateError.message}`);
+          return;
+        }
+
         setViewLog({ ...viewLog, start_time: now, last_updated: now });
-        console.log('再生開始時刻を記録しました:', now);
+        console.log('[再生開始] 成功 - 開始時刻を記録:', now);
+      } else {
+        console.log('[再生開始] スキップ - 既に開始時刻が設定されています:', viewLog.start_time);
       }
     } catch (err) {
-      console.error('開始時刻記録エラー:', err);
+      console.error('[再生開始] 予期しないエラー:', err);
     }
   };
 
@@ -535,7 +563,7 @@ export default function VideoPlayerPage() {
               videoUrl={video.file_url}
               videoId={videoId}
               title={video.title}
-              currentPosition={viewLog?.current_position || 0}
+              currentPosition={lastPosition}
               onProgressUpdate={updateProgress}
               onComplete={handleVideoComplete}
               onBeforeUnload={saveProgressImmediately}
