@@ -193,7 +193,8 @@ export default function VideoPlayerPage() {
         .limit(1);
 
       // 完了済みフラグを設定
-      setHasCompletedBefore((completedLogs && completedLogs.length > 0) || false);
+      const isCompleted = (completedLogs && completedLogs.length > 0) || false;
+      setHasCompletedBefore(isCompleted);
 
       // 最新の視聴ログから続きの位置を取得
       const { data: latestLogs, error: latestLogError } = await supabase
@@ -209,14 +210,20 @@ export default function VideoPlayerPage() {
       }
 
       // 最後の視聴位置を設定（完了済みの場合は0から開始）
-      const startPosition = (completedLogs && completedLogs.length > 0)
+      const startPosition = isCompleted
         ? 0
         : (latestLogs && latestLogs.length > 0 ? latestLogs[0].current_position : 0);
       setLastPosition(startPosition);
       console.log('[続きから再生] 開始位置:', startPosition, '取得したログ:', latestLogs);
 
       // 新しい視聴セッション（新しいログ）を開始
-      await startViewingSession(videoData);
+      // ⭐ 100%完了済みの動画は新しいログを作成しない
+      if (!isCompleted) {
+        await startViewingSession(videoData);
+        console.log('[視聴セッション] 新しいログを作成しました');
+      } else {
+        console.log('[視聴セッション] 完了済みのため、ログを作成しません');
+      }
 
       // リソースを取得
       try {
@@ -371,6 +378,12 @@ export default function VideoPlayerPage() {
       return;
     }
 
+    // ⭐ 100%完了済みの動画は進捗を記録しない
+    if (hasCompletedBefore) {
+      console.log('[進捗更新] 完了済みのため、進捗を記録しません');
+      return;
+    }
+
     console.log('[進捗更新] 受信:', { position: position.toFixed(2), progressPercent: progressPercent.toFixed(2), viewLogId: viewLog?.id });
 
     // 最新の値を保存
@@ -395,6 +408,12 @@ export default function VideoPlayerPage() {
 
   // 即座に進捗を保存（ブラウザバック・ページ離脱時用）
   const saveProgressImmediately = async () => {
+    // ⭐ 100%完了済みの動画は進捗を記録しない
+    if (hasCompletedBefore) {
+      console.log('[即座に保存] 完了済みのため、進捗を記録しません');
+      return;
+    }
+
     if (pendingUpdateRef.current && viewLog) {
       const { position, videoDuration, progressPercent } = pendingUpdateRef.current;
 
@@ -439,6 +458,12 @@ export default function VideoPlayerPage() {
 
   // 再生開始時のハンドラー（開始時刻を記録）
   const handlePlayStart = async () => {
+    // ⭐ 100%完了済みの動画は開始時刻を記録しない
+    if (hasCompletedBefore) {
+      console.log('[再生開始] 完了済みのため、開始時刻を記録しません');
+      return;
+    }
+
     if (!user || !video || !viewLog) {
       console.log('[再生開始] スキップ:', { user: !!user, video: !!video, viewLog: !!viewLog });
       return;
