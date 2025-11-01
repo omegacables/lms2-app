@@ -31,10 +31,60 @@ export function CourseCertificate({
   const [error, setError] = useState<string | null>(null);
   const [existingCertificate, setExistingCertificate] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [certificateSettings, setCertificateSettings] = useState<{
+    company_name: string;
+    signer_name: string;
+    signer_title: string;
+    stamp_image_url: string;
+  } | null>(null);
 
   // すべての動画を視聴したかチェック（90%以上で証明書発行可能）
   const completionRate = progress.totalVideos > 0 ? (progress.completedVideos / progress.totalVideos) * 100 : 0;
   const isEligibleForCertificate = completionRate >= 90;
+
+  // システム設定から証明書署名情報を取得
+  useEffect(() => {
+    const fetchCertificateSettings = async () => {
+      try {
+        const { data: settingsData, error } = await supabase
+          .from('system_settings')
+          .select('*')
+          .in('setting_key', [
+            'certificate.company_name',
+            'certificate.signer_name',
+            'certificate.signer_title',
+            'certificate.stamp_image_url'
+          ]);
+
+        if (error) {
+          console.error('証明書設定取得エラー:', error);
+          return;
+        }
+
+        // 設定を整形
+        const settings = {
+          company_name: '',
+          signer_name: '',
+          signer_title: '',
+          stamp_image_url: ''
+        };
+
+        settingsData?.forEach(item => {
+          const key = item.setting_key.split('.')[1];
+          if (key) {
+            settings[key as keyof typeof settings] = item.setting_value || '';
+          }
+        });
+
+        setCertificateSettings(settings);
+        console.log('証明書設定を取得:', settings);
+      } catch (err) {
+        console.error('証明書設定取得エラー:', err);
+      }
+    };
+
+    fetchCertificateSettings();
+  }, []);
 
   // 既存の証明書をチェックし、完了時に自動生成
   useEffect(() => {
@@ -86,6 +136,11 @@ export function CourseCertificate({
       courseDescription: course.description || '',
       organization: '企業研修LMS',
       company: user.company_name || undefined,
+      // システム設定から取得した署名情報
+      issuerCompanyName: certificateSettings?.company_name || undefined,
+      signerName: certificateSettings?.signer_name || undefined,
+      signerTitle: certificateSettings?.signer_title || undefined,
+      stampImageUrl: certificateSettings?.stamp_image_url || undefined,
     };
   };
 

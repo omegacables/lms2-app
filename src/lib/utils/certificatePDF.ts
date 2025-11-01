@@ -12,6 +12,11 @@ export interface CertificateData {
   courseDescription?: string;
   organization?: string;
   company?: string;
+  // 署名情報（システム設定から取得）
+  issuerCompanyName?: string;  // 発行元会社名
+  signerName?: string;          // 署名者氏名
+  signerTitle?: string;         // 署名者役職
+  stampImageUrl?: string;       // 印鑑画像URL
 }
 
 export async function generateCertificatePDF(certificateData: CertificateData) {
@@ -94,16 +99,31 @@ export async function generateCertificatePDF(certificateData: CertificateData) {
   // 検証コード
   ctx.fillText(`検証コード: ${verificationCode}`, canvas.width / 2, 1680);
 
-  // 署名欄
+  // 署名欄 - 発行元会社名
+  ctx.font = '45px "Noto Sans JP", sans-serif';
+  ctx.fillStyle = '#323232';
+  ctx.textAlign = 'right';
+  if (certificateData.issuerCompanyName) {
+    ctx.fillText(certificateData.issuerCompanyName, 2650, 1680);
+  }
+
+  // 署名者役職と氏名
+  ctx.font = '40px "Noto Sans JP", sans-serif';
+  ctx.fillStyle = '#505050';
+  if (certificateData.signerTitle) {
+    ctx.fillText(certificateData.signerTitle, 2650, 1740);
+  }
+  if (certificateData.signerName) {
+    ctx.fillText(certificateData.signerName, 2650, 1800);
+  }
+
+  // 署名欄の線（名前の下）
   ctx.strokeStyle = '#969696';
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.moveTo(2000, 1750);
-  ctx.lineTo(2600, 1750);
+  ctx.moveTo(2200, 1850);
+  ctx.lineTo(2650, 1850);
   ctx.stroke();
-  ctx.font = '40px "Noto Sans JP", sans-serif';
-  ctx.fillStyle = '#646464';
-  ctx.fillText('管理者署名', 2300, 1820);
 
   // 装飾的な要素
   ctx.strokeStyle = '#c8b48c';
@@ -137,19 +157,58 @@ export async function generateCertificatePDF(certificateData: CertificateData) {
   ctx.lineTo(2770, 1850);
   ctx.stroke();
 
-  // トロフィーアイコン
-  ctx.fillStyle = '#ffd700';
-  ctx.beginPath();
-  ctx.arc(canvas.width / 2, 1750, 80, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#ffffff';
-  ctx.beginPath();
-  ctx.arc(canvas.width / 2, 1750, 60, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#ffd700';
-  ctx.beginPath();
-  ctx.arc(canvas.width / 2, 1750, 40, 0, Math.PI * 2);
-  ctx.fill();
+  // 印鑑画像または印鑑を表示
+  if (certificateData.stampImageUrl) {
+    // 印鑑画像を表示
+    try {
+      const stampImg = new Image();
+      stampImg.crossOrigin = 'anonymous';
+      await new Promise<void>((resolve, reject) => {
+        stampImg.onload = () => {
+          // 印鑑画像を署名欄の右側に表示
+          const stampSize = 200; // 印鑑のサイズ
+          const stampX = 2400; // X座標
+          const stampY = 1600; // Y座標
+          ctx.drawImage(stampImg, stampX, stampY, stampSize, stampSize);
+          resolve();
+        };
+        stampImg.onerror = () => {
+          console.error('印鑑画像の読み込みに失敗しました');
+          resolve(); // エラーでも処理を続行
+        };
+        stampImg.src = certificateData.stampImageUrl;
+      });
+    } catch (error) {
+      console.error('印鑑画像の読み込みエラー:', error);
+      // エラーの場合はトロフィーアイコンを表示
+      ctx.fillStyle = '#ffd700';
+      ctx.beginPath();
+      ctx.arc(canvas.width / 2, 1750, 80, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(canvas.width / 2, 1750, 60, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffd700';
+      ctx.beginPath();
+      ctx.arc(canvas.width / 2, 1750, 40, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    // 印鑑画像がない場合はトロフィーアイコンを表示
+    ctx.fillStyle = '#ffd700';
+    ctx.beginPath();
+    ctx.arc(canvas.width / 2, 1750, 80, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(canvas.width / 2, 1750, 60, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffd700';
+    ctx.beginPath();
+    ctx.arc(canvas.width / 2, 1750, 40, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   // CanvasをPDFに追加
   const imgData = canvas.toDataURL('image/png');
