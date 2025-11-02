@@ -63,11 +63,14 @@ export async function fetchCoursesOptimized() {
     const processedCourses = courses.map(course => {
       const videoStat = videoStats.get(course.id) || { count: 0, duration: 0 };
       const enrollmentCount = enrollmentStats.get(course.id) || 0;
-      
+
+      // estimated_durationが設定されていればそれを使用、なければ動画の合計時間を使用
+      const totalDuration = course.estimated_duration || videoStat.duration;
+
       return {
         ...course,
         video_count: videoStat.count,
-        total_duration: videoStat.duration,
+        total_duration: totalDuration,
         enrollment_count: enrollmentCount
       };
     });

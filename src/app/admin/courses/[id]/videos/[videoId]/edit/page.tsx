@@ -66,8 +66,10 @@ export default function EditVideoPage() {
   const [videoForm, setVideoForm] = useState({
     title: '',
     description: '',
-    status: 'active' as 'active' | 'inactive'
+    status: 'active' as 'active' | 'inactive',
+    duration: 0
   });
+  const [manualDuration, setManualDuration] = useState(false);
 
   // リソース追加フォーム
   const [showAddResource, setShowAddResource] = useState(false);
@@ -102,7 +104,8 @@ export default function EditVideoPage() {
       setVideoForm({
         title: data.title,
         description: data.description || '',
-        status: data.status
+        status: data.status,
+        duration: data.duration || 0
       });
     } catch (error) {
       console.error('動画取得エラー:', error);
@@ -128,20 +131,63 @@ export default function EditVideoPage() {
 
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('videos')
-        .update(videoForm)
-        .eq('id', videoId);
+      console.log('[動画更新] 更新データ:', videoForm);
 
-      if (error) throw error;
+      const { data, error } = await supabase
+        .from('videos')
+        .update({
+          title: videoForm.title,
+          description: videoForm.description,
+          status: videoForm.status,
+          duration: videoForm.duration,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId)
+        .select();
+
+      if (error) {
+        console.error('[動画更新] エラー詳細:', error);
+        throw error;
+      }
+
+      console.log('[動画更新] 更新成功:', data);
+
+      // データを再取得して表示を更新
+      await fetchVideo();
 
       alert('動画情報を更新しました');
     } catch (error) {
       console.error('動画更新エラー:', error);
-      alert('動画の更新に失敗しました');
+      const errorMessage = error instanceof Error ? error.message : '動画の更新に失敗しました';
+      alert(`エラー: ${errorMessage}`);
     } finally {
       setSaving(false);
     }
+  };
+
+  // 時間フォーマット関数
+  const formatDuration = (seconds: number) => {
+    if (seconds === 0) return '0:00';
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = seconds % 60;
+
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+    }
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
+  const parseDuration = (timeString: string): number => {
+    const parts = timeString.split(':').map(p => parseInt(p) || 0);
+    if (parts.length === 3) {
+      // H:MM:SS
+      return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    } else if (parts.length === 2) {
+      // MM:SS
+      return parts[0] * 60 + parts[1];
+    }
+    return 0;
   };
 
   const uploadResourceFile = async (file: File): Promise<string | null> => {
@@ -456,6 +502,55 @@ export default function EditVideoPage() {
                       <option value="inactive">非公開</option>
                     </select>
                   </div>
+
+                  {/* 動画時間 */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm font-medium">動画時間</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setManualDuration(!manualDuration);
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                      >
+                        {manualDuration ? '自動取得に戻す' : '手動編集'}
+                      </button>
+                    </div>
+
+                    {manualDuration ? (
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          placeholder="H:MM:SS または MM:SS"
+                          value={formatDuration(videoForm.duration)}
+                          onChange={(e) => {
+                            const duration = parseDuration(e.target.value);
+                            setVideoForm({ ...videoForm, duration });
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                        />
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          形式: {formatDuration(videoForm.duration)} ({videoForm.duration}秒)
+                        </p>
+                        {video && video.duration !== videoForm.duration && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400">
+                            ⚠️ 手動設定中（元の時間: {formatDuration(video.duration)}）
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="px-3 py-2 bg-gray-50 dark:bg-gray-700 rounded-md border border-gray-300 dark:border-gray-600">
+                        <span className="text-gray-900 dark:text-gray-100">
+                          {formatDuration(videoForm.duration)}
+                        </span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+                          ({videoForm.duration}秒)
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
                   <Button onClick={updateVideo} loading={saving}>
                     保存
                   </Button>

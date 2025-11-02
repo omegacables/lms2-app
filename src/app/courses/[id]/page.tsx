@@ -315,7 +315,7 @@ export default function CourseDetailPage() {
                     <span className="text-sm font-medium text-muted-foreground">総時間</span>
                   </div>
                   <span className="text-lg font-bold">
-                    {formatDuration(videos.reduce((sum, v) => sum + (v.duration || 0), 0))}
+                    {formatDuration(course.estimated_duration || videos.reduce((sum, v) => sum + (v.duration || 0), 0))}
                   </span>
                 </div>
               </div>

@@ -110,7 +110,9 @@ export default function DashboardPage() {
               .eq("status", "active");
 
             // 動画の総時間を計算（秒）
-            const totalDuration = videos?.reduce((sum, video) => sum + (video.duration || 0), 0) || 0;
+            // estimated_durationが設定されていればそれを使用、なければ動画の合計時間を使用
+            const calculatedDuration = videos?.reduce((sum, video) => sum + (video.duration || 0), 0) || 0;
+            const totalDuration = course.estimated_duration || calculatedDuration;
 
             // 動画の数
             const videoCount = videos?.length || 0;

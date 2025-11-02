@@ -518,11 +518,20 @@ export default function LearningLogsPage() {
     }
   };
 
+  // 日付をMM/dd形式にフォーマット
+  const formatCompletionDate = (dateString: string | null | undefined): string => {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    return `${month}/${day}`;
+  };
+
   const exportToCSV = async () => {
     setExportingCSV(true);
     try {
       const headers = [
-        '記録日時',
+        '完了日',
         '氏名',
         'メールアドレス',
         '会社名',
@@ -544,7 +553,7 @@ export default function LearningLogsPage() {
           // 複数履歴がある場合は全て出力
           log.history.forEach((historyLog, index) => {
             csvData.push([
-              new Date(historyLog.created_at).toLocaleString('ja-JP'),
+              formatCompletionDate(historyLog.end_time || historyLog.created_at),
               historyLog.user_name,
               historyLog.user_email,
               historyLog.company,
@@ -563,7 +572,7 @@ export default function LearningLogsPage() {
         } else {
           // 単一ログの場合
           csvData.push([
-            new Date(log.created_at).toLocaleString('ja-JP'),
+            formatCompletionDate(log.end_time || log.created_at),
             log.user_name,
             log.user_email,
             log.company,
@@ -1091,7 +1100,7 @@ export default function LearningLogsPage() {
                                   <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                                     <thead className="bg-gray-100 dark:bg-gray-900">
                                       <tr>
-                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-400">記録日時</th>
+                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-400">完了日</th>
                                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-400">開始時刻</th>
                                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-400">終了時刻</th>
                                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 dark:text-gray-400">視聴時間</th>
@@ -1104,14 +1113,7 @@ export default function LearningLogsPage() {
                                       {log.history.map((historyLog, index) => (
                                         <tr key={historyLog.id} className={index === 0 ? 'bg-indigo-50 dark:bg-indigo-900/20' : ''}>
                                           <td className="px-4 py-2 text-sm text-gray-900 dark:text-gray-100">
-                                            {new Date(historyLog.created_at).toLocaleString('ja-JP', {
-                                              year: 'numeric',
-                                              month: '2-digit',
-                                              day: '2-digit',
-                                              hour: '2-digit',
-                                              minute: '2-digit',
-                                              second: '2-digit'
-                                            })}
+                                            {formatCompletionDate(historyLog.end_time || historyLog.created_at)}
                                             {index === 0 && <span className="ml-2 text-xs text-indigo-600 dark:text-indigo-400 font-semibold">(最新)</span>}
                                           </td>
                                           <td className="px-4 py-2 text-sm text-gray-900 dark:text-gray-100">

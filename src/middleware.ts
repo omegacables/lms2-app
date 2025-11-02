@@ -15,6 +15,18 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
+  // 緊急解除APIへのアクセスは常に許可
+  if (req.nextUrl.pathname === '/api/admin/disable-maintenance') {
+    return res;
+  }
+
+  // 緊急バイパスパラメータをチェック（一時的な対策）
+  const bypassToken = req.nextUrl.searchParams.get('emergency_bypass');
+  if (bypassToken === process.env.EMERGENCY_BYPASS_TOKEN) {
+    console.log('[Middleware] Emergency bypass activated');
+    return res;
+  }
+
   // Supabaseクライアントを作成（SSR対応）
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -68,14 +80,21 @@ export async function middleware(req: NextRequest) {
       );
 
       // システム設定からメンテナンスモードを取得
-      const { data: maintenanceSetting } = await supabase
+      const { data: maintenanceSetting, error: settingError } = await supabase
         .from('system_settings')
         .select('setting_value')
         .eq('setting_key', 'general.maintenance_mode')
         .maybeSingle();
 
+      if (settingError) {
+        console.error('[Middleware] Failed to read maintenance setting:', settingError);
+        // RLSエラーの場合はメンテナンスモードをスキップ
+        return res;
+      }
+
       const isMaintenanceMode = maintenanceSetting?.setting_value === 'true';
 
+      console.log('[Middleware] Maintenance setting:', maintenanceSetting);
       console.log('[Middleware] Maintenance mode:', isMaintenanceMode);
 
       // メンテナンスモード中の場合

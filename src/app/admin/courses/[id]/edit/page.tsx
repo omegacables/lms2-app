@@ -65,8 +65,10 @@ export default function EditCoursePage() {
     category: '',
     difficulty_level: 'beginner' as 'beginner' | 'intermediate' | 'advanced',
     completion_threshold: 80,
-    status: 'active' as 'active' | 'inactive'
+    status: 'active' as 'active' | 'inactive',
+    estimated_duration: 0
   });
+  const [manualDuration, setManualDuration] = useState(false);
 
   useEffect(() => {
     if (courseId) {
@@ -92,14 +94,26 @@ export default function EditCoursePage() {
       }
 
       setCourse(courseData);
+
+      // 自動計算された総時間を取得
+      const { data: videosData } = await supabase
+        .from('videos')
+        .select('duration')
+        .eq('course_id', courseId);
+
+      const calculatedDuration = videosData?.reduce((sum, v) => sum + (v.duration || 0), 0) || 0;
+      const hasManualDuration = courseData.estimated_duration && courseData.estimated_duration !== calculatedDuration;
+
       setFormData({
         title: courseData.title || '',
         description: courseData.description || '',
         category: courseData.category || '',
         difficulty_level: courseData.difficulty_level || 'beginner',
         completion_threshold: courseData.completion_threshold || 80,
-        status: courseData.status || 'active'
+        status: courseData.status || 'active',
+        estimated_duration: courseData.estimated_duration || calculatedDuration
       });
+      setManualDuration(hasManualDuration);
       
       // Set thumbnail preview if exists
       if (courseData.thumbnail_url) {
@@ -239,6 +253,7 @@ export default function EditCoursePage() {
         difficulty_level: formData.difficulty_level,
         completion_threshold: formData.completion_threshold,
         status: formData.status,
+        estimated_duration: manualDuration ? formData.estimated_duration : null,
         updated_at: new Date().toISOString()
       };
 
@@ -302,11 +317,30 @@ export default function EditCoursePage() {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const remainingSeconds = seconds % 60;
-    
+
     if (hours > 0) {
       return `${hours}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
     }
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
+  const parseDuration = (timeString: string): number => {
+    const parts = timeString.split(':').map(p => parseInt(p) || 0);
+    if (parts.length === 3) {
+      // H:MM:SS
+      return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    } else if (parts.length === 2) {
+      // MM:SS
+      return parts[0] * 60 + parts[1];
+    }
+    return 0;
+  };
+
+  const getTotalDuration = () => {
+    if (manualDuration) {
+      return formData.estimated_duration;
+    }
+    return videos.reduce((sum, v) => sum + (v.duration || 0), 0);
   };
 
   if (loading) {
@@ -500,12 +534,56 @@ export default function EditCoursePage() {
                     <span className="text-sm text-gray-600 dark:text-gray-400">動画数</span>
                     <span className="text-sm font-medium">{videos.length}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">総再生時間</span>
-                    <span className="text-sm font-medium">
-                      {formatDuration(videos.reduce((sum, v) => sum + (v.duration || 0), 0))}
-                    </span>
+
+                  {/* Total Duration with Manual Edit */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">総再生時間</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (manualDuration) {
+                            // 手動モードを解除して自動計算に戻す
+                            const autoDuration = videos.reduce((sum, v) => sum + (v.duration || 0), 0);
+                            setFormData({ ...formData, estimated_duration: autoDuration });
+                          }
+                          setManualDuration(!manualDuration);
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                      >
+                        {manualDuration ? '自動計算に戻す' : '手動編集'}
+                      </button>
+                    </div>
+
+                    {manualDuration ? (
+                      <div className="space-y-1">
+                        <input
+                          type="text"
+                          placeholder="H:MM:SS または MM:SS"
+                          value={formatDuration(formData.estimated_duration)}
+                          onChange={(e) => {
+                            const duration = parseDuration(e.target.value);
+                            setFormData({ ...formData, estimated_duration: duration });
+                          }}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                        />
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          形式: {formatDuration(getTotalDuration())} ({getTotalDuration()}秒)
+                        </p>
+                      </div>
+                    ) : (
+                      <span className="text-sm font-medium block">
+                        {formatDuration(getTotalDuration())}
+                      </span>
+                    )}
+
+                    {manualDuration && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        ⚠️ 手動設定中（自動計算: {formatDuration(videos.reduce((sum, v) => sum + (v.duration || 0), 0))}）
+                      </p>
+                    )}
                   </div>
+
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-600 dark:text-gray-400">作成日</span>
                     <span className="text-sm font-medium">
