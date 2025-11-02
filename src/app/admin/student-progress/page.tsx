@@ -32,15 +32,12 @@ interface StudentProgress {
   inProgressCourses: number;
   notStartedCourses: number;
   overallProgress: number;
-  totalVideos: number;
-  watchedVideos: number;
 }
 
 interface CourseProgress {
   courseId: number;
   courseTitle: string;
   totalVideos: number;
-  watchedVideos: number;
   completedVideos: number;
   progress: number;
   status: 'completed' | 'in_progress' | 'not_started';
@@ -102,9 +99,7 @@ export default function StudentProgressPage() {
               completedCourses: 0,
               inProgressCourses: 0,
               notStartedCourses: 0,
-              overallProgress: 0,
-              totalVideos: 0,
-              watchedVideos: 0
+              overallProgress: 0
             };
           }
 
@@ -136,7 +131,6 @@ export default function StudentProgressPage() {
                   courseId,
                   courseTitle: courseData.title,
                   totalVideos: 0,
-                  watchedVideos: 0,
                   completedVideos: 0,
                   progress: 0,
                   status: 'not_started' as const
@@ -150,12 +144,12 @@ export default function StudentProgressPage() {
                 .eq('user_id', student.id)
                 .in('video_id', videosData.map(v => v.id));
 
-              const watchedVideos = logsData?.filter(log => log.progress > 0).length || 0;
               const completedVideos = logsData?.filter(log => log.status === 'completed').length || 0;
+              const watchedVideos = logsData?.filter(log => log.progress > 0).length || 0;
               const progress = totalVideos > 0 ? (completedVideos / totalVideos) * 100 : 0;
 
               let status: 'completed' | 'in_progress' | 'not_started' = 'not_started';
-              if (completedVideos === totalVideos) {
+              if (completedVideos === totalVideos && totalVideos > 0) {
                 status = 'completed';
               } else if (watchedVideos > 0) {
                 status = 'in_progress';
@@ -165,7 +159,6 @@ export default function StudentProgressPage() {
                 courseId,
                 courseTitle: courseData.title,
                 totalVideos,
-                watchedVideos,
                 completedVideos,
                 progress,
                 status
@@ -175,13 +168,15 @@ export default function StudentProgressPage() {
 
           const validCourses = courseProgressList.filter(c => c !== null) as CourseProgress[];
 
-          // 統計を計算
+          // コース単位での統計を計算
           const completedCourses = validCourses.filter(c => c.status === 'completed').length;
           const inProgressCourses = validCourses.filter(c => c.status === 'in_progress').length;
           const notStartedCourses = validCourses.filter(c => c.status === 'not_started').length;
-          const totalVideos = validCourses.reduce((sum, c) => sum + c.totalVideos, 0);
-          const watchedVideos = validCourses.reduce((sum, c) => sum + c.completedVideos, 0);
-          const overallProgress = totalVideos > 0 ? (watchedVideos / totalVideos) * 100 : 0;
+
+          // 全体の進捗率（全コースの平均）
+          const overallProgress = validCourses.length > 0
+            ? validCourses.reduce((sum, c) => sum + c.progress, 0) / validCourses.length
+            : 0;
 
           return {
             id: student.id,
@@ -194,9 +189,7 @@ export default function StudentProgressPage() {
             completedCourses,
             inProgressCourses,
             notStartedCourses,
-            overallProgress,
-            totalVideos,
-            watchedVideos
+            overallProgress
           };
         })
       );
@@ -378,11 +371,11 @@ export default function StudentProgressPage() {
 
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
                 <div className="flex items-center">
-                  <PlayCircleIcon className="h-8 w-8 text-orange-500" />
+                  <ClockIcon className="h-8 w-8 text-orange-500" />
                   <div className="ml-3">
-                    <p className="text-sm text-gray-600 dark:text-gray-400">総動画数</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">受講中</p>
                     <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                      {filteredAndSortedStudents.reduce((sum, s) => sum + s.totalVideos, 0)}
+                      {filteredAndSortedStudents.reduce((sum, s) => sum + s.inProgressCourses, 0)}
                     </p>
                   </div>
                 </div>
@@ -420,7 +413,7 @@ export default function StudentProgressPage() {
                       </div>
                     </div>
 
-                    {/* 進捗バー */}
+                    {/* 全体進捗バー */}
                     <div className="mb-4">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -463,38 +456,24 @@ export default function StudentProgressPage() {
                       </div>
                     </div>
 
-                    {/* 動画進捗 */}
-                    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 mb-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center">
-                          <PlayCircleIcon className="h-5 w-5 text-gray-600 dark:text-gray-400 mr-2" />
-                          <span className="text-sm text-gray-700 dark:text-gray-300">
-                            動画視聴
-                          </span>
-                        </div>
-                        <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                          {student.watchedVideos} / {student.totalVideos}本
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* コース詳細 */}
+                    {/* コース別進捗 */}
                     {student.assignedCourses.length > 0 && (
-                      <div className="border-t border-gray-200 dark:border-gray-700 pt-3">
-                        <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-                          割り当てコース ({student.assignedCourses.length})
+                      <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                          コース別進捗 ({student.assignedCourses.length}件)
                         </p>
-                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                        <div className="space-y-3 max-h-60 overflow-y-auto">
                           {student.assignedCourses.map((course) => (
                             <div
                               key={course.courseId}
-                              className="text-xs bg-gray-50 dark:bg-gray-700 rounded p-2"
+                              className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3"
                             >
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="font-medium text-gray-900 dark:text-white truncate">
+                              {/* コース名とステータス */}
+                              <div className="flex items-start justify-between mb-2">
+                                <h4 className="text-sm font-medium text-gray-900 dark:text-white flex-1 pr-2">
                                   {course.courseTitle}
-                                </span>
-                                <span className={`px-2 py-0.5 rounded text-xs ${
+                                </h4>
+                                <span className={`px-2 py-0.5 rounded text-xs whitespace-nowrap ${
                                   course.status === 'completed'
                                     ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
                                     : course.status === 'in_progress'
@@ -505,13 +484,44 @@ export default function StudentProgressPage() {
                                    course.status === 'in_progress' ? '受講中' : '未受講'}
                                 </span>
                               </div>
-                              <div className="flex items-center justify-between text-gray-600 dark:text-gray-400">
-                                <span>{course.completedVideos} / {course.totalVideos}本</span>
-                                <span>{Math.round(course.progress)}%</span>
+
+                              {/* 進捗バー */}
+                              <div className="mb-2">
+                                <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-1.5">
+                                  <div
+                                    className={`h-1.5 rounded-full transition-all ${
+                                      course.status === 'completed'
+                                        ? 'bg-green-600'
+                                        : course.status === 'in_progress'
+                                        ? 'bg-blue-600'
+                                        : 'bg-gray-400'
+                                    }`}
+                                    style={{ width: `${course.progress}%` }}
+                                  />
+                                </div>
+                              </div>
+
+                              {/* 統計情報 */}
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-gray-600 dark:text-gray-400">
+                                  {course.completedVideos} / {course.totalVideos}本視聴
+                                </span>
+                                <span className="font-semibold text-gray-900 dark:text-white">
+                                  {Math.round(course.progress)}%
+                                </span>
                               </div>
                             </div>
                           ))}
                         </div>
+                      </div>
+                    )}
+
+                    {/* コースが割り当てられていない場合 */}
+                    {student.assignedCourses.length === 0 && (
+                      <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                        <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
+                          コースが割り当てられていません
+                        </p>
                       </div>
                     )}
 
