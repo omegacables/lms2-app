@@ -115,17 +115,23 @@ const adminNavigation: NavigationItem[] = [
     icon: TrophyIcon, 
     iconActive: TrophyIconSolid 
   },
-  { 
-    name: '学習ログ', 
-    href: '/admin/learning-logs', 
-    icon: ChartBarIcon, 
-    iconActive: ChartBarIconSolid 
+  {
+    name: '学習ログ',
+    href: '/admin/learning-logs',
+    icon: ChartBarIcon,
+    iconActive: ChartBarIconSolid
   },
-  { 
-    name: 'システム設定', 
-    href: '/admin/settings', 
-    icon: Cog6ToothIcon, 
-    iconActive: Cog6ToothIconSolid 
+  {
+    name: '受講状況',
+    href: '/admin/student-progress',
+    icon: ClipboardDocumentListIcon,
+    iconActive: ClipboardDocumentListIconSolid
+  },
+  {
+    name: 'システム設定',
+    href: '/admin/settings',
+    icon: Cog6ToothIcon,
+    iconActive: Cog6ToothIconSolid
   },
 ];
 
