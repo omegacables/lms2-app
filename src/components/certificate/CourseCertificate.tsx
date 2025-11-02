@@ -164,6 +164,11 @@ export function CourseCertificate({
         courseDescription: course.description || '',
         organization: '企業研修LMS',
         company: user.company_name || undefined,
+        // システム設定から取得した署名情報
+        issuerCompanyName: certificateSettings?.company_name || undefined,
+        signerName: certificateSettings?.signer_name || undefined,
+        signerTitle: certificateSettings?.signer_title || undefined,
+        stampImageUrl: certificateSettings?.stamp_image_url || undefined,
       };
 
       // データベースに保存（certificate_numberを除外）
@@ -220,7 +225,14 @@ export function CourseCertificate({
     setError(null);
 
     try {
+      // 証明書設定が読み込まれるまで待機
+      if (!certificateSettings) {
+        console.log('証明書設定を読み込み中...');
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
       const certificateData = prepareCertificateData();
+      console.log('証明書データ（署名情報含む）:', certificateData);
 
       // 既存の証明書がない場合は生成
       let certificate = existingCertificate;
