@@ -106,63 +106,81 @@ export default function StudentProgressPage() {
           // 各コースの進捗を取得
           const courseProgressList: CourseProgress[] = await Promise.all(
             assignedCourseIds.map(async (courseId) => {
-              // コース情報を取得
-              const { data: courseData } = await supabase
-                .from('courses')
-                .select('id, title')
-                .eq('id', courseId)
-                .single();
+              try {
+                // コース情報を取得
+                const { data: courseData, error: courseError } = await supabase
+                  .from('courses')
+                  .select('id, title')
+                  .eq('id', courseId)
+                  .single();
 
-              if (!courseData) {
-                return null;
-              }
+                if (courseError || !courseData) {
+                  console.error(`コース取得エラー (ID: ${courseId}):`, courseError);
+                  return null;
+                }
 
-              // コースの動画一覧を取得
-              const { data: videosData } = await supabase
-                .from('videos')
-                .select('id')
-                .eq('course_id', courseId)
-                .eq('status', 'active');
+                // コースの動画一覧を取得
+                const { data: videosData, error: videosError } = await supabase
+                  .from('videos')
+                  .select('id')
+                  .eq('course_id', courseId)
+                  .eq('status', 'active');
 
-              const totalVideos = videosData?.length || 0;
+                if (videosError) {
+                  console.error(`動画一覧取得エラー (コースID: ${courseId}):`, videosError);
+                  return null;
+                }
 
-              if (totalVideos === 0) {
+                const totalVideos = videosData?.length || 0;
+
+                if (totalVideos === 0 || !videosData) {
+                  return {
+                    courseId,
+                    courseTitle: courseData.title,
+                    totalVideos: 0,
+                    completedVideos: 0,
+                    progress: 0,
+                    status: 'not_started' as const
+                  };
+                }
+
+                // 動画IDの配列を準備
+                const videoIds = videosData.map(v => v.id);
+
+                // 生徒の視聴ログを取得
+                const { data: logsData, error: logsError } = await supabase
+                  .from('video_view_logs')
+                  .select('video_id, status, progress')
+                  .eq('user_id', student.id)
+                  .in('video_id', videoIds);
+
+                if (logsError) {
+                  console.error(`視聴ログ取得エラー (生徒ID: ${student.id}, コースID: ${courseId}):`, logsError);
+                }
+
+                const completedVideos = logsData?.filter(log => log.status === 'completed').length || 0;
+                const watchedVideos = logsData?.filter(log => log.progress > 0).length || 0;
+                const progress = totalVideos > 0 ? (completedVideos / totalVideos) * 100 : 0;
+
+                let status: 'completed' | 'in_progress' | 'not_started' = 'not_started';
+                if (completedVideos === totalVideos && totalVideos > 0) {
+                  status = 'completed';
+                } else if (watchedVideos > 0) {
+                  status = 'in_progress';
+                }
+
                 return {
                   courseId,
                   courseTitle: courseData.title,
-                  totalVideos: 0,
-                  completedVideos: 0,
-                  progress: 0,
-                  status: 'not_started' as const
+                  totalVideos,
+                  completedVideos,
+                  progress,
+                  status
                 };
+              } catch (error) {
+                console.error(`コース ${courseId} の処理エラー:`, error);
+                return null;
               }
-
-              // 生徒の視聴ログを取得
-              const { data: logsData } = await supabase
-                .from('video_view_logs')
-                .select('video_id, status, progress')
-                .eq('user_id', student.id)
-                .in('video_id', videosData.map(v => v.id));
-
-              const completedVideos = logsData?.filter(log => log.status === 'completed').length || 0;
-              const watchedVideos = logsData?.filter(log => log.progress > 0).length || 0;
-              const progress = totalVideos > 0 ? (completedVideos / totalVideos) * 100 : 0;
-
-              let status: 'completed' | 'in_progress' | 'not_started' = 'not_started';
-              if (completedVideos === totalVideos && totalVideos > 0) {
-                status = 'completed';
-              } else if (watchedVideos > 0) {
-                status = 'in_progress';
-              }
-
-              return {
-                courseId,
-                courseTitle: courseData.title,
-                totalVideos,
-                completedVideos,
-                progress,
-                status
-              };
             })
           );
 
