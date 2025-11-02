@@ -150,7 +150,7 @@ export default function StudentProgressPage() {
                 // 生徒の視聴ログを取得
                 const { data: logsData, error: logsError } = await supabase
                   .from('video_view_logs')
-                  .select('video_id, status, progress')
+                  .select('video_id, status, progress_percent')
                   .eq('user_id', student.id)
                   .in('video_id', videoIds);
 
@@ -159,7 +159,7 @@ export default function StudentProgressPage() {
                 }
 
                 const completedVideos = logsData?.filter(log => log.status === 'completed').length || 0;
-                const watchedVideos = logsData?.filter(log => log.progress > 0).length || 0;
+                const watchedVideos = logsData?.filter(log => (log.progress_percent || 0) > 0).length || 0;
                 const progress = totalVideos > 0 ? (completedVideos / totalVideos) * 100 : 0;
 
                 let status: 'completed' | 'in_progress' | 'not_started' = 'not_started';
