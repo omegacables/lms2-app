@@ -139,7 +139,7 @@ export default function StudentProgressPage() {
 
               // 生徒の視聴ログを取得
               const { data: logsData } = await supabase
-                .from('learning_logs')
+                .from('video_view_logs')
                 .select('video_id, status, progress')
                 .eq('user_id', student.id)
                 .in('video_id', videosData.map(v => v.id));
