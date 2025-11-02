@@ -81,7 +81,7 @@ export default function StudentProgressPage() {
         (studentsData || []).map(async (student) => {
           // 生徒に割り当てられたコースを取得
           const { data: assignmentsData } = await supabase
-            .from('course_assignments')
+            .from('user_course_assignments')
             .select('course_id')
             .eq('user_id', student.id);
 
