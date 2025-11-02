@@ -31,6 +31,7 @@ export function CourseCertificate({
   const [error, setError] = useState<string | null>(null);
   const [existingCertificate, setExistingCertificate] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showReissueConfirm, setShowReissueConfirm] = useState(false);
   const [certificateSettings, setCertificateSettings] = useState<{
     company_name: string;
     signer_name: string;
@@ -215,6 +216,58 @@ export function CourseCertificate({
     }
   };
 
+  // 証明書を削除して再発行
+  const handleReissueCertificate = async () => {
+    if (!existingCertificate) return;
+
+    setIsGenerating(true);
+    setError(null);
+    setShowReissueConfirm(false);
+
+    try {
+      console.log('証明書を削除して再発行します:', existingCertificate.id);
+
+      // 既存の証明書を削除
+      const { error: deleteError } = await certificatesClient
+        .delete(existingCertificate.id);
+
+      if (deleteError) {
+        console.error('証明書削除エラー:', deleteError);
+        throw new Error('既存の証明書の削除に失敗しました');
+      }
+
+      // 証明書をクリア
+      setExistingCertificate(null);
+
+      // 新しい証明書を生成
+      await new Promise(resolve => setTimeout(resolve, 500)); // 少し待機
+
+      const newCertificate = await generateCertificate();
+      if (!newCertificate) {
+        setError('証明書の再発行に失敗しました。');
+        return;
+      }
+
+      // PDFダウンロード
+      const certificateData = prepareCertificateData();
+      certificateData.certificateId = newCertificate.id;
+      await generateCertificatePDF(certificateData);
+
+      console.log('証明書を再発行しました:', newCertificate.id);
+    } catch (err) {
+      console.error('証明書再発行エラー:', err);
+      setError('証明書の再発行に失敗しました。もう一度お試しください。');
+      // エラー時は既存の証明書を再取得
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const { data } = await certificatesClient
+        .select(user.id, course.id)
+        .then(query => query.maybeSingle());
+      if (data) setExistingCertificate(data);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const handleDownloadCertificate = async () => {
     if (!isEligibleForCertificate) {
       setError(`コースの90%以上を完了してください。（現在: ${Math.round(completionRate)}%）`);
@@ -351,38 +404,76 @@ export function CourseCertificate({
       )}
 
       {/* 発行ボタン */}
-      <button
-        onClick={handleDownloadCertificate}
-        disabled={!isEligibleForCertificate || isGenerating || isLoading}
-        className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium transition-colors ${
-          isEligibleForCertificate
-            ? 'bg-blue-600 hover:bg-blue-700 text-white'
-            : 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-        }`}
-      >
-        {isGenerating ? (
-          <>
-            <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
-            生成中...
-          </>
-        ) : existingCertificate ? (
-          <>
-            <DocumentArrowDownIcon className="w-5 h-5" />
-            修了証を再ダウンロード
-          </>
-        ) : (
-          <>
-            <DocumentArrowDownIcon className="w-5 h-5" />
-            修了証をダウンロード
-          </>
+      <div className="space-y-3">
+        <button
+          onClick={handleDownloadCertificate}
+          disabled={!isEligibleForCertificate || isGenerating || isLoading}
+          className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium transition-colors ${
+            isEligibleForCertificate
+              ? 'bg-blue-600 hover:bg-blue-700 text-white'
+              : 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+          }`}
+        >
+          {isGenerating ? (
+            <>
+              <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
+              生成中...
+            </>
+          ) : existingCertificate ? (
+            <>
+              <DocumentArrowDownIcon className="w-5 h-5" />
+              修了証を再ダウンロード
+            </>
+          ) : (
+            <>
+              <DocumentArrowDownIcon className="w-5 h-5" />
+              修了証をダウンロード
+            </>
+          )}
+        </button>
+
+        {/* 再発行ボタン */}
+        {existingCertificate && !showReissueConfirm && (
+          <button
+            onClick={() => setShowReissueConfirm(true)}
+            disabled={isGenerating || isLoading}
+            className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium transition-colors bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300"
+          >
+            証明書を再発行
+          </button>
         )}
-      </button>
+
+        {/* 再発行確認ダイアログ */}
+        {showReissueConfirm && (
+          <div className="border-2 border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4">
+            <p className="text-sm text-orange-800 dark:text-orange-200 mb-3">
+              ⚠️ 既存の証明書を削除して、新しい証明書番号で再発行します。よろしいですか？
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={handleReissueCertificate}
+                disabled={isGenerating}
+                className="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-md font-medium transition-colors"
+              >
+                再発行する
+              </button>
+              <button
+                onClick={() => setShowReissueConfirm(false)}
+                disabled={isGenerating}
+                className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-md font-medium transition-colors"
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* 注意事項 */}
       <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">
         <p>※ 修了証はPDF形式でダウンロードされます。</p>
         <p>※ すべての動画を視聴完了後に発行可能となります。</p>
-        <p>※ 再発行も可能です。</p>
+        <p>※ 証明書を再発行すると、新しい証明書番号が発行されます。</p>
       </div>
     </div>
   );

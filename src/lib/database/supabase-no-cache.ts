@@ -75,5 +75,12 @@ export const certificatesClient = {
         is_active,
         created_at
       `);
+  },
+
+  async delete(certificateId: string) {
+    return supabaseNoCache
+      .from('certificates')
+      .delete()
+      .eq('id', certificateId);
   }
 };
