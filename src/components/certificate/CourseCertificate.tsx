@@ -43,48 +43,56 @@ export function CourseCertificate({
   const completionRate = progress.totalVideos > 0 ? (progress.completedVideos / progress.totalVideos) * 100 : 0;
   const isEligibleForCertificate = completionRate >= 90;
 
+  // 証明書設定を取得する関数
+  const fetchCertificateSettings = async () => {
+    try {
+      const { data: settingsData, error } = await supabase
+        .from('system_settings')
+        .select('*')
+        .in('setting_key', [
+          'certificate.company_name',
+          'certificate.signer_name',
+          'certificate.signer_title',
+          'certificate.stamp_image_url'
+        ]);
+
+      if (error) {
+        console.error('証明書設定取得エラー:', error);
+        return null;
+      }
+
+      // 設定を整形
+      const settings = {
+        company_name: '',
+        signer_name: '',
+        signer_title: '',
+        stamp_image_url: ''
+      };
+
+      settingsData?.forEach(item => {
+        const key = item.setting_key.split('.')[1];
+        if (key) {
+          settings[key as keyof typeof settings] = item.setting_value || '';
+        }
+      });
+
+      console.log('証明書設定を取得しました:', settings);
+      return settings;
+    } catch (err) {
+      console.error('証明書設定取得エラー:', err);
+      return null;
+    }
+  };
+
   // システム設定から証明書署名情報を取得
   useEffect(() => {
-    const fetchCertificateSettings = async () => {
-      try {
-        const { data: settingsData, error } = await supabase
-          .from('system_settings')
-          .select('*')
-          .in('setting_key', [
-            'certificate.company_name',
-            'certificate.signer_name',
-            'certificate.signer_title',
-            'certificate.stamp_image_url'
-          ]);
-
-        if (error) {
-          console.error('証明書設定取得エラー:', error);
-          return;
-        }
-
-        // 設定を整形
-        const settings = {
-          company_name: '',
-          signer_name: '',
-          signer_title: '',
-          stamp_image_url: ''
-        };
-
-        settingsData?.forEach(item => {
-          const key = item.setting_key.split('.')[1];
-          if (key) {
-            settings[key as keyof typeof settings] = item.setting_value || '';
-          }
-        });
-
+    const loadSettings = async () => {
+      const settings = await fetchCertificateSettings();
+      if (settings) {
         setCertificateSettings(settings);
-        console.log('証明書設定を取得:', settings);
-      } catch (err) {
-        console.error('証明書設定取得エラー:', err);
       }
     };
-
-    fetchCertificateSettings();
+    loadSettings();
   }, []);
 
   // 既存の証明書をチェックし、完了時に自動生成
@@ -153,24 +161,19 @@ export function CourseCertificate({
     }
 
     try {
+      // 証明書設定を取得（最新の状態で）
+      let settings = certificateSettings;
+      if (!settings) {
+        console.log('証明書生成時に設定を取得中...');
+        settings = await fetchCertificateSettings();
+        if (settings) {
+          setCertificateSettings(settings);
+        }
+      }
+
+      console.log('証明書生成時の設定:', settings);
+
       const certificateId = generateCertificateId();
-      const certificateData = {
-        certificateId,
-        courseName: course.title,
-        userName: user.display_name || user.email,
-        completionDate: format(completionDate, 'yyyy年MM月dd日', { locale: ja }),
-        issueDate: format(new Date(), 'yyyy年MM月dd日', { locale: ja }),
-        totalVideos: progress.totalVideos,
-        totalWatchTime: Math.round(progress.totalWatchTime / 60),
-        courseDescription: course.description || '',
-        organization: '企業研修LMS',
-        company: user.company_name || undefined,
-        // システム設定から取得した署名情報
-        issuerCompanyName: certificateSettings?.company_name || undefined,
-        signerName: certificateSettings?.signer_name || undefined,
-        signerTitle: certificateSettings?.signer_title || undefined,
-        stampImageUrl: certificateSettings?.stamp_image_url || undefined,
-      };
 
       // データベースに保存（certificate_numberを除外）
       const insertData = {
@@ -227,6 +230,18 @@ export function CourseCertificate({
     try {
       console.log('証明書を削除して再発行します:', existingCertificate.id);
 
+      // 証明書設定を最新の状態で取得
+      let settings = certificateSettings;
+      if (!settings) {
+        console.log('証明書設定を再取得中...');
+        settings = await fetchCertificateSettings();
+        if (settings) {
+          setCertificateSettings(settings);
+        }
+      }
+
+      console.log('再発行時の証明書設定:', settings);
+
       // 既存の証明書を削除
       const { error: deleteError } = await certificatesClient
         .delete(existingCertificate.id);
@@ -248,9 +263,25 @@ export function CourseCertificate({
         return;
       }
 
-      // PDFダウンロード
-      const certificateData = prepareCertificateData();
-      certificateData.certificateId = newCertificate.id;
+      // PDFダウンロード（最新の設定を使用）
+      const certificateData = {
+        certificateId: newCertificate.id,
+        courseName: course.title,
+        userName: user.display_name || user.email,
+        completionDate: format(completionDate, 'yyyy年MM月dd日', { locale: ja }),
+        issueDate: format(new Date(), 'yyyy年MM月dd日', { locale: ja }),
+        totalVideos: progress.totalVideos,
+        totalWatchTime: Math.round(progress.totalWatchTime / 60),
+        courseDescription: course.description || '',
+        organization: '企業研修LMS',
+        company: user.company_name || undefined,
+        issuerCompanyName: settings?.company_name || undefined,
+        signerName: settings?.signer_name || undefined,
+        signerTitle: settings?.signer_title || undefined,
+        stampImageUrl: settings?.stamp_image_url || undefined,
+      };
+
+      console.log('再発行証明書PDFデータ（署名情報含む）:', certificateData);
       await generateCertificatePDF(certificateData);
 
       console.log('証明書を再発行しました:', newCertificate.id);
@@ -278,14 +309,17 @@ export function CourseCertificate({
     setError(null);
 
     try {
-      // 証明書設定が読み込まれるまで待機
-      if (!certificateSettings) {
-        console.log('証明書設定を読み込み中...');
-        await new Promise(resolve => setTimeout(resolve, 500));
+      // 証明書設定が読み込まれていない場合は再取得
+      let settings = certificateSettings;
+      if (!settings) {
+        console.log('証明書設定を再取得中...');
+        settings = await fetchCertificateSettings();
+        if (settings) {
+          setCertificateSettings(settings);
+        }
       }
 
-      const certificateData = prepareCertificateData();
-      console.log('証明書データ（署名情報含む）:', certificateData);
+      console.log('PDF生成に使用する証明書設定:', settings);
 
       // 既存の証明書がない場合は生成
       let certificate = existingCertificate;
@@ -297,9 +331,26 @@ export function CourseCertificate({
         }
       }
 
-      // PDFダウンロード
+      // PDFダウンロード（最新の設定を使用）
       if (certificate) {
-        certificateData.certificateId = certificate.id;
+        const certificateData = {
+          certificateId: certificate.id,
+          courseName: course.title,
+          userName: user.display_name || user.email,
+          completionDate: format(completionDate, 'yyyy年MM月dd日', { locale: ja }),
+          issueDate: format(new Date(), 'yyyy年MM月dd日', { locale: ja }),
+          totalVideos: progress.totalVideos,
+          totalWatchTime: Math.round(progress.totalWatchTime / 60),
+          courseDescription: course.description || '',
+          organization: '企業研修LMS',
+          company: user.company_name || undefined,
+          issuerCompanyName: settings?.company_name || undefined,
+          signerName: settings?.signer_name || undefined,
+          signerTitle: settings?.signer_title || undefined,
+          stampImageUrl: settings?.stamp_image_url || undefined,
+        };
+
+        console.log('証明書PDFデータ（署名情報含む）:', certificateData);
         await generateCertificatePDF(certificateData);
       }
 
