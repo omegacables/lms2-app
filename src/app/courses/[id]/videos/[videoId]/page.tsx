@@ -305,11 +305,18 @@ export default function VideoPlayerPage() {
   // 実際の進捗保存処理（バックグラウンドで実行）
   const saveProgressToDatabase = async (position: number, videoDuration: number, progressPercent: number) => {
     if (!user || !video || !viewLog) {
-      console.log('[進捗保存] スキップ:', { user: !!user, video: !!video, viewLog: !!viewLog });
+      console.warn('[進捗保存] スキップ:', {
+        user: !!user,
+        video: !!video,
+        viewLog: !!viewLog,
+        viewLogId: viewLog?.id,
+        position,
+        progressPercent
+      });
       return;
     }
 
-    console.log('[進捗保存] 開始:', { position, progressPercent, viewLogId: viewLog.id });
+    console.log('[進捗保存] 開始:', { position, progressPercent, viewLogId: viewLog.id, sessionId: sessionId.current });
 
     try {
       // 進捗率100%で完了判定
@@ -346,18 +353,37 @@ export default function VideoPlayerPage() {
       }
 
       // 現在のセッションのログを更新
-      const { error: updateError } = await supabase
+      const { data: updatedData, error: updateError } = await supabase
         .from('video_view_logs')
         .update(updateData)
         .eq('id', viewLog.id)
-        .eq('session_id', sessionId.current); // セッションIDも確認
+        .select();
 
       if (updateError) {
-        console.error('[進捗保存] 更新エラー:', updateError);
+        console.error('[進捗保存] 更新エラー:', {
+          error: updateError,
+          viewLogId: viewLog.id,
+          sessionId: sessionId.current,
+          updateData
+        });
         return;
       }
 
-      console.log('[進捗保存] 成功:', { progressPercent, position });
+      if (!updatedData || updatedData.length === 0) {
+        console.warn('[進捗保存] 更新されたデータなし。セッションIDが一致しない可能性があります:', {
+          viewLogId: viewLog.id,
+          sessionId: sessionId.current,
+          currentViewLogSessionId: viewLog.session_id
+        });
+        return;
+      }
+
+      console.log('[進捗保存] 成功:', {
+        progressPercent,
+        position,
+        updatedRecords: updatedData.length,
+        viewLogId: viewLog.id
+      });
 
       // ローカルステートを更新
       setViewLog({ ...viewLog, ...updateData });

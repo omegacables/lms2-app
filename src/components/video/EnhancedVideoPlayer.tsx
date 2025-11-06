@@ -123,8 +123,9 @@ export function EnhancedVideoPlayer({
       setProgress(progressPercent);
 
       // 再生中は常時進捗を更新（親コンポーネント側でデバウンス処理）
-      if (onProgressUpdate && duration > 0) {
+      if (onProgressUpdate && duration > 0 && current > 0) {
         onProgressUpdate(current, duration, progressPercent);
+        console.log('[EnhancedVideoPlayer] 進捗更新:', { current: current.toFixed(2), duration: duration.toFixed(2), progressPercent: progressPercent.toFixed(2) });
       }
     }
   };

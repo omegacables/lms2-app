@@ -1026,8 +1026,22 @@ export default function AdminSettingsPage() {
             </div>
           </div>
 
+          {/* System Version */}
+          <div className="mt-8 bg-gray-50 dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 rounded-xl p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">システムバージョン</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">SKILLUP LMS</p>
+              </div>
+              <div className="text-right">
+                <p className="text-lg font-semibold text-gray-900 dark:text-white">v0.1.0</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">2025-11-07</p>
+              </div>
+            </div>
+          </div>
+
           {/* Help Information */}
-          <div className="mt-8 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-xl p-6">
+          <div className="mt-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-xl p-6">
             <div className="flex items-start">
               <InformationCircleIcon className="h-6 w-6 text-blue-600 mr-3 flex-shrink-0 mt-0.5" />
               <div>
