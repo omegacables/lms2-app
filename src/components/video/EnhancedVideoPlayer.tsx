@@ -639,10 +639,10 @@ export function EnhancedVideoPlayer({
   if (showWarning && !isCompleted) {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="liquid-glass-interactive dark:bg-neutral-900 rounded-lg p-8 max-w-2xl mx-4">
+        <div className="bg-white dark:bg-neutral-900 rounded-lg p-8 max-w-2xl mx-4 shadow-xl">
           <div className="flex items-center mb-4">
             <ExclamationTriangleIcon className="h-8 w-8 text-yellow-500 mr-3" />
-            <h2 className="text-2xl font-bold">視聴に関する重要な注意事項</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">視聴に関する重要な注意事項</h2>
           </div>
 
           <div className="space-y-4 mb-6">
@@ -659,8 +659,8 @@ export function EnhancedVideoPlayer({
             )}
 
             <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 p-4">
-              <p className="font-semibold">以下の点にご注意ください：</p>
-              <ol className="list-decimal list-inside mt-2 space-y-2">
+              <p className="font-semibold text-yellow-800 dark:text-yellow-200">以下の点にご注意ください：</p>
+              <ol className="list-decimal list-inside mt-2 space-y-2 text-yellow-800 dark:text-yellow-200">
                 <li>動画の視聴は必ず就業時間内に行ってください。</li>
                 <li>1回目の視聴のみ視聴ログを記録します。</li>
               </ol>
@@ -683,7 +683,7 @@ export function EnhancedVideoPlayer({
           <div className="flex justify-center space-x-4">
             <button
               onClick={() => window.history.back()}
-              className="px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+              className="px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-900 dark:text-white"
             >
               戻る
             </button>
