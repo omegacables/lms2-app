@@ -384,10 +384,10 @@ export default function LearningLogsPage() {
   };
 
   const toggleSelectAll = () => {
-    if (selectedLogs.size === filteredLogs.length) {
+    if (selectedLogs.size === filteredAndSortedLogs.length) {
       setSelectedLogs(new Set());
     } else {
-      setSelectedLogs(new Set(filteredLogs.map(log => log.id)));
+      setSelectedLogs(new Set(filteredAndSortedLogs.map(log => log.id)));
     }
   };
 
@@ -977,7 +977,7 @@ export default function LearningLogsPage() {
                         <th className="px-3 py-3 text-left">
                           <input
                             type="checkbox"
-                            checked={selectedLogs.size === filteredLogs.length && filteredLogs.length > 0}
+                            checked={selectedLogs.size === filteredAndSortedLogs.length && filteredAndSortedLogs.length > 0}
                             onChange={toggleSelectAll}
                             className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                           />
