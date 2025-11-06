@@ -112,27 +112,34 @@ export default function VideoPlayerPage() {
   useEffect(() => {
     // ページ離脱時（ブラウザを閉じる、タブを閉じる、ブラウザバック等）
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      // 常に終了時刻を記録（進捗がなくても）
+      // 完了していない動画の場合、確認ダイアログを表示
       if (viewLog && !hasCompletedBefore) {
+        // ブラウザのデフォルトの確認ダイアログを表示
+        e.preventDefault();
+        e.returnValue = ''; // Chrome では空文字列が必要
+
         const now = getJSTTimestamp();
 
         // sendBeaconで終了時刻を送信（より確実）
-        const payload = {
+        const endTimePayload = {
           log_id: viewLog.id,
           end_time: now,
           last_updated: now,
         };
 
-        const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-        const beaconSent = navigator.sendBeacon('/api/videos/update-end-time', blob);
+        const endTimeBlob = new Blob([JSON.stringify(endTimePayload)], { type: 'application/json' });
+        const endTimeBeaconSent = navigator.sendBeacon('/api/videos/update-end-time', endTimeBlob);
 
-        console.log('beforeunload: 終了時刻を記録', beaconSent ? '成功' : '失敗');
-      }
+        console.log('beforeunload: 終了時刻を記録', endTimeBeaconSent ? '成功' : '失敗');
 
-      // 進捗がある場合は進捗も保存
-      if (pendingUpdateRef.current) {
-        saveProgressImmediately();
-        console.log('beforeunload: 進捗を保存しました');
+        // 進捗がある場合は進捗も保存
+        if (pendingUpdateRef.current) {
+          saveProgressImmediately();
+          console.log('beforeunload: 進捗を保存しました');
+        }
+
+        // ブラウザに確認ダイアログを表示させる
+        return ''; // レガシーブラウザ対応
       }
     };
 
