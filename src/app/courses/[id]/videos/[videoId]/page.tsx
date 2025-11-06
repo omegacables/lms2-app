@@ -316,6 +316,12 @@ export default function VideoPlayerPage() {
       return;
     }
 
+    // 0秒や0%の進捗は記録しない（1%以上のみ保存）
+    if (position < 1 || progressPercent < 1) {
+      console.log('[進捗保存] スキップ: 位置が0秒または0%です', { position, progressPercent });
+      return;
+    }
+
     console.log('[進捗保存] 開始:', { position, progressPercent, viewLogId: viewLog.id, sessionId: sessionId.current });
 
     try {
@@ -448,6 +454,12 @@ export default function VideoPlayerPage() {
 
     if (pendingUpdateRef.current && viewLog) {
       const { position, videoDuration, progressPercent } = pendingUpdateRef.current;
+
+      // 0秒や0%の進捗は記録しない（1%以上のみ保存）
+      if (position < 1 || progressPercent < 1) {
+        console.log('[即座に保存] スキップ: 位置が0秒または0%です', { position, progressPercent });
+        return;
+      }
 
       // sendBeacon APIを使って確実に送信
       const now = getJSTTimestamp();

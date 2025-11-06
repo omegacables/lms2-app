@@ -93,40 +93,53 @@ export function EnhancedVideoPlayer({
       onPlayStart();
     }
 
-    // バッファが十分貯まるまで待機
-    if (!isReadyToPlay) {
-      setLoadingMessage('動画を読み込んでいます。十分なバッファを確保中...');
+    // 動画のロードを確実に開始
+    if (videoRef.current) {
+      videoRef.current.load();
+    }
 
-      // バッファ進捗を積極的にチェック
-      const bufferCheckInterval = setInterval(() => {
-        updateBufferProgress();
-      }, 500);
+    // バッファが十分貯まるまで必ず待機（スマホは特に厳格）
+    setLoadingMessage(isMobile
+      ? '動画を読み込んでいます...\n📱 スマホでの快適な視聴のため、十分なバッファを確保中です'
+      : '動画を読み込んでいます。十分なバッファを確保中...'
+    );
+    setIsBuffering(true);
 
-      // 準備完了まで待機（最大60秒）
-      const checkReady = setInterval(() => {
-        if (isReadyToPlay && videoRef.current) {
-          clearInterval(checkReady);
-          clearInterval(bufferCheckInterval);
-          console.log('[VideoPlayer] バッファ準備完了: 再生を開始します');
-          videoRef.current.play();
-          setIsPlaying(true);
-        }
-      }, 500);
+    // バッファ進捗を積極的にチェック（200msごと）
+    const bufferCheckInterval = setInterval(() => {
+      updateBufferProgress();
+    }, 200);
 
-      // タイムアウト（60秒）
-      setTimeout(() => {
+    // 準備完了まで待機（最大120秒）
+    const checkReady = setInterval(() => {
+      if (isReadyToPlay && videoRef.current) {
         clearInterval(checkReady);
         clearInterval(bufferCheckInterval);
-        if (!isReadyToPlay && videoRef.current) {
-          // タイムアウトしても再生を試みる
-          console.log('[VideoPlayer] タイムアウト: 現在のバッファで再生を開始します (バッファ:', bufferProgress, '%)');
-          setIsReadyToPlay(true);
-          setIsBuffering(false);
-          videoRef.current.play();
-          setIsPlaying(true);
-        }
-      }, 60000);
-    } else {
+        console.log('[VideoPlayer] ✅ バッファ準備完了: 再生を開始します');
+        setIsBuffering(false);
+        videoRef.current.play();
+        setIsPlaying(true);
+      }
+    }, 300);
+
+    // タイムアウト（120秒）
+    setTimeout(() => {
+      clearInterval(checkReady);
+      clearInterval(bufferCheckInterval);
+      if (!isReadyToPlay && videoRef.current) {
+        // タイムアウトしても再生を試みる（最終手段）
+        console.log('[VideoPlayer] ⚠️ タイムアウト: 現在のバッファで再生を開始します (バッファ:', bufferProgress, '%)');
+        setIsReadyToPlay(true);
+        setIsBuffering(false);
+        videoRef.current.play();
+        setIsPlaying(true);
+      }
+    }, 120000);
+
+    // バッファが準備できていれば即座に再生
+    if (isReadyToPlay && videoRef.current) {
+      clearInterval(checkReady);
+      clearInterval(bufferCheckInterval);
       // すでに準備完了している場合はすぐに再生
       if (videoRef.current) {
         console.log('[VideoPlayer] バッファ準備済み: 即座に再生開始');
