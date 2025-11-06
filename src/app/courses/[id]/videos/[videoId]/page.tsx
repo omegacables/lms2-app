@@ -112,8 +112,25 @@ export default function VideoPlayerPage() {
   useEffect(() => {
     // ページ離脱時（ブラウザを閉じる、タブを閉じる、ブラウザバック等）
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // 常に終了時刻を記録（進捗がなくても）
+      if (viewLog && !hasCompletedBefore) {
+        const now = getJSTTimestamp();
+
+        // sendBeaconで終了時刻を送信（より確実）
+        const payload = {
+          log_id: viewLog.id,
+          end_time: now,
+          last_updated: now,
+        };
+
+        const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+        const beaconSent = navigator.sendBeacon('/api/videos/update-end-time', blob);
+
+        console.log('beforeunload: 終了時刻を記録', beaconSent ? '成功' : '失敗');
+      }
+
+      // 進捗がある場合は進捗も保存
       if (pendingUpdateRef.current) {
-        // 同期的に保存
         saveProgressImmediately();
         console.log('beforeunload: 進捗を保存しました');
       }
@@ -121,9 +138,29 @@ export default function VideoPlayerPage() {
 
     // visibilitychangeイベント（タブを切り替えた時など）
     const handleVisibilityChange = () => {
-      if (document.hidden && pendingUpdateRef.current) {
-        saveProgressImmediately();
-        console.log('visibilitychange: 進捗を保存しました');
+      if (document.hidden) {
+        // 常に終了時刻を記録
+        if (viewLog && !hasCompletedBefore) {
+          const now = getJSTTimestamp();
+
+          // sendBeaconで終了時刻を送信
+          const payload = {
+            log_id: viewLog.id,
+            end_time: now,
+            last_updated: now,
+          };
+
+          const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+          navigator.sendBeacon('/api/videos/update-end-time', blob);
+
+          console.log('visibilitychange: 終了時刻を記録しました');
+        }
+
+        // 進捗がある場合は進捗も保存
+        if (pendingUpdateRef.current) {
+          saveProgressImmediately();
+          console.log('visibilitychange: 進捗を保存しました');
+        }
       }
     };
 
@@ -136,6 +173,19 @@ export default function VideoPlayerPage() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
 
       // アンマウント時（ブラウザバック、ページ遷移時）に進捗を保存
+      if (viewLog && !hasCompletedBefore) {
+        // 終了時刻を記録
+        const now = getJSTTimestamp();
+        const payload = {
+          log_id: viewLog.id,
+          end_time: now,
+          last_updated: now,
+        };
+        const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+        navigator.sendBeacon('/api/videos/update-end-time', blob);
+        console.log('アンマウント: 終了時刻を記録しました');
+      }
+
       if (pendingUpdateRef.current) {
         const { position, videoDuration, progressPercent } = pendingUpdateRef.current;
         // 同期的に保存
@@ -143,7 +193,38 @@ export default function VideoPlayerPage() {
         console.log('コンポーネントアンマウント時に進捗を保存しました');
       }
     };
-  }, []);
+  }, [viewLog, hasCompletedBefore]);
+
+  // 定期的に終了時刻を更新（10秒ごと）
+  useEffect(() => {
+    if (!viewLog || hasCompletedBefore) return;
+
+    const updateEndTimeInterval = setInterval(async () => {
+      if (!viewLog || !user) return;
+
+      const now = getJSTTimestamp();
+      console.log('[定期更新] 終了時刻を更新:', now);
+
+      // 終了時刻のみを更新（進捗は更新しない）
+      const { error: updateError } = await supabase
+        .from('video_view_logs')
+        .update({
+          end_time: now,
+          last_updated: now,
+        })
+        .eq('id', viewLog.id);
+
+      if (updateError) {
+        console.error('[定期更新] 終了時刻の更新エラー:', updateError);
+      } else {
+        console.log('[定期更新] 終了時刻を更新しました:', viewLog.id);
+      }
+    }, 10000); // 10秒ごと
+
+    return () => {
+      clearInterval(updateEndTimeInterval);
+    };
+  }, [viewLog, hasCompletedBefore, user]);
 
 
   const fetchVideoDetails = async () => {
@@ -343,8 +424,8 @@ export default function VideoPlayerPage() {
     });
 
     try {
-      // 進捗率100%で完了判定
-      const isCompleted = progressPercent >= 100;
+      // 進捗率98%以上で完了判定
+      const isCompleted = progressPercent >= 98;
 
       // 視聴時間を計算：動画時間 × 進捗率（％を小数に変換）/ 100
       // ただし、動画時間を超えないように制限
@@ -508,7 +589,7 @@ export default function VideoPlayerPage() {
 
       // sendBeacon APIを使って確実に送信
       const now = getJSTTimestamp();
-      const isCompleted = progressPercent >= (course?.completion_threshold || 95);
+      const isCompleted = progressPercent >= 98;
       const calculatedWatchedTime = Math.min(
         Math.floor(videoDuration * (progressPercent / 100)),
         Math.floor(videoDuration)
