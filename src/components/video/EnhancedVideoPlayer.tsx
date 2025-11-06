@@ -650,8 +650,6 @@ export function EnhancedVideoPlayer({
               <ol className="list-decimal list-inside mt-2 space-y-2">
                 <li>動画の視聴は必ず就業時間内に行ってください。</li>
                 <li>1回目の視聴のみ視聴ログを記録します。</li>
-                <li>再度見直す場合はそのまま再生を続けてください。</li>
-                <li>途中で再生をやめてしまった場合は進捗をリセットしてください。</li>
               </ol>
             </div>
 
