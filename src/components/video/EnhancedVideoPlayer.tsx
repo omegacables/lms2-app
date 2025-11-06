@@ -63,11 +63,12 @@ export function EnhancedVideoPlayer({
 
   // 初期位置を設定（初回マウント時のみ）
   useEffect(() => {
-    if (currentPosition > 0 && !videoRef.current) {
+    if (currentPosition > 0) {
       setCurrentTime(currentPosition);
       setMaxWatchedTime(currentPosition);
+      console.log('[VideoPlayer] 初期位置を設定:', currentPosition);
     }
-  }, []); // 依存配列を空にして初回のみ実行
+  }, [currentPosition]); // currentPositionが変わったら再設定
 
   // 警告ダイアログの承認
   const handleAcceptWarning = () => {
@@ -158,12 +159,27 @@ export function EnhancedVideoPlayer({
   // 動画のメタデータ読み込み
   const handleLoadedMetadata = () => {
     if (videoRef.current) {
-      setDuration(videoRef.current.duration);
+      const videoDuration = videoRef.current.duration;
+      setDuration(videoDuration);
       setLoadingMessage('動画データを読み込んでいます...');
 
-      // 初回のみ、保存された位置から再開
-      if (currentPosition > 0 && videoRef.current.currentTime === 0) {
-        videoRef.current.currentTime = currentPosition;
+      console.log('[VideoPlayer] メタデータ読み込み完了 - 動画時間:', videoDuration, '秒');
+
+      // 保存された位置から再開（完了済みでない場合のみ）
+      if (currentPosition > 0 && !isCompleted) {
+        // 位置が動画の長さを超えていないか確認
+        const startPosition = Math.min(currentPosition, videoDuration - 5); // 最後の5秒は避ける
+        videoRef.current.currentTime = startPosition;
+        setCurrentTime(startPosition);
+        setMaxWatchedTime(startPosition);
+        console.log('[VideoPlayer] 続きから再生:', startPosition, '秒から開始');
+      } else if (isCompleted) {
+        // 完了済みの場合は最初から
+        videoRef.current.currentTime = 0;
+        setCurrentTime(0);
+        console.log('[VideoPlayer] 完了済みのため最初から再生');
+      } else {
+        console.log('[VideoPlayer] 最初から再生');
       }
 
       // バッファの進捗を開始
@@ -467,6 +483,18 @@ export function EnhancedVideoPlayer({
           </div>
 
           <div className="space-y-4 mb-6">
+            {/* 前回の続きから再生する場合の通知 */}
+            {currentPosition > 0 && (
+              <div className="bg-green-50 dark:bg-green-900/20 border-l-4 border-green-400 p-4">
+                <p className="font-semibold text-green-800 dark:text-green-200">
+                  📍 前回の続きから再生します
+                </p>
+                <p className="text-sm text-green-700 dark:text-green-300 mt-1">
+                  前回視聴した位置: {formatTime(currentPosition)} から再開されます
+                </p>
+              </div>
+            )}
+
             <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 p-4">
               <p className="font-semibold">以下の点にご注意ください：</p>
               <ol className="list-decimal list-inside mt-2 space-y-2">
@@ -484,6 +512,7 @@ export function EnhancedVideoPlayer({
                 <li>早送りは禁止されています</li>
                 <li>5秒戻るボタンのみ使用可能です</li>
                 <li>視聴履歴は自動的に保存されます</li>
+                <li>視聴を中断した場合、次回は続きから再生されます</li>
               </ul>
             </div>
           </div>
