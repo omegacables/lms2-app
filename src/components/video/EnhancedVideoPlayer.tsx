@@ -653,22 +653,6 @@ export function EnhancedVideoPlayer({
               </ol>
             </div>
 
-            <div className="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-400 p-4">
-              <p className="font-semibold">視聴ルール：</p>
-              <ul className="list-disc list-inside mt-2 space-y-1">
-                <li>動画のスキップはできません</li>
-                <li>早送りは禁止されています</li>
-                <li>5秒戻るボタンのみ使用可能です</li>
-                <li>視聴履歴は自動的に保存されます</li>
-                <li>視聴を中断した場合、次回は続きから再生されます</li>
-                {isMobile && (
-                  <li className="text-yellow-700 dark:text-yellow-300 font-semibold">
-                    📱 スマホ視聴: 別のアプリを開いても、戻ると自動的に再生が再開されます
-                  </li>
-                )}
-              </ul>
-            </div>
-
             {/* スマホ専用の追加情報 */}
             {isMobile && (
               <div className="bg-purple-50 dark:bg-purple-900/20 border-l-4 border-purple-400 p-4">
