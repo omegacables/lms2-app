@@ -322,7 +322,25 @@ export default function VideoPlayerPage() {
       return;
     }
 
-    console.log('[進捗保存] 開始:', { position, progressPercent, viewLogId: viewLog.id, sessionId: sessionId.current });
+    // 進捗が戻らないようにする：現在の進捗率よりも高い場合のみ更新
+    const currentProgress = viewLog.progress_percent || 0;
+    if (progressPercent < currentProgress) {
+      console.log('[進捗保存] スキップ: 進捗が戻っています', {
+        現在の進捗: currentProgress + '%',
+        新しい進捗: progressPercent + '%',
+        差分: (progressPercent - currentProgress).toFixed(1) + '%'
+      });
+      return;
+    }
+
+    console.log('[進捗保存] 開始:', {
+      position,
+      progressPercent,
+      currentProgress,
+      進捗差分: '+' + (progressPercent - currentProgress).toFixed(1) + '%',
+      viewLogId: viewLog.id,
+      sessionId: sessionId.current
+    });
 
     try {
       // 進捗率100%で完了判定
@@ -422,7 +440,24 @@ export default function VideoPlayerPage() {
       return;
     }
 
-    console.log('[進捗更新] 受信:', { position: position.toFixed(2), progressPercent: progressPercent.toFixed(2), viewLogId: viewLog?.id });
+    // 進捗が戻らないようにする：現在の進捗率よりも高い場合のみ更新
+    if (viewLog) {
+      const currentProgress = viewLog.progress_percent || 0;
+      if (progressPercent < currentProgress) {
+        console.log('[進捗更新] スキップ: 進捗が戻っています', {
+          現在の進捗: currentProgress + '%',
+          新しい進捗: progressPercent.toFixed(1) + '%'
+        });
+        return;
+      }
+    }
+
+    console.log('[進捗更新] 受信:', {
+      position: position.toFixed(2),
+      progressPercent: progressPercent.toFixed(2),
+      viewLogId: viewLog?.id,
+      現在の進捗: (viewLog?.progress_percent || 0) + '%'
+    });
 
     // 最新の値を保存
     pendingUpdateRef.current = { position, videoDuration, progressPercent };
@@ -458,6 +493,16 @@ export default function VideoPlayerPage() {
       // 0秒や0%の進捗は記録しない（1%以上のみ保存）
       if (position < 1 || progressPercent < 1) {
         console.log('[即座に保存] スキップ: 位置が0秒または0%です', { position, progressPercent });
+        return;
+      }
+
+      // 進捗が戻らないようにする：現在の進捗率よりも高い場合のみ更新
+      const currentProgress = viewLog.progress_percent || 0;
+      if (progressPercent < currentProgress) {
+        console.log('[即座に保存] スキップ: 進捗が戻っています', {
+          現在の進捗: currentProgress + '%',
+          新しい進捗: progressPercent + '%'
+        });
         return;
       }
 

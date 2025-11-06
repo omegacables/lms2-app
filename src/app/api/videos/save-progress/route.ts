@@ -29,6 +29,37 @@ export async function POST(request: NextRequest) {
 
     // 既存のログを更新
     if (log_id) {
+      // まず現在の進捗率を取得
+      const { data: currentLog, error: fetchError } = await supabase
+        .from('video_view_logs')
+        .select('progress_percent')
+        .eq('id', log_id)
+        .single();
+
+      if (fetchError) {
+        console.error('[Progress Save API] Fetch error:', fetchError);
+        return NextResponse.json(
+          { error: 'Failed to fetch current progress', details: fetchError.message },
+          { status: 500 }
+        );
+      }
+
+      // 進捗が戻らないようにする：現在の進捗率よりも高い場合のみ更新
+      const currentProgress = currentLog?.progress_percent || 0;
+      if (progress_percent < currentProgress) {
+        console.log('[Progress Save API] スキップ: 進捗が戻っています', {
+          現在の進捗: currentProgress + '%',
+          新しい進捗: progress_percent + '%',
+          log_id
+        });
+        return NextResponse.json({
+          success: true,
+          log_id,
+          skipped: true,
+          reason: '進捗が戻るため更新しませんでした'
+        });
+      }
+
       const updateData: any = {
         session_id,
         current_position: Math.round(current_position),
@@ -48,6 +79,13 @@ export async function POST(request: NextRequest) {
       if (status === 'completed') {
         updateData.completed_at = end_time;
       }
+
+      console.log('[Progress Save API] 進捗を更新:', {
+        log_id,
+        現在の進捗: currentProgress + '%',
+        新しい進捗: progress_percent + '%',
+        差分: '+' + (progress_percent - currentProgress).toFixed(1) + '%'
+      });
 
       const { error: updateError } = await supabase
         .from('video_view_logs')
