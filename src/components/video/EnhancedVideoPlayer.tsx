@@ -55,6 +55,12 @@ export function EnhancedVideoPlayer({
   const [showControls, setShowControls] = useState(true);
   const hideControlsTimer = useRef<NodeJS.Timeout | null>(null);
 
+  // バッファリング状態の管理
+  const [isBuffering, setIsBuffering] = useState(true);
+  const [bufferProgress, setBufferProgress] = useState(0);
+  const [isReadyToPlay, setIsReadyToPlay] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('動画を読み込んでいます...');
+
   // 初期位置を設定（初回マウント時のみ）
   useEffect(() => {
     if (currentPosition > 0 && !videoRef.current) {
@@ -79,10 +85,36 @@ export function EnhancedVideoPlayer({
       onPlayStart();
     }
 
-    // 自動再生開始
-    if (videoRef.current) {
-      videoRef.current.play();
-      setIsPlaying(true);
+    // バッファが十分貯まるまで待機
+    if (!isReadyToPlay) {
+      setLoadingMessage('動画を読み込んでいます。しばらくお待ちください...');
+      // 準備完了まで待機（最大30秒）
+      const checkReady = setInterval(() => {
+        if (isReadyToPlay && videoRef.current) {
+          clearInterval(checkReady);
+          videoRef.current.play();
+          setIsPlaying(true);
+        }
+      }, 500);
+
+      // タイムアウト（30秒）
+      setTimeout(() => {
+        clearInterval(checkReady);
+        if (!isReadyToPlay && videoRef.current) {
+          // タイムアウトしても再生を試みる
+          console.log('[VideoPlayer] タイムアウト: 再生を開始します');
+          setIsReadyToPlay(true);
+          setIsBuffering(false);
+          videoRef.current.play();
+          setIsPlaying(true);
+        }
+      }, 30000);
+    } else {
+      // すでに準備完了している場合はすぐに再生
+      if (videoRef.current) {
+        videoRef.current.play();
+        setIsPlaying(true);
+      }
     }
   };
 
@@ -99,15 +131,70 @@ export function EnhancedVideoPlayer({
     }, 0);
   };
 
+  // バッファの進捗を更新
+  const updateBufferProgress = () => {
+    if (!videoRef.current) return;
+
+    const video = videoRef.current;
+    if (video.buffered.length > 0) {
+      const bufferedEnd = video.buffered.end(video.buffered.length - 1);
+      const duration = video.duration;
+
+      if (duration > 0) {
+        const bufferPercent = Math.floor((bufferedEnd / duration) * 100);
+        setBufferProgress(bufferPercent);
+
+        // バッファが30%以上貯まったら再生準備完了
+        if (bufferPercent >= 30 && !isReadyToPlay) {
+          setIsReadyToPlay(true);
+          setIsBuffering(false);
+          setLoadingMessage('読み込み完了！');
+          console.log('[VideoPlayer] バッファ準備完了:', bufferPercent + '%');
+        }
+      }
+    }
+  };
+
   // 動画のメタデータ読み込み
   const handleLoadedMetadata = () => {
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
+      setLoadingMessage('動画データを読み込んでいます...');
+
       // 初回のみ、保存された位置から再開
       if (currentPosition > 0 && videoRef.current.currentTime === 0) {
         videoRef.current.currentTime = currentPosition;
       }
+
+      // バッファの進捗を開始
+      updateBufferProgress();
     }
+  };
+
+  // バッファリング開始
+  const handleWaiting = () => {
+    setIsBuffering(true);
+    setLoadingMessage('バッファリング中...');
+    console.log('[VideoPlayer] バッファリング開始');
+  };
+
+  // 再生可能になった
+  const handleCanPlay = () => {
+    updateBufferProgress();
+    console.log('[VideoPlayer] 再生可能');
+  };
+
+  // 十分にバッファされた
+  const handleCanPlayThrough = () => {
+    setIsReadyToPlay(true);
+    setIsBuffering(false);
+    setLoadingMessage('');
+    console.log('[VideoPlayer] 十分なバッファあり');
+  };
+
+  // バッファ進捗の更新
+  const handleProgress = () => {
+    updateBufferProgress();
   };
 
   // 再生時間更新
@@ -126,6 +213,12 @@ export function EnhancedVideoPlayer({
       if (onProgressUpdate && duration > 0 && current > 0) {
         onProgressUpdate(current, duration, progressPercent);
         console.log('[EnhancedVideoPlayer] 進捗更新:', { current: current.toFixed(2), duration: duration.toFixed(2), progressPercent: progressPercent.toFixed(2) });
+      }
+
+      // 再生中はバッファリング状態を解除
+      if (isBuffering && videoRef.current && !videoRef.current.paused) {
+        setIsBuffering(false);
+        setLoadingMessage('');
       }
     }
   };
@@ -210,6 +303,12 @@ export function EnhancedVideoPlayer({
         // 一時停止時に進捗を保存
         saveProgress();
       } else {
+        // バッファが十分でない場合は警告
+        if (!isReadyToPlay && bufferProgress < 10) {
+          alert('動画を読み込んでいます。もう少しお待ちください。\n現在の読み込み状況: ' + bufferProgress + '%');
+          return;
+        }
+
         // 再生開始時に親コンポーネントに通知（開始時刻を記録）
         if (onPlayStart) {
           onPlayStart();
@@ -433,11 +532,52 @@ export function EnhancedVideoPlayer({
           // 一時停止時に進捗を保存
           saveProgress();
         }}
+        onWaiting={handleWaiting}
+        onCanPlay={handleCanPlay}
+        onCanPlayThrough={handleCanPlayThrough}
+        onProgress={handleProgress}
         controlsList="nodownload"
         disablePictureInPicture={!isCompleted}
         preload="auto"
         playsInline
       />
+
+      {/* 読み込み中のオーバーレイ */}
+      {isBuffering && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-75 z-10">
+          <div className="text-white text-center">
+            {/* ローディングスピナー */}
+            <div className="mb-4">
+              <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-white mx-auto"></div>
+            </div>
+
+            {/* 読み込みメッセージ */}
+            <p className="text-lg mb-2">{loadingMessage}</p>
+
+            {/* バッファ進捗バー */}
+            {bufferProgress > 0 && (
+              <div className="w-64 mx-auto">
+                <div className="bg-gray-700 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-blue-500 h-full transition-all duration-300"
+                    style={{ width: `${bufferProgress}%` }}
+                  />
+                </div>
+                <p className="text-sm mt-2 text-gray-300">
+                  {bufferProgress}% 読み込み済み
+                </p>
+              </div>
+            )}
+
+            {/* ヒント */}
+            <p className="text-xs text-gray-400 mt-4 max-w-xs">
+              動画が大きい場合、読み込みに時間がかかることがあります。
+              <br />
+              Wi-Fi環境での視聴を推奨します。
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* カスタムコントロール */}
       <div className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-2 sm:p-4 transition-opacity duration-300 ${
