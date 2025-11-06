@@ -60,6 +60,9 @@ export function EnhancedVideoPlayer({
   const [bufferProgress, setBufferProgress] = useState(0);
   const [isReadyToPlay, setIsReadyToPlay] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('動画を読み込んでいます...');
+  const [wasPlayingBeforeBlur, setWasPlayingBeforeBlur] = useState(false);
+  const bufferCheckInterval = useRef<NodeJS.Timeout | null>(null);
+  const autoResumeTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // 初期位置を設定（初回マウント時のみ）
   useEffect(() => {
@@ -88,31 +91,41 @@ export function EnhancedVideoPlayer({
 
     // バッファが十分貯まるまで待機
     if (!isReadyToPlay) {
-      setLoadingMessage('動画を読み込んでいます。しばらくお待ちください...');
-      // 準備完了まで待機（最大30秒）
+      setLoadingMessage('動画を読み込んでいます。十分なバッファを確保中...');
+
+      // バッファ進捗を積極的にチェック
+      const bufferCheckInterval = setInterval(() => {
+        updateBufferProgress();
+      }, 500);
+
+      // 準備完了まで待機（最大60秒）
       const checkReady = setInterval(() => {
         if (isReadyToPlay && videoRef.current) {
           clearInterval(checkReady);
+          clearInterval(bufferCheckInterval);
+          console.log('[VideoPlayer] バッファ準備完了: 再生を開始します');
           videoRef.current.play();
           setIsPlaying(true);
         }
       }, 500);
 
-      // タイムアウト（30秒）
+      // タイムアウト（60秒）
       setTimeout(() => {
         clearInterval(checkReady);
+        clearInterval(bufferCheckInterval);
         if (!isReadyToPlay && videoRef.current) {
           // タイムアウトしても再生を試みる
-          console.log('[VideoPlayer] タイムアウト: 再生を開始します');
+          console.log('[VideoPlayer] タイムアウト: 現在のバッファで再生を開始します (バッファ:', bufferProgress, '%)');
           setIsReadyToPlay(true);
           setIsBuffering(false);
           videoRef.current.play();
           setIsPlaying(true);
         }
-      }, 30000);
+      }, 60000);
     } else {
       // すでに準備完了している場合はすぐに再生
       if (videoRef.current) {
+        console.log('[VideoPlayer] バッファ準備済み: 即座に再生開始');
         videoRef.current.play();
         setIsPlaying(true);
       }
@@ -145,12 +158,28 @@ export function EnhancedVideoPlayer({
         const bufferPercent = Math.floor((bufferedEnd / duration) * 100);
         setBufferProgress(bufferPercent);
 
-        // バッファが30%以上貯まったら再生準備完了
-        if (bufferPercent >= 30 && !isReadyToPlay) {
+        // 現在の再生位置から先のバッファ量を計算
+        const currentTime = video.currentTime;
+        const bufferedAhead = bufferedEnd - currentTime;
+
+        console.log('[VideoPlayer] バッファ状態:', {
+          bufferPercent: bufferPercent + '%',
+          bufferedAhead: bufferedAhead.toFixed(1) + '秒先まで',
+          currentTime: currentTime.toFixed(1),
+          bufferedEnd: bufferedEnd.toFixed(1)
+        });
+
+        // バッファが50%以上、または60秒以上先まで貯まったら再生準備完了
+        if ((bufferPercent >= 50 || bufferedAhead >= 60) && !isReadyToPlay) {
           setIsReadyToPlay(true);
           setIsBuffering(false);
           setLoadingMessage('読み込み完了！');
-          console.log('[VideoPlayer] バッファ準備完了:', bufferPercent + '%');
+          console.log('[VideoPlayer] バッファ準備完了:', bufferPercent + '% (', bufferedAhead.toFixed(1), '秒先まで)');
+        }
+
+        // バッファが不足している場合は警告
+        if (bufferedAhead < 10 && isPlaying && !isBuffering) {
+          console.warn('[VideoPlayer] バッファ不足警告: 残り', bufferedAhead.toFixed(1), '秒');
         }
       }
     }
@@ -192,12 +221,35 @@ export function EnhancedVideoPlayer({
     setIsBuffering(true);
     setLoadingMessage('バッファリング中...');
     console.log('[VideoPlayer] バッファリング開始');
+
+    // 5秒経っても再開しない場合は自動的に再開を試みる
+    if (autoResumeTimeout.current) {
+      clearTimeout(autoResumeTimeout.current);
+    }
+
+    autoResumeTimeout.current = setTimeout(() => {
+      if (videoRef.current && isBuffering && !videoRef.current.paused) {
+        console.log('[VideoPlayer] 自動復帰: 再生を再開します');
+        videoRef.current.play().catch(err => {
+          console.error('[VideoPlayer] 自動復帰失敗:', err);
+        });
+      }
+    }, 5000);
   };
 
   // 再生可能になった
   const handleCanPlay = () => {
     updateBufferProgress();
+    setIsBuffering(false);
     console.log('[VideoPlayer] 再生可能');
+
+    // バッファリングから復帰した場合、再生を再開
+    if (wasPlayingBeforeBlur && videoRef.current && videoRef.current.paused) {
+      console.log('[VideoPlayer] バッファリング復帰: 再生を再開');
+      videoRef.current.play().catch(err => {
+        console.error('[VideoPlayer] 再生再開失敗:', err);
+      });
+    }
   };
 
   // 十分にバッファされた
@@ -206,6 +258,12 @@ export function EnhancedVideoPlayer({
     setIsBuffering(false);
     setLoadingMessage('');
     console.log('[VideoPlayer] 十分なバッファあり');
+
+    // タイマーをクリア
+    if (autoResumeTimeout.current) {
+      clearTimeout(autoResumeTimeout.current);
+      autoResumeTimeout.current = null;
+    }
   };
 
   // バッファ進捗の更新
@@ -352,10 +410,20 @@ export function EnhancedVideoPlayer({
   // ボリューム変更
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newVolume = parseFloat(e.target.value);
+    const wasPlaying = videoRef.current && !videoRef.current.paused;
+
     setVolume(newVolume);
     if (videoRef.current) {
       videoRef.current.volume = newVolume;
       setIsMuted(newVolume === 0);
+
+      // 音量変更後も再生状態を維持
+      if (wasPlaying && videoRef.current.paused) {
+        console.log('[VideoPlayer] 音量変更後に再生を再開');
+        videoRef.current.play().catch(err => {
+          console.error('[VideoPlayer] 音量変更後の再生再開失敗:', err);
+        });
+      }
     }
   };
 
@@ -401,11 +469,33 @@ export function EnhancedVideoPlayer({
     };
 
     const handleVisibilityChange = () => {
-      // ページが非表示になる時に進捗を保存
-      if (document.hidden && videoRef.current && duration > 0 && currentTime > 0) {
-        saveProgress();
-        if (onBeforeUnload) {
-          onBeforeUnload();
+      if (document.hidden) {
+        // ページが非表示になる時（別のアプリを開いた時など）
+        if (videoRef.current && duration > 0 && currentTime > 0) {
+          // 現在の再生状態を保存
+          setWasPlayingBeforeBlur(!videoRef.current.paused);
+          console.log('[VideoPlayer] バックグラウンドへ移行: 再生状態を保存', !videoRef.current.paused ? '再生中' : '一時停止中');
+
+          // 進捗を保存
+          saveProgress();
+          if (onBeforeUnload) {
+            onBeforeUnload();
+          }
+        }
+      } else {
+        // ページが再表示される時（アプリに戻った時など）
+        console.log('[VideoPlayer] フォアグラウンドへ復帰');
+
+        if (videoRef.current && wasPlayingBeforeBlur) {
+          // 以前再生中だった場合は再生を再開
+          setTimeout(() => {
+            if (videoRef.current && videoRef.current.paused) {
+              console.log('[VideoPlayer] 再生を自動的に再開します');
+              videoRef.current.play().catch(err => {
+                console.error('[VideoPlayer] 再生再開失敗:', err);
+              });
+            }
+          }, 300); // 300ms後に再開（ブラウザの準備を待つ）
         }
       }
     };
@@ -456,11 +546,34 @@ export function EnhancedVideoPlayer({
     }
   }, [isCompleted, showWarning]);
 
+  // 定期的なバッファチェック（再生中のみ）
+  useEffect(() => {
+    if (isPlaying && videoRef.current) {
+      // 2秒ごとにバッファ状態をチェック
+      bufferCheckInterval.current = setInterval(() => {
+        updateBufferProgress();
+      }, 2000);
+
+      return () => {
+        if (bufferCheckInterval.current) {
+          clearInterval(bufferCheckInterval.current);
+          bufferCheckInterval.current = null;
+        }
+      };
+    }
+  }, [isPlaying]);
+
   // コンポーネントのアンマウント時
   useEffect(() => {
     return () => {
       if (hideControlsTimer.current) {
         clearTimeout(hideControlsTimer.current);
+      }
+      if (bufferCheckInterval.current) {
+        clearInterval(bufferCheckInterval.current);
+      }
+      if (autoResumeTimeout.current) {
+        clearTimeout(autoResumeTimeout.current);
       }
     };
   }, []);
