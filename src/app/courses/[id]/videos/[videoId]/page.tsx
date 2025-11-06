@@ -112,12 +112,8 @@ export default function VideoPlayerPage() {
   useEffect(() => {
     // ページ離脱時（ブラウザを閉じる、タブを閉じる、ブラウザバック等）
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      // 完了していない動画の場合、確認ダイアログを表示
+      // 常に終了時刻を記録（ポップアップなし）
       if (viewLog && !hasCompletedBefore) {
-        // ブラウザのデフォルトの確認ダイアログを表示
-        e.preventDefault();
-        e.returnValue = ''; // Chrome では空文字列が必要
-
         const now = getJSTTimestamp();
 
         // sendBeaconで終了時刻を送信（より確実）
@@ -137,9 +133,6 @@ export default function VideoPlayerPage() {
           saveProgressImmediately();
           console.log('beforeunload: 進捗を保存しました');
         }
-
-        // ブラウザに確認ダイアログを表示させる
-        return ''; // レガシーブラウザ対応
       }
     };
 
@@ -202,36 +195,79 @@ export default function VideoPlayerPage() {
     };
   }, [viewLog, hasCompletedBefore]);
 
-  // 定期的に終了時刻を更新（10秒ごと）
+  // 定期的に進捗全体を更新（5秒ごと）
   useEffect(() => {
     if (!viewLog || hasCompletedBefore) return;
 
-    const updateEndTimeInterval = setInterval(async () => {
-      if (!viewLog || !user) return;
+    const updateProgressInterval = setInterval(async () => {
+      if (!viewLog || !user || !video) return;
 
-      const now = getJSTTimestamp();
-      console.log('[定期更新] 終了時刻を更新:', now);
+      // 最新の進捗データがある場合は、それを使って更新
+      if (pendingUpdateRef.current) {
+        const { position, videoDuration, progressPercent } = pendingUpdateRef.current;
 
-      // 終了時刻のみを更新（進捗は更新しない）
-      const { error: updateError } = await supabase
-        .from('video_view_logs')
-        .update({
+        // 0秒や0%の進捗は記録しない
+        if (position < 1 || progressPercent < 1) {
+          console.log('[定期更新] スキップ: 位置が0秒または0%です');
+          return;
+        }
+
+        // 進捗が戻らないようにする
+        const currentProgress = viewLog.progress_percent || 0;
+        if (progressPercent < currentProgress) {
+          console.log('[定期更新] スキップ: 進捗が戻っています', {
+            現在の進捗: currentProgress + '%',
+            新しい進捗: progressPercent + '%'
+          });
+          return;
+        }
+
+        const now = getJSTTimestamp();
+        const isCompleted = progressPercent >= 98;
+        const calculatedWatchedTime = Math.min(
+          Math.floor(videoDuration * (progressPercent / 100)),
+          Math.floor(videoDuration)
+        );
+
+        const updateData: any = {
+          current_position: Math.round(position),
+          progress_percent: progressPercent,
+          total_watched_time: calculatedWatchedTime,
+          status: isCompleted ? 'completed' : 'in_progress',
           end_time: now,
           last_updated: now,
-        })
-        .eq('id', viewLog.id);
+        };
 
-      if (updateError) {
-        console.error('[定期更新] 終了時刻の更新エラー:', updateError);
-      } else {
-        console.log('[定期更新] 終了時刻を更新しました:', viewLog.id);
+        if (isCompleted && viewLog.status !== 'completed') {
+          updateData.completed_at = now;
+        }
+
+        console.log('[定期更新] 進捗を更新:', {
+          progressPercent: progressPercent + '%',
+          position: position.toFixed(1) + '秒',
+          status: updateData.status
+        });
+
+        const { error: updateError } = await supabase
+          .from('video_view_logs')
+          .update(updateData)
+          .eq('id', viewLog.id);
+
+        if (updateError) {
+          console.error('[定期更新] 更新エラー:', updateError);
+        } else {
+          console.log('[定期更新] 成功:', viewLog.id);
+
+          // viewLogを更新
+          setViewLog({ ...viewLog, ...updateData });
+        }
       }
-    }, 10000); // 10秒ごと
+    }, 5000); // 5秒ごと
 
     return () => {
-      clearInterval(updateEndTimeInterval);
+      clearInterval(updateProgressInterval);
     };
-  }, [viewLog, hasCompletedBefore, user]);
+  }, [viewLog, hasCompletedBefore, user, video]);
 
 
   const fetchVideoDetails = async () => {
@@ -284,10 +320,10 @@ export default function VideoPlayerPage() {
       const isCompleted = (completedLogs && completedLogs.length > 0) || false;
       setHasCompletedBefore(isCompleted);
 
-      // 最新の視聴ログから続きの位置を取得
+      // 最新の視聴ログから続きの位置と進捗率を取得
       const { data: latestLogs, error: latestLogError } = await supabase
         .from('video_view_logs')
-        .select('current_position')
+        .select('*')
         .eq('user_id', user!.id)
         .eq('video_id', videoId)
         .order('last_updated', { ascending: false })
@@ -302,15 +338,28 @@ export default function VideoPlayerPage() {
         ? 0
         : (latestLogs && latestLogs.length > 0 ? latestLogs[0].current_position : 0);
       setLastPosition(startPosition);
-      console.log('[続きから再生] 開始位置:', startPosition, '取得したログ:', latestLogs);
+
+      // 最新のログをviewLogに設定（進捗表示用）
+      if (latestLogs && latestLogs.length > 0) {
+        setViewLog(latestLogs[0]);
+        console.log('[続きから再生] 最新のログを設定:', {
+          開始位置: startPosition,
+          進捗率: latestLogs[0].progress_percent + '%',
+          ログID: latestLogs[0].id
+        });
+      } else {
+        console.log('[続きから再生] 最新のログなし、新規作成します');
+      }
 
       // 新しい視聴セッション（新しいログ）を開始
-      // ⭐ 100%完了済みの動画は新しいログを作成しない
-      if (!isCompleted) {
+      // ⭐ 100%完了済みの動画、または既存のログがある場合は新しいログを作成しない
+      if (!isCompleted && (!latestLogs || latestLogs.length === 0)) {
         await startViewingSession(videoData);
         console.log('[視聴セッション] 新しいログを作成しました');
-      } else {
+      } else if (isCompleted) {
         console.log('[視聴セッション] 完了済みのため、ログを作成しません');
+      } else {
+        console.log('[視聴セッション] 既存のログを使用します');
       }
 
       // リソースを取得
