@@ -87,8 +87,8 @@ export default function CourseDetailPage() {
           const data = await response.json();
           setChapters(data.chapters || []);
           setUnassignedVideos(data.unassignedVideos || []);
-          // 初期状態で全章を展開
-          setExpandedChapters(new Set(data.chapters?.map((c: Chapter) => c.id) || []));
+          // 初期状態で全章を閉じる
+          setExpandedChapters(new Set());
         }
       } catch (err) {
         console.error('章データ取得エラー:', err);
@@ -461,7 +461,7 @@ export default function CourseDetailPage() {
                         </div>
                         
                         {video.description && (
-                          <p className="text-muted-foreground text-sm mb-4 leading-relaxed">
+                          <p className="text-muted-foreground text-sm mb-4 leading-relaxed break-words overflow-hidden">
                             {video.description}
                           </p>
                         )}
@@ -564,7 +564,7 @@ export default function CourseDetailPage() {
                           </div>
 
                           {video.description && (
-                            <p className="text-muted-foreground text-sm mb-4 leading-relaxed">
+                            <p className="text-muted-foreground text-sm mb-4 leading-relaxed break-words overflow-hidden">
                               {video.description}
                             </p>
                           )}
