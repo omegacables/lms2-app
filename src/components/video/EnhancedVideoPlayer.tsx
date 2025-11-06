@@ -63,6 +63,10 @@ export function EnhancedVideoPlayer({
   const [wasPlayingBeforeBlur, setWasPlayingBeforeBlur] = useState(false);
   const bufferCheckInterval = useRef<NodeJS.Timeout | null>(null);
   const autoResumeTimeout = useRef<NodeJS.Timeout | null>(null);
+  const savedPositionBeforeBlur = useRef<number>(0);
+
+  // デバイスタイプの検出
+  const isMobile = typeof window !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
   // 初期位置を設定（初回マウント時のみ）
   useEffect(() => {
@@ -139,6 +143,14 @@ export function EnhancedVideoPlayer({
     const currentPos = videoRef.current.currentTime;
     const progressPercent = duration > 0 ? Math.floor((currentPos / duration) * 100) : 0;
 
+    // 0秒や0%の進捗は保存しない（誤った進捗の上書きを防ぐ）
+    if (currentPos < 1 || progressPercent < 1) {
+      console.log('[VideoPlayer] 進捗保存スキップ: 位置が0秒または0%です', { currentPos, progressPercent });
+      return;
+    }
+
+    console.log('[VideoPlayer] 進捗を保存:', { currentPos: currentPos.toFixed(2), progressPercent });
+
     // 進捗を親コンポーネントに送信
     setTimeout(() => {
       onProgressUpdate(currentPos, duration, progressPercent);
@@ -163,23 +175,29 @@ export function EnhancedVideoPlayer({
         const bufferedAhead = bufferedEnd - currentTime;
 
         console.log('[VideoPlayer] バッファ状態:', {
+          device: isMobile ? 'モバイル' : 'PC',
           bufferPercent: bufferPercent + '%',
           bufferedAhead: bufferedAhead.toFixed(1) + '秒先まで',
           currentTime: currentTime.toFixed(1),
           bufferedEnd: bufferedEnd.toFixed(1)
         });
 
-        // バッファが50%以上、または60秒以上先まで貯まったら再生準備完了
-        if ((bufferPercent >= 50 || bufferedAhead >= 60) && !isReadyToPlay) {
+        // スマホはより厳格なバッファリング閾値を使用
+        const requiredBufferPercent = isMobile ? 60 : 50; // スマホは60%、PCは50%
+        const requiredBufferAhead = isMobile ? 90 : 60;   // スマホは90秒、PCは60秒
+
+        // バッファが十分貯まったら再生準備完了
+        if ((bufferPercent >= requiredBufferPercent || bufferedAhead >= requiredBufferAhead) && !isReadyToPlay) {
           setIsReadyToPlay(true);
           setIsBuffering(false);
           setLoadingMessage('読み込み完了！');
-          console.log('[VideoPlayer] バッファ準備完了:', bufferPercent + '% (', bufferedAhead.toFixed(1), '秒先まで)');
+          console.log('[VideoPlayer] バッファ準備完了:', bufferPercent + '% (', bufferedAhead.toFixed(1), '秒先まで) - デバイス:', isMobile ? 'モバイル' : 'PC');
         }
 
-        // バッファが不足している場合は警告
-        if (bufferedAhead < 10 && isPlaying && !isBuffering) {
-          console.warn('[VideoPlayer] バッファ不足警告: 残り', bufferedAhead.toFixed(1), '秒');
+        // バッファが不足している場合は警告（スマホはより早めに警告）
+        const warningThreshold = isMobile ? 15 : 10;
+        if (bufferedAhead < warningThreshold && isPlaying && !isBuffering) {
+          console.warn('[VideoPlayer] バッファ不足警告: 残り', bufferedAhead.toFixed(1), '秒 - デバイス:', isMobile ? 'モバイル' : 'PC');
         }
       }
     }
@@ -472,11 +490,15 @@ export function EnhancedVideoPlayer({
       if (document.hidden) {
         // ページが非表示になる時（別のアプリを開いた時など）
         if (videoRef.current && duration > 0 && currentTime > 0) {
-          // 現在の再生状態を保存
+          // 現在の再生状態と位置を保存
           setWasPlayingBeforeBlur(!videoRef.current.paused);
-          console.log('[VideoPlayer] バックグラウンドへ移行: 再生状態を保存', !videoRef.current.paused ? '再生中' : '一時停止中');
+          savedPositionBeforeBlur.current = videoRef.current.currentTime;
+          console.log('[VideoPlayer] バックグラウンドへ移行:', {
+            isPlaying: !videoRef.current.paused ? '再生中' : '一時停止中',
+            position: savedPositionBeforeBlur.current.toFixed(2)
+          });
 
-          // 進捗を保存
+          // 進捗を保存（1秒未満の場合はスキップされる）
           saveProgress();
           if (onBeforeUnload) {
             onBeforeUnload();
@@ -486,16 +508,31 @@ export function EnhancedVideoPlayer({
         // ページが再表示される時（アプリに戻った時など）
         console.log('[VideoPlayer] フォアグラウンドへ復帰');
 
-        if (videoRef.current && wasPlayingBeforeBlur) {
-          // 以前再生中だった場合は再生を再開
-          setTimeout(() => {
-            if (videoRef.current && videoRef.current.paused) {
-              console.log('[VideoPlayer] 再生を自動的に再開します');
-              videoRef.current.play().catch(err => {
-                console.error('[VideoPlayer] 再生再開失敗:', err);
-              });
+        if (videoRef.current) {
+          // 保存した位置を復元（0にリセットされるのを防ぐ）
+          if (savedPositionBeforeBlur.current > 1) {
+            const savedPos = savedPositionBeforeBlur.current;
+            const currentPos = videoRef.current.currentTime;
+
+            // 位置が大幅に変わっている場合のみ復元（0にリセットされた場合など）
+            if (Math.abs(currentPos - savedPos) > 5 || currentPos < 1) {
+              videoRef.current.currentTime = savedPos;
+              setCurrentTime(savedPos);
+              console.log('[VideoPlayer] 位置を復元:', savedPos.toFixed(2), '秒 (以前の位置:', currentPos.toFixed(2), '秒)');
             }
-          }, 300); // 300ms後に再開（ブラウザの準備を待つ）
+          }
+
+          // 以前再生中だった場合は再生を再開
+          if (wasPlayingBeforeBlur) {
+            setTimeout(() => {
+              if (videoRef.current && videoRef.current.paused) {
+                console.log('[VideoPlayer] 再生を自動的に再開します');
+                videoRef.current.play().catch(err => {
+                  console.error('[VideoPlayer] 再生再開失敗:', err);
+                });
+              }
+            }, 300); // 300ms後に再開（ブラウザの準備を待つ）
+          }
         }
       }
     };
@@ -626,8 +663,26 @@ export function EnhancedVideoPlayer({
                 <li>5秒戻るボタンのみ使用可能です</li>
                 <li>視聴履歴は自動的に保存されます</li>
                 <li>視聴を中断した場合、次回は続きから再生されます</li>
+                {isMobile && (
+                  <li className="text-yellow-700 dark:text-yellow-300 font-semibold">
+                    📱 スマホ視聴: 別のアプリを開いても、戻ると自動的に再生が再開されます
+                  </li>
+                )}
               </ul>
             </div>
+
+            {/* スマホ専用の追加情報 */}
+            {isMobile && (
+              <div className="bg-purple-50 dark:bg-purple-900/20 border-l-4 border-purple-400 p-4">
+                <p className="font-semibold text-purple-800 dark:text-purple-300">📱 スマホで快適に視聴するために：</p>
+                <ul className="list-disc list-inside mt-2 space-y-1 text-sm text-purple-700 dark:text-purple-200">
+                  <li>Wi-Fi環境での視聴を強く推奨します</li>
+                  <li>再生前に十分なバッファを確保します（60%または90秒先まで）</li>
+                  <li>別のアプリに切り替えても、視聴位置は保持されます</li>
+                  <li>バッファリング中は少々お待ちください</li>
+                </ul>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-center space-x-4">
@@ -711,12 +766,26 @@ export function EnhancedVideoPlayer({
               </div>
             )}
 
-            {/* ヒント */}
-            <p className="text-xs text-gray-400 mt-4 max-w-xs">
-              動画が大きい場合、読み込みに時間がかかることがあります。
-              <br />
-              Wi-Fi環境での視聴を推奨します。
-            </p>
+            {/* デバイス別のヒント */}
+            {isMobile ? (
+              <div className="text-xs text-gray-400 mt-4 max-w-xs space-y-2">
+                <p className="font-semibold text-yellow-400">📱 スマホで視聴中</p>
+                <p>
+                  より快適な視聴のため、{bufferProgress >= 60 ? '90秒' : '60%'}以上のバッファを確保しています。
+                </p>
+                <p>
+                  Wi-Fi環境での視聴を強く推奨します。
+                  <br />
+                  別のアプリを開いても、戻ると自動的に再生が再開されます。
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400 mt-4 max-w-xs">
+                動画が大きい場合、読み込みに時間がかかることがあります。
+                <br />
+                Wi-Fi環境での視聴を推奨します。
+              </p>
+            )}
           </div>
         </div>
       )}

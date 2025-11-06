@@ -410,6 +410,12 @@ export default function VideoPlayerPage() {
       return;
     }
 
+    // 0秒や0%の進捗は記録しない（誤った進捗の上書きを防ぐ）
+    if (position < 1 || progressPercent < 1) {
+      console.log('[進捗更新] スキップ: 位置が0秒または0%です', { position, progressPercent });
+      return;
+    }
+
     console.log('[進捗更新] 受信:', { position: position.toFixed(2), progressPercent: progressPercent.toFixed(2), viewLogId: viewLog?.id });
 
     // 最新の値を保存
