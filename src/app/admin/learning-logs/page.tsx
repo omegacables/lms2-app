@@ -97,6 +97,7 @@ export default function LearningLogsPage() {
     status: 'not_started'
   });
   const [allUsers, setAllUsers] = useState<{ id: string; display_name: string; email: string; company?: string; department?: string }[]>([]);
+  const [selectedLogs, setSelectedLogs] = useState<Set<string>>(new Set());
   const itemsPerPage = 50;
 
   useEffect(() => {
@@ -321,6 +322,72 @@ export default function LearningLogsPage() {
       alert('削除中にエラーが発生しました');
     } finally {
       setDeletingLogId(null);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedLogs.size === 0) {
+      alert('削除する項目を選択してください');
+      return;
+    }
+
+    if (!confirm(`選択した ${selectedLogs.size} 件の学習ログを削除してもよろしいですか？`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const logId of selectedLogs) {
+        try {
+          const response = await fetch(`/api/admin/learning-logs/${logId}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
+            },
+          });
+
+          if (response.ok) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch (error) {
+          failCount++;
+        }
+      }
+
+      alert(`削除完了: 成功 ${successCount} 件、失敗 ${failCount} 件`);
+      setSelectedLogs(new Set());
+      fetchLearningLogs();
+    } catch (error) {
+      console.error('一括削除エラー:', error);
+      alert('一括削除中にエラーが発生しました');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleSelectLog = (logId: string) => {
+    setSelectedLogs(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(logId)) {
+        newSet.delete(logId);
+      } else {
+        newSet.add(logId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedLogs.size === filteredLogs.length) {
+      setSelectedLogs(new Set());
+    } else {
+      setSelectedLogs(new Set(filteredLogs.map(log => log.id)));
     }
   };
 
@@ -773,6 +840,15 @@ export default function LearningLogsPage() {
                   <span className="whitespace-nowrap">全ログリセット</span>
                 </Button>
                 <Button
+                  onClick={handleBulkDelete}
+                  disabled={selectedLogs.size === 0}
+                  variant="outline"
+                  className="flex items-center justify-center w-full sm:w-auto text-red-600 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  <TrashIcon className="h-4 w-4 mr-2 flex-shrink-0" />
+                  <span className="whitespace-nowrap">選択を削除 ({selectedLogs.size})</span>
+                </Button>
+                <Button
                   onClick={exportToCSV}
                   disabled={exportingCSV}
                   className="flex items-center justify-center w-full sm:w-auto whitespace-nowrap"
@@ -898,7 +974,15 @@ export default function LearningLogsPage() {
                   <table className="min-w-full divide-y divide-gray-200 dark:divide-neutral-800">
                     <thead className="bg-gray-50 dark:bg-black">
                       <tr>
-                        <th 
+                        <th className="px-3 py-3 text-left">
+                          <input
+                            type="checkbox"
+                            checked={selectedLogs.size === filteredLogs.length && filteredLogs.length > 0}
+                            onChange={toggleSelectAll}
+                            className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                          />
+                        </th>
+                        <th
                           className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
                           onClick={() => handleSort('user_name')}
                         >
@@ -977,6 +1061,14 @@ export default function LearningLogsPage() {
                       {paginatedLogs.map((log) => (
                         <React.Fragment key={log.id}>
                         <tr className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                          <td className="px-3 py-4">
+                            <input
+                              type="checkbox"
+                              checked={selectedLogs.has(log.id)}
+                              onChange={() => toggleSelectLog(log.id)}
+                              className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                          </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div>
                               <div className="text-sm font-medium text-gray-900 dark:text-white">
