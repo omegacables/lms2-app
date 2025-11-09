@@ -102,19 +102,34 @@ export default function DashboardPage() {
         // 各コースの動画情報を取得して総時間を計算
         if (coursesData) {
           for (const course of coursesData) {
-            // コースの動画を取得（非公開動画も含める）
-            const { data: videos } = await supabase
-              .from("videos")
-              .select("duration")
-              .eq("course_id", course.id);
+            // APIエンドポイントから動画情報を取得（非公開動画も含む）
+            let videoCount = 0;
+            let calculatedDuration = 0;
+
+            try {
+              const response = await fetch(`/api/courses/${course.id}/video-count`);
+              if (response.ok) {
+                const { data } = await response.json();
+                videoCount = data.totalCount;
+                calculatedDuration = data.totalDuration;
+              } else {
+                // フォールバック: 直接クエリ
+                const { data: videos } = await supabase
+                  .from("videos")
+                  .select("duration")
+                  .eq("course_id", course.id);
+                calculatedDuration = videos?.reduce((sum, video) => sum + (video.duration || 0), 0) || 0;
+                videoCount = videos?.length || 0;
+              }
+            } catch (error) {
+              console.error(`コース${course.id}の動画情報取得エラー:`, error);
+              videoCount = 0;
+              calculatedDuration = 0;
+            }
 
             // 動画の総時間を計算（秒）
             // estimated_durationが設定されていればそれを使用、なければ動画の合計時間を使用
-            const calculatedDuration = videos?.reduce((sum, video) => sum + (video.duration || 0), 0) || 0;
             const totalDuration = course.estimated_duration || calculatedDuration;
-
-            // 動画の数
-            const videoCount = videos?.length || 0;
 
             // ユーザーの視聴ログを取得
             const { data: userViewLogs } = await supabase

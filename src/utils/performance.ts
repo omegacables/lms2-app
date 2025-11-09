@@ -1,14 +1,17 @@
 // パフォーマンス最適化ユーティリティ
 
-import { supabase } from '@/lib/database/supabase';
+import { supabase, createAdminSupabaseClient } from '@/lib/database/supabase';
 
 /**
  * コース一覧を効率的に取得（JOIN使用）
  */
 export async function fetchCoursesOptimized() {
   try {
+    // Service Roleクライアントを使用してRLSをバイパス
+    const adminSupabase = createAdminSupabaseClient();
+
     // まずコース一覧を取得
-    const { data: courses, error: coursesError } = await supabase
+    const { data: courses, error: coursesError } = await adminSupabase
       .from('courses')
       .select('*')
       .order('created_at', { ascending: false });
@@ -21,7 +24,7 @@ export async function fetchCoursesOptimized() {
     const courseIds = courses.map(c => c.id);
 
     // 一括で動画情報を取得（非公開動画も含める）
-    const { data: videos, error: videosError } = await supabase
+    const { data: videos, error: videosError } = await adminSupabase
       .from('videos')
       .select('course_id, duration')
       .in('course_id', courseIds);
@@ -31,7 +34,7 @@ export async function fetchCoursesOptimized() {
     }
 
     // 一括で受講者数を取得
-    const { data: enrollments, error: enrollmentsError } = await supabase
+    const { data: enrollments, error: enrollmentsError } = await adminSupabase
       .from('course_enrollments')
       .select('course_id')
       .in('course_id', courseIds);

@@ -95,14 +95,26 @@ export default function MyCoursesPage() {
       // Process each assigned course
       const coursesWithProgress = await Promise.all(
         coursesData.map(async (course) => {
-          
-          // Get videos for this course（非公開動画も含める）
-          const { data: videos } = await supabase
-            .from('videos')
-            .select('*')
-            .eq('course_id', course.id);
 
-          const totalVideos = videos?.length || 0;
+          // APIエンドポイントから動画情報を取得（非公開動画も含む）
+          let totalVideos = 0;
+          try {
+            const response = await fetch(`/api/courses/${course.id}/video-count`);
+            if (response.ok) {
+              const { data } = await response.json();
+              totalVideos = data.totalCount;
+            } else {
+              // フォールバック: 直接クエリ
+              const { data: videos } = await supabase
+                .from('videos')
+                .select('id')
+                .eq('course_id', course.id);
+              totalVideos = videos?.length || 0;
+            }
+          } catch (error) {
+            console.error(`コース${course.id}の動画情報取得エラー:`, error);
+            totalVideos = 0;
+          }
 
           // Get view logs for this course
           const { data: viewLogs } = await supabase

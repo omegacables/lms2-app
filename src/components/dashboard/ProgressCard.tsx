@@ -19,14 +19,24 @@ export function ProgressCard({ courseId, courseName, userId }: ProgressCardProps
   }, [courseId, userId]);
 
   const fetchProgress = async () => {
-    // コースの動画数を取得（非公開動画も含める）
-    const { data: videos } = await supabase
-      .from('videos')
-      .select('id')
-      .eq('course_id', courseId);
-
-    const total = videos?.length || 0;
-    setTotalVideos(total);
+    // APIエンドポイントから動画総数を取得（非公開動画も含む）
+    try {
+      const response = await fetch(`/api/courses/${courseId}/video-count`);
+      if (response.ok) {
+        const { data } = await response.json();
+        setTotalVideos(data.totalCount);
+      } else {
+        // フォールバック: 直接クエリ（RLSにより公開動画のみ）
+        const { data: videos } = await supabase
+          .from('videos')
+          .select('id')
+          .eq('course_id', courseId);
+        setTotalVideos(videos?.length || 0);
+      }
+    } catch (error) {
+      console.error('動画総数取得エラー:', error);
+      setTotalVideos(0);
+    }
 
     // 完了した動画数を取得
     const { data: viewLogs } = await supabase
@@ -40,7 +50,7 @@ export function ProgressCard({ courseId, courseName, userId }: ProgressCardProps
     setCompletedVideos(completed);
 
     // 進捗率計算
-    const progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const progressPercent = totalVideos > 0 ? Math.round((completed / totalVideos) * 100) : 0;
     setProgress(progressPercent);
   };
 

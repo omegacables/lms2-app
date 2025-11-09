@@ -40,6 +40,7 @@ export default function CourseDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
+  const [totalVideoCount, setTotalVideoCount] = useState<number>(0);
 
   useEffect(() => {
     if (courseId && user) {
@@ -78,6 +79,21 @@ export default function CourseDetailPage() {
       }
 
       setVideos(videosData || []);
+
+      // 動画総数を取得（非公開動画も含む）
+      try {
+        const videoCountResponse = await fetch(`/api/courses/${courseId}/video-count`);
+        if (videoCountResponse.ok) {
+          const { data } = await videoCountResponse.json();
+          setTotalVideoCount(data.totalCount);
+        } else {
+          // フォールバック: クライアント側のクエリ結果を使用
+          setTotalVideoCount(videosData?.length || 0);
+        }
+      } catch (error) {
+        console.error('動画総数取得エラー:', error);
+        setTotalVideoCount(videosData?.length || 0);
+      }
 
       // 章データを取得
       try {
@@ -293,7 +309,7 @@ export default function CourseDetailPage() {
                     </svg>
                     <span className="text-sm font-medium text-muted-foreground">動画数</span>
                   </div>
-                  <span className="text-lg font-bold">{videos.length}本</span>
+                  <span className="text-lg font-bold">{totalVideoCount}本</span>
                 </div>
                 
                 <div className="bg-background rounded-lg p-4 border border-border">
