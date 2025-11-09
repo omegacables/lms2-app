@@ -38,7 +38,10 @@ import {
   AcademicCapIcon,
   FunnelIcon,
   ChevronDownIcon,
-  Bars3Icon
+  Bars3Icon,
+  FolderIcon,
+  LockClosedIcon,
+  LockOpenIcon
 } from '@heroicons/react/24/outline';
 import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
 import type { Tables } from '@/lib/database/supabase';
@@ -48,6 +51,20 @@ type Course = Tables<'courses'> & {
   video_count?: number;
   total_duration?: number;
   enrollment_count?: number;
+};
+
+type CourseGroup = {
+  id: number;
+  title: string;
+  description: string | null;
+  is_sequential: boolean;
+  created_at: string;
+  items?: Array<{
+    id: number;
+    course_id: number;
+    order_index: number;
+    course: Course;
+  }>;
 };
 
 // Helper functions
@@ -266,7 +283,9 @@ function SortableItem({ id, children }: { id: string | number; children: React.R
 
 export default function CoursesPage() {
   const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<'courses' | 'groups'>('courses');
   const [courses, setCourses] = useState<Course[]>([]);
+  const [groups, setGroups] = useState<CourseGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -274,6 +293,15 @@ export default function CoursesPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [isSorting, setIsSorting] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
+
+  // Group management state
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<CourseGroup | null>(null);
+  const [groupFormData, setGroupFormData] = useState({
+    title: '',
+    description: '',
+    is_sequential: true,
+  });
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -288,7 +316,10 @@ export default function CoursesPage() {
 
   useEffect(() => {
     fetchCourses();
-  }, []);
+    if (activeTab === 'groups') {
+      fetchGroups();
+    }
+  }, [activeTab]);
 
   const fetchCourses = async () => {
     try {
@@ -344,6 +375,107 @@ export default function CoursesPage() {
       alert('コースの取得に失敗しました。');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchGroups = async () => {
+    try {
+      setLoading(true);
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session) {
+        throw new Error('認証セッションが見つかりません');
+      }
+
+      const response = await fetch('/api/course-groups?include_items=true', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'グループの取得に失敗しました');
+      }
+
+      const data = await response.json();
+      setGroups(data.groups || []);
+    } catch (error) {
+      console.error('グループ取得エラー:', error);
+      alert('グループの取得に失敗しました。');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateGroup = async () => {
+    if (!groupFormData.title.trim()) {
+      alert('グループ名を入力してください');
+      return;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        alert('認証セッションが見つかりません');
+        return;
+      }
+
+      const response = await fetch('/api/course-groups', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(groupFormData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'グループの作成に失敗しました');
+      }
+
+      alert('グループを作成しました');
+      setShowGroupModal(false);
+      setGroupFormData({ title: '', description: '', is_sequential: true });
+      fetchGroups();
+    } catch (error: any) {
+      console.error('作成エラー:', error);
+      alert(error.message || 'グループの作成に失敗しました');
+    }
+  };
+
+  const handleDeleteGroup = async (groupId: number) => {
+    if (!confirm('このグループを削除してもよろしいですか？グループ内のコースは削除されません。')) {
+      return;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        alert('認証セッションが見つかりません');
+        return;
+      }
+
+      const response = await fetch(`/api/course-groups/${groupId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'グループの削除に失敗しました');
+      }
+
+      setGroups(groups.filter(g => g.id !== groupId));
+      alert('グループを削除しました');
+    } catch (error: any) {
+      console.error('削除エラー:', error);
+      alert(error.message || 'グループの削除に失敗しました');
     }
   };
 
@@ -496,7 +628,10 @@ export default function CoursesPage() {
               <div>
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">コース管理</h1>
                 <p className="text-gray-600 dark:text-gray-400">
-                  コースの作成・編集・管理を行います（{filteredCourses.length}件）
+                  {activeTab === 'courses'
+                    ? `コースの作成・編集・管理を行います（${filteredCourses.length}件）`
+                    : `コースグループの作成・編集・管理を行います（${groups.length}件）`
+                  }
                 </p>
                 {savingOrder && (
                   <div className="mt-2 inline-flex items-center px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-full text-sm font-medium animate-pulse">
@@ -506,78 +641,92 @@ export default function CoursesPage() {
                 )}
               </div>
               <div className="flex gap-2">
-                <Button
-                  onClick={() => setIsSorting(!isSorting)}
-                  className={isSorting ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'}
-                >
-                  <Bars3Icon className="h-4 w-4 mr-2" />
-                  {isSorting ? '並び替え完了' : '並び替え'}
-                </Button>
-                <Link href="/admin/courses/new">
-                  <Button className="bg-blue-600 hover:bg-blue-700 flex items-center">
+                {activeTab === 'courses' ? (
+                  <>
+                    <Button
+                      onClick={() => setIsSorting(!isSorting)}
+                      className={isSorting ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'}
+                    >
+                      <Bars3Icon className="h-4 w-4 mr-2" />
+                      {isSorting ? '並び替え完了' : '並び替え'}
+                    </Button>
+                    <Link href="/admin/courses/new">
+                      <Button className="bg-blue-600 hover:bg-blue-700 flex items-center">
+                        <PlusIcon className="h-4 w-4 mr-2" />
+                        新規コース作成
+                      </Button>
+                    </Link>
+                  </>
+                ) : (
+                  <Button
+                    onClick={() => setShowGroupModal(true)}
+                    className="bg-blue-600 hover:bg-blue-700 flex items-center"
+                  >
                     <PlusIcon className="h-4 w-4 mr-2" />
-                    新規コース作成
+                    新規グループ作成
                   </Button>
-                </Link>
+                )}
               </div>
             </div>
 
-            {/* Search and Filter Bar */}
-            <div className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-800 p-4">
-              <div className="flex flex-col lg:flex-row gap-4">
-                {/* Search */}
-                <div className="flex-1">
-                  <div className="relative">
-                    <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="コース名・説明で検索..."
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                {/* Filter Toggle */}
+            {/* Tabs */}
+            <div className="border-b border-gray-200 dark:border-neutral-800 mb-6">
+              <nav className="flex space-x-8" aria-label="Tabs">
                 <button
-                  onClick={() => setShowFilters(!showFilters)}
-                  className="flex items-center px-4 py-2 text-gray-600 dark:text-gray-400 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 lg:hidden"
+                  onClick={() => setActiveTab('courses')}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'courses'
+                      ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                  }`}
                 >
-                  <FunnelIcon className="h-4 w-4 mr-2" />
-                  フィルター
-                  <ChevronDownIcon className={`h-4 w-4 ml-2 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+                  <AcademicCapIcon className="h-5 w-5 inline-block mr-2" />
+                  コース一覧
                 </button>
+                <button
+                  onClick={() => setActiveTab('groups')}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'groups'
+                      ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                  }`}
+                >
+                  <FolderIcon className="h-5 w-5 inline-block mr-2" />
+                  グループ化と順序変更
+                </button>
+              </nav>
+            </div>
 
-                {/* Desktop Filters */}
-                <div className="hidden lg:flex items-center space-x-4">
-                  <select
-                    value={selectedCategory}
-                    onChange={(e) => setSelectedCategory(e.target.value)}
-                    className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            {/* Search and Filter Bar - Only for courses tab */}
+            {activeTab === 'courses' && (
+              <div className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-800 p-4">
+                <div className="flex flex-col lg:flex-row gap-4">
+                  {/* Search */}
+                  <div className="flex-1">
+                    <div className="relative">
+                      <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="コース名・説明で検索..."
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Filter Toggle */}
+                  <button
+                    onClick={() => setShowFilters(!showFilters)}
+                    className="flex items-center px-4 py-2 text-gray-600 dark:text-gray-400 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 lg:hidden"
                   >
-                    <option value="all">すべてのカテゴリ</option>
-                    {categories.map(category => (
-                      <option key={category} value={category}>{category}</option>
-                    ))}
-                  </select>
+                    <FunnelIcon className="h-4 w-4 mr-2" />
+                    フィルター
+                    <ChevronDownIcon className={`h-4 w-4 ml-2 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+                  </button>
 
-                  <select
-                    value={selectedStatus}
-                    onChange={(e) => setSelectedStatus(e.target.value)}
-                    className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="all">すべてのステータス</option>
-                    <option value="active">公開中</option>
-                    <option value="inactive">非公開</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Mobile Filters */}
-              {showFilters && (
-                <div className="lg:hidden mt-4 pt-4 border-t border-gray-200 dark:border-neutral-800">
-                  <div className="grid grid-cols-2 gap-4">
+                  {/* Desktop Filters */}
+                  <div className="hidden lg:flex items-center space-x-4">
                     <select
                       value={selectedCategory}
                       onChange={(e) => setSelectedCategory(e.target.value)}
@@ -600,64 +749,295 @@ export default function CoursesPage() {
                     </select>
                   </div>
                 </div>
-              )}
-            </div>
+
+                {/* Mobile Filters */}
+                {showFilters && (
+                  <div className="lg:hidden mt-4 pt-4 border-t border-gray-200 dark:border-neutral-800">
+                    <div className="grid grid-cols-2 gap-4">
+                      <select
+                        value={selectedCategory}
+                        onChange={(e) => setSelectedCategory(e.target.value)}
+                        className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="all">すべてのカテゴリ</option>
+                        {categories.map(category => (
+                          <option key={category} value={category}>{category}</option>
+                        ))}
+                      </select>
+
+                      <select
+                        value={selectedStatus}
+                        onChange={(e) => setSelectedStatus(e.target.value)}
+                        className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="all">すべてのステータス</option>
+                        <option value="active">公開中</option>
+                        <option value="inactive">非公開</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Course Grid */}
-          {filteredCourses.length === 0 ? (
-            <div className="text-center py-12">
-              <AcademicCapIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">コースが見つかりません</h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-6">
-                {searchTerm || selectedCategory !== 'all' || selectedStatus !== 'all' 
-                  ? '検索条件を変更してもう一度お試しください。' 
-                  : '最初のコースを作成してみましょう。'}
-              </p>
-              <Link href="/admin/courses/new">
-                <Button>
-                  <PlusIcon className="h-4 w-4 mr-2" />
-                  新規コース作成
-                </Button>
-              </Link>
-            </div>
-          ) : isSorting ? (
-            // Sorting mode with drag and drop
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={filteredCourses.map(c => c.id)}
-                strategy={verticalListSortingStrategy}
+          {/* Tab Content */}
+          {activeTab === 'courses' ? (
+            /* Course Grid */
+            filteredCourses.length === 0 ? (
+              <div className="text-center py-12">
+                <AcademicCapIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">コースが見つかりません</h3>
+                <p className="text-gray-600 dark:text-gray-400 mb-6">
+                  {searchTerm || selectedCategory !== 'all' || selectedStatus !== 'all'
+                    ? '検索条件を変更してもう一度お試しください。'
+                    : '最初のコースを作成してみましょう。'}
+                </p>
+                <Link href="/admin/courses/new">
+                  <Button>
+                    <PlusIcon className="h-4 w-4 mr-2" />
+                    新規コース作成
+                  </Button>
+                </Link>
+              </div>
+            ) : isSorting ? (
+              // Sorting mode with drag and drop
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
               >
+                <SortableContext
+                  items={filteredCourses.map(c => c.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredCourses.map((course) => (
+                      <SortableItem key={course.id} id={course.id}>
+                        <CourseCard
+                          course={course}
+                          onDelete={handleDeleteCourse}
+                          onToggleStatus={toggleCourseStatus}
+                          isDisabled={true}
+                        />
+                      </SortableItem>
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            ) : (
+              // Normal mode without drag and drop
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredCourses.map((course) => (
+                  <CourseCard
+                    key={course.id}
+                    course={course}
+                    onDelete={handleDeleteCourse}
+                    onToggleStatus={toggleCourseStatus}
+                    isDisabled={false}
+                  />
+                ))}
+              </div>
+            )
+          ) : (
+            /* Groups Tab */
+            <>
+              {groups.length === 0 ? (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6 text-center">
+                  <FolderIcon className="h-12 w-12 text-blue-600 dark:text-blue-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-blue-900 dark:text-blue-300 mb-2">
+                    グループがありません
+                  </h3>
+                  <p className="text-blue-800 dark:text-blue-400 mb-4">
+                    最初のグループを作成して、コースをまとめましょう。
+                  </p>
+                  <Button onClick={() => setShowGroupModal(true)}>
+                    <PlusIcon className="h-4 w-4 mr-2" />
+                    新規グループ作成
+                  </Button>
+                </div>
+              ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filteredCourses.map((course) => (
-                    <SortableItem key={course.id} id={course.id}>
-                      <CourseCard
-                        course={course}
-                        onDelete={handleDeleteCourse}
-                        onToggleStatus={toggleCourseStatus}
-                        isDisabled={true}
-                      />
-                    </SortableItem>
+                  {groups.map((group) => (
+                    <div
+                      key={group.id}
+                      className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 overflow-hidden hover:shadow-lg dark:hover:shadow-gray-900/50 transition-shadow"
+                    >
+                      {/* Header */}
+                      <div className="bg-gradient-to-br from-purple-500 to-indigo-600 p-6">
+                        <div className="flex items-start justify-between">
+                          <FolderIcon className="h-8 w-8 text-white opacity-80" />
+                          <div className="flex items-center space-x-1">
+                            {group.is_sequential ? (
+                              <div className="flex items-center px-2 py-1 bg-white/20 rounded-full text-xs text-white">
+                                <LockClosedIcon className="h-3 w-3 mr-1" />
+                                順次アンロック
+                              </div>
+                            ) : (
+                              <div className="flex items-center px-2 py-1 bg-white/20 rounded-full text-xs text-white">
+                                <LockOpenIcon className="h-3 w-3 mr-1" />
+                                自由
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Content */}
+                      <div className="p-6">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                          {group.title}
+                        </h3>
+                        {group.description && (
+                          <p className="text-gray-600 dark:text-gray-400 text-sm mb-4 line-clamp-2">
+                            {group.description}
+                          </p>
+                        )}
+
+                        <div className="flex items-center text-sm text-gray-500 dark:text-gray-400 mb-4">
+                          <AcademicCapIcon className="h-4 w-4 mr-1" />
+                          {group.items?.length || 0} コース
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-neutral-800">
+                          <Link href={`/admin/course-groups/${group.id}/edit`}>
+                            <button className="flex items-center text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-sm font-medium">
+                              <PencilIcon className="h-4 w-4 mr-1" />
+                              編集
+                            </button>
+                          </Link>
+                          <button
+                            onClick={() => handleDeleteGroup(group.id)}
+                            className="flex items-center text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-sm font-medium"
+                          >
+                            <TrashIcon className="h-4 w-4 mr-1" />
+                            削除
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   ))}
                 </div>
-              </SortableContext>
-            </DndContext>
-          ) : (
-            // Normal mode without drag and drop
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredCourses.map((course) => (
-                <CourseCard
-                  key={course.id}
-                  course={course}
-                  onDelete={handleDeleteCourse}
-                  onToggleStatus={toggleCourseStatus}
-                  isDisabled={false}
-                />
-              ))}
+              )}
+            </>
+          )}
+
+          {/* Group Creation Modal */}
+          {showGroupModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                <div className="p-6">
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
+                    新規グループ作成
+                  </h2>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        グループ名 <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={groupFormData.title}
+                        onChange={(e) => setGroupFormData({ ...groupFormData, title: e.target.value })}
+                        placeholder="例: 基礎プログラミングコース"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-neutral-800 text-gray-900 dark:text-gray-100"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        説明
+                      </label>
+                      <textarea
+                        value={groupFormData.description}
+                        onChange={(e) => setGroupFormData({ ...groupFormData, description: e.target.value })}
+                        placeholder="このグループの説明を入力してください"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-neutral-800 text-gray-900 dark:text-gray-100"
+                        rows={4}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                        アンロック方式
+                      </label>
+                      <div className="space-y-3">
+                        <button
+                          type="button"
+                          onClick={() => setGroupFormData({ ...groupFormData, is_sequential: true })}
+                          className={`w-full flex items-start p-4 rounded-lg border-2 transition-colors ${
+                            groupFormData.is_sequential
+                              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                              : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                          }`}
+                        >
+                          <LockClosedIcon className={`h-6 w-6 mr-3 flex-shrink-0 ${
+                            groupFormData.is_sequential ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'
+                          }`} />
+                          <div className="text-left">
+                            <div className={`font-medium mb-1 ${
+                              groupFormData.is_sequential
+                                ? 'text-blue-900 dark:text-blue-300'
+                                : 'text-gray-900 dark:text-gray-100'
+                            }`}>
+                              順次アンロック（推奨）
+                            </div>
+                            <div className="text-sm text-gray-600 dark:text-gray-400">
+                              前のコースを完了しないと次のコースが受講できません。段階的な学習に最適です。
+                            </div>
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setGroupFormData({ ...groupFormData, is_sequential: false })}
+                          className={`w-full flex items-start p-4 rounded-lg border-2 transition-colors ${
+                            !groupFormData.is_sequential
+                              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                              : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                          }`}
+                        >
+                          <LockOpenIcon className={`h-6 w-6 mr-3 flex-shrink-0 ${
+                            !groupFormData.is_sequential ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'
+                          }`} />
+                          <div className="text-left">
+                            <div className={`font-medium mb-1 ${
+                              !groupFormData.is_sequential
+                                ? 'text-blue-900 dark:text-blue-300'
+                                : 'text-gray-900 dark:text-gray-100'
+                            }`}>
+                              自由受講
+                            </div>
+                            <div className="text-sm text-gray-600 dark:text-gray-400">
+                              すべてのコースを自由に受講できます。復習や並行学習に適しています。
+                            </div>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end space-x-3 mt-6 pt-6 border-t border-gray-200 dark:border-neutral-800">
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setShowGroupModal(false);
+                        setGroupFormData({ title: '', description: '', is_sequential: true });
+                      }}
+                    >
+                      キャンセル
+                    </Button>
+                    <Button
+                      onClick={handleCreateGroup}
+                      disabled={!groupFormData.title.trim()}
+                    >
+                      作成
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
