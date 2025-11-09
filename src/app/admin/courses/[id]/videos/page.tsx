@@ -552,6 +552,14 @@ export default function CourseVideosPage() {
                                   placeholder="説明"
                                   rows={2}
                                 />
+                                <select
+                                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-neutral-800 text-gray-900 dark:text-white"
+                                  value={editForm.status}
+                                  onChange={(e) => setEditForm({ ...editForm, status: e.target.value as 'active' | 'inactive' })}
+                                >
+                                  <option value="active">公開</option>
+                                  <option value="inactive">非公開</option>
+                                </select>
                                 <div className="flex space-x-2">
                                   <Button size="sm" onClick={handleSaveEdit}>保存</Button>
                                   <Button size="sm" variant="outline" onClick={handleCancelEdit}>キャンセル</Button>

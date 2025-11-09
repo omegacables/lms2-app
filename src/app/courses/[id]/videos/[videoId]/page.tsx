@@ -294,14 +294,19 @@ export default function VideoPlayerPage() {
         .single();
 
       if (videoError) throw videoError;
+
+      // 非公開動画は管理者のみ視聴可能
+      if (videoData.status !== 'active' && !isAdmin) {
+        throw new Error('この動画は現在公開されていません');
+      }
+
       setVideo(videoData);
 
-      // コース内の全動画を取得
+      // コース内の全動画を取得（非公開も含む）
       const { data: allVideosData, error: allVideosError } = await supabase
         .from('videos')
         .select('*')
         .eq('course_id', courseId)
-        .eq('status', 'active')
         .order('order_index', { ascending: true });
 
       if (allVideosError) throw allVideosError;
@@ -1127,34 +1132,54 @@ export default function VideoPlayerPage() {
               <div>
                 <h3 className="text-lg font-semibold mb-4">このコースの動画</h3>
                 <div className="space-y-2">
-                  {allVideos.map((v, index) => (
-                    <Link
-                      key={v.id}
-                      href={`/courses/${courseId}/videos/${v.id}`}
-                      className={`block p-3 rounded-lg border transition-colors ${
-                        v.id === videoId 
-                          ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200' 
-                          : 'bg-card border-border hover:bg-muted'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm text-muted-foreground">
-                          {index + 1}.
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {v.title}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatTime(v.duration)}
-                          </p>
+                  {allVideos.map((v, index) => {
+                    const isInactive = v.status !== 'active';
+                    const isClickable = !isInactive || isAdmin;
+
+                    return (
+                      <Link
+                        key={v.id}
+                        href={isClickable ? `/courses/${courseId}/videos/${v.id}` : '#'}
+                        onClick={(e) => {
+                          if (!isClickable) {
+                            e.preventDefault();
+                            alert('この動画は現在公開されていません');
+                          }
+                        }}
+                        className={`block p-3 rounded-lg border transition-colors ${
+                          v.id === videoId
+                            ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200'
+                            : isInactive && !isAdmin
+                            ? 'bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700 opacity-60 cursor-not-allowed'
+                            : 'bg-card border-border hover:bg-muted'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm text-muted-foreground">
+                            {index + 1}.
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-medium truncate">
+                                {v.title}
+                              </p>
+                              {isInactive && (
+                                <span className="px-2 py-0.5 text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded">
+                                  非公開
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {formatTime(v.duration)}
+                            </p>
+                          </div>
+                          {v.id === videoId && (
+                            <div className="w-2 h-2 bg-blue-600 rounded-full" />
+                          )}
                         </div>
-                        {v.id === videoId && (
-                          <div className="w-2 h-2 bg-blue-600 rounded-full" />
-                        )}
-                      </div>
-                    </Link>
-                  ))}
+                      </Link>
+                    );
+                  })}
                 </div>
               </div>
             </div>
