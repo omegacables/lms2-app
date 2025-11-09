@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
         order_index,
         status,
         created_at,
-        videos!inner(count)
+        videos(count)
       `)
       .eq('status', status)
       .order('order_index', { ascending: true })
