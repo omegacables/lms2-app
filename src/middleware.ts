@@ -112,14 +112,38 @@ export async function middleware(req: NextRequest) {
         let isAdmin = false;
 
         if (user) {
-          const { data: profile } = await supabase
-            .from('user_profiles')
-            .select('role')
-            .eq('id', user.id)
-            .maybeSingle();
+          // まずJWTのメタデータからroleを取得
+          const roleFromMetadata = user.app_metadata?.role || user.user_metadata?.role;
 
-          isAdmin = profile?.role === 'admin';
-          console.log('[Middleware] User role:', profile?.role, 'isAdmin:', isAdmin);
+          if (roleFromMetadata) {
+            isAdmin = roleFromMetadata === 'admin';
+            console.log('[Middleware] Role from metadata:', roleFromMetadata, 'isAdmin:', isAdmin);
+          } else {
+            // メタデータにない場合はuser_profilesから取得（service roleを使用）
+            const supabaseServiceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+            const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+            if (supabaseServiceUrl && supabaseServiceKey) {
+              const { createClient } = await import('@supabase/supabase-js');
+              const adminClient = createClient(supabaseServiceUrl, supabaseServiceKey, {
+                auth: {
+                  autoRefreshToken: false,
+                  persistSession: false
+                }
+              });
+
+              const { data: profile } = await adminClient
+                .from('user_profiles')
+                .select('role')
+                .eq('id', user.id)
+                .maybeSingle();
+
+              isAdmin = profile?.role === 'admin';
+              console.log('[Middleware] Role from DB (service role):', profile?.role, 'isAdmin:', isAdmin);
+            } else {
+              console.log('[Middleware] Service role key not available');
+            }
+          }
         } else {
           console.log('[Middleware] No user found');
         }
@@ -128,6 +152,8 @@ export async function middleware(req: NextRequest) {
         if (!isAdmin) {
           console.log('[Middleware] Redirecting to maintenance page');
           return NextResponse.redirect(new URL('/maintenance', req.url));
+        } else {
+          console.log('[Middleware] Admin access granted, bypassing maintenance mode');
         }
       }
     } catch (error) {
