@@ -66,12 +66,11 @@ export default function CourseDetailPage() {
 
       setCourse(courseData);
 
-      // 動画一覧を取得
+      // 動画一覧を取得（非公開動画も含める）
       const { data: videosData, error: videosError } = await supabase
         .from('videos')
         .select('*')
         .eq('course_id', courseId)
-        .eq('status', 'active')
         .order('order_index', { ascending: true });
 
       if (videosError) {

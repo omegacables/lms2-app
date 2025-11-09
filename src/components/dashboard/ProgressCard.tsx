@@ -19,12 +19,11 @@ export function ProgressCard({ courseId, courseName, userId }: ProgressCardProps
   }, [courseId, userId]);
 
   const fetchProgress = async () => {
-    // コースの動画数を取得
+    // コースの動画数を取得（非公開動画も含める）
     const { data: videos } = await supabase
       .from('videos')
       .select('id')
-      .eq('course_id', courseId)
-      .eq('status', 'active');
+      .eq('course_id', courseId);
 
     const total = videos?.length || 0;
     setTotalVideos(total);

@@ -41,12 +41,11 @@ export async function GET(
     // 各コースの進捗を取得
     const coursesWithProgress = await Promise.all(
       (assignedCourses || []).map(async (assignment) => {
-        // コースの動画数を取得
+        // コースの動画数を取得（非公開動画も含める）
         const { data: videos } = await supabase
           .from('videos')
           .select('id')
-          .eq('course_id', assignment.course_id)
-          .eq('status', 'active');
+          .eq('course_id', assignment.course_id);
 
         const totalVideos = videos?.length || 0;
 

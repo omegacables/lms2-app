@@ -96,12 +96,11 @@ export default function MyCoursesPage() {
       const coursesWithProgress = await Promise.all(
         coursesData.map(async (course) => {
           
-          // Get videos for this course
+          // Get videos for this course（非公開動画も含める）
           const { data: videos } = await supabase
             .from('videos')
             .select('*')
-            .eq('course_id', course.id)
-            .eq('status', 'active');
+            .eq('course_id', course.id);
 
           const totalVideos = videos?.length || 0;
 
