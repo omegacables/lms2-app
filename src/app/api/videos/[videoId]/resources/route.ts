@@ -1,9 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createServerSupabaseClient } from '@/lib/database/supabase';
+import { createClient } from '@supabase/supabase-js';
 
 // Supabaseクライアントを認証付きで作成
-async function createAuthenticatedClient() {
+async function createAuthenticatedClient(request?: NextRequest) {
+  // Authorizationヘッダーからトークンを取得
+  if (request) {
+    const authHeader = request.headers.get('authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+      return createClient(supabaseUrl, supabaseAnonKey, {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      });
+    }
+  }
+
+  // Cookieから認証情報を取得
   const cookieStore = await cookies();
   return createServerSupabaseClient(cookieStore);
 }
@@ -18,7 +37,7 @@ export async function GET(
 
     console.log('\u30eaソース取得リクエスト - videoId:', videoId);
 
-    const supabase = await createAuthenticatedClient();
+    const supabase = await createAuthenticatedClient(request);
     const { data, error } = await supabase
       .from('video_resources')
       .select('*')
@@ -80,7 +99,7 @@ export async function POST(
     }
 
     // Supabaseクライアントを作成
-    const supabase = await createAuthenticatedClient();
+    const supabase = await createAuthenticatedClient(request);
 
     // 認証情報を確認
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -88,7 +107,7 @@ export async function POST(
     if (authError || !user) {
       console.error('認証エラー:', authError);
       return NextResponse.json(
-        { error: '認証が必要です', details: authError?.message || 'Not authenticated' },
+        { error: '認証が必要です', details: authError?.message || 'Auth session missing!' },
         { status: 401 }
       );
     }
@@ -197,7 +216,7 @@ export async function PUT(
       );
     }
 
-    const supabase = await createAuthenticatedClient();
+    const supabase = await createAuthenticatedClient(request);
     const { data, error } = await supabase
       .from('video_resources')
       .update(updateData)
@@ -232,7 +251,7 @@ export async function DELETE(
       );
     }
 
-    const supabase = await createAuthenticatedClient();
+    const supabase = await createAuthenticatedClient(request);
     const { error } = await supabase
       .from('video_resources')
       .delete()

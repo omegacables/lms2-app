@@ -83,6 +83,18 @@ export default function EditVideoPage() {
   });
   const [resourceFile, setResourceFile] = useState<File | null>(null);
 
+  // 認証ヘッダーを取得するヘルパー関数
+  const getAuthHeaders = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw new Error('認証セッションが見つかりません');
+    }
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+    };
+  };
+
   useEffect(() => {
     if (videoId) {
       fetchVideo();
@@ -116,7 +128,10 @@ export default function EditVideoPage() {
 
   const fetchResources = async () => {
     try {
-      const response = await fetch(`/api/videos/${videoId}/resources`);
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/videos/${videoId}/resources`, {
+        headers
+      });
       if (response.ok) {
         const { data } = await response.json();
         setResources(data || []);
@@ -267,9 +282,10 @@ export default function EditVideoPage() {
 
       console.log('リソース追加リクエスト:', newResource);
 
+      const headers = await getAuthHeaders();
       const response = await fetch(`/api/videos/${videoId}/resources`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(newResource)
       });
 
@@ -316,8 +332,10 @@ export default function EditVideoPage() {
     if (!confirm('このリソースを削除しますか？')) return;
 
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch(`/api/videos/${videoId}/resources?id=${resourceId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers
       });
 
       if (!response.ok) throw new Error('削除に失敗しました');
