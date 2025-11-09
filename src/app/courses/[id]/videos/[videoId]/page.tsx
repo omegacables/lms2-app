@@ -369,7 +369,23 @@ export default function VideoPlayerPage() {
 
       // リソースを取得
       try {
-        const response = await fetch(`/api/videos/${videoId}/resources`);
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          console.warn('認証セッションがありません');
+        }
+
+        const headers: HeadersInit = {
+          'Content-Type': 'application/json',
+        };
+
+        if (session) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+
+        const response = await fetch(`/api/videos/${videoId}/resources`, {
+          headers
+        });
+
         if (response.ok) {
           const { data: resourcesData } = await response.json();
           console.log('取得したリソース:', resourcesData);
