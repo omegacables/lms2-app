@@ -20,12 +20,11 @@ export async function fetchCoursesOptimized() {
     // コースIDのリストを作成
     const courseIds = courses.map(c => c.id);
 
-    // 一括で動画情報を取得
+    // 一括で動画情報を取得（非公開動画も含める）
     const { data: videos, error: videosError } = await supabase
       .from('videos')
       .select('course_id, duration')
-      .in('course_id', courseIds)
-      .eq('status', 'active');
+      .in('course_id', courseIds);
 
     if (videosError) {
       console.error('動画情報取得エラー:', videosError);
