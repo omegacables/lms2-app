@@ -15,6 +15,11 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
+  // ログインページへのアクセスは常に許可（管理者がログインできるように）
+  if (req.nextUrl.pathname === '/login') {
+    return res;
+  }
+
   // 緊急解除APIへのアクセスは常に許可
   if (req.nextUrl.pathname === '/api/admin/disable-maintenance') {
     return res;
