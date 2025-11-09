@@ -57,7 +57,6 @@ export default function CourseCertificatePage() {
         .from('videos')
         .select('*')
         .eq('course_id', courseId)
-        .eq('status', 'active')
         .order('order_index', { ascending: true });
 
       if (videosError) throw videosError;

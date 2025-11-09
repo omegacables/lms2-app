@@ -748,12 +748,11 @@ export default function VideoPlayerPage() {
     if (!user || !courseId) return;
 
     try {
-      // コース内のすべての動画を取得
+      // コース内のすべての動画を取得（非公開動画も含める）
       const { data: courseVideos, error: videosError } = await supabase
         .from('videos')
         .select('id')
-        .eq('course_id', courseId)
-        .eq('status', 'active');
+        .eq('course_id', courseId);
 
       if (videosError) {
         console.error('動画一覧取得エラー:', videosError);
