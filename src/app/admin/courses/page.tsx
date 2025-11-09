@@ -307,13 +307,25 @@ export default function CoursesPage() {
         return;
       }
 
+      // Supabaseセッションを取得
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session) {
+        throw new Error('認証セッションが見つかりません');
+      }
+
       // APIエンドポイント経由でコースを取得（管理者モード）
       const response = await fetch('/api/courses?admin=true&status=all', {
         credentials: 'include',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
       });
 
       if (!response.ok) {
-        throw new Error('コース取得に失敗しました');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'コース取得に失敗しました');
       }
 
       const data = await response.json();
