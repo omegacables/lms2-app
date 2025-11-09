@@ -102,12 +102,11 @@ export default function DashboardPage() {
         // 各コースの動画情報を取得して総時間を計算
         if (coursesData) {
           for (const course of coursesData) {
-            // コースの動画を取得
+            // コースの動画を取得（非公開動画も含める）
             const { data: videos } = await supabase
               .from("videos")
               .select("duration")
-              .eq("course_id", course.id)
-              .eq("status", "active");
+              .eq("course_id", course.id);
 
             // 動画の総時間を計算（秒）
             // estimated_durationが設定されていればそれを使用、なければ動画の合計時間を使用
