@@ -238,60 +238,34 @@ export default function CourseVideosPage() {
         return;
       }
 
-      // 1. 古いファイルのパスを取得
-      const oldFilePath = video.file_url?.split('/storage/v1/object/public/videos/')[1];
-
-      // 2. 新しいファイルをSupabase Storageに直接アップロード
-      const fileName = `${Date.now()}-${replaceFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-      const filePath = `course-${courseId}/${fileName}`;
-
-      // Supabase Storageに直接アップロード
       setUploadProgress(10);
 
-      const { error: uploadError } = await supabase.storage
-        .from('videos')
-        .upload(filePath, replaceFile, {
-          contentType: replaceFile.type,
-          cacheControl: '3600',
-          upsert: false
-        });
+      // サーバーサイドAPIを使用して動画を置き換え
+      // video_idは変更されないため、既存の学習ログ（viewing_logs）は自動的に保持されます
+      const { data: { session } } = await supabase.auth.getSession();
 
-      if (uploadError) {
-        throw new Error(`アップロードエラー: ${uploadError.message}`);
-      }
+      const formData = new FormData();
+      formData.append('video', replaceFile);
+      formData.append('title', video.title);
+      formData.append('description', video.description || '');
+      formData.append('duration', video.duration.toString());
+      formData.append('order_index', video.order_index.toString());
+
+      setUploadProgress(30);
+
+      const response = await fetch(`/api/courses/${courseId}/videos/${videoId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
+        },
+        body: formData
+      });
 
       setUploadProgress(90);
 
-      // 3. 動画URLを取得
-      const { data: urlData } = supabase.storage
-        .from('videos')
-        .getPublicUrl(filePath);
-
-      // 4. データベースを更新
-      const { data: { session } } = await supabase.auth.getSession();
-
-      const response = await fetch(`/api/videos/${videoId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
-        },
-        body: JSON.stringify({
-          file_url: urlData.publicUrl,
-          file_size: replaceFile.size,
-          mime_type: replaceFile.type,
-        })
-      });
-
       if (!response.ok) {
-        throw new Error('データベース更新に失敗しました');
-      }
-
-      setUploadProgress(98);
-
-      // 5. 古いファイルを削除
-      if (oldFilePath) {
-        await supabase.storage.from('videos').remove([oldFilePath]);
+        const errorData = await response.json();
+        throw new Error(errorData.error || '動画の置き換えに失敗しました');
       }
 
       setUploadProgress(100);
