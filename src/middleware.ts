@@ -15,8 +15,10 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  // ログインページへのアクセスは常に許可（管理者がログインできるように）
-  if (req.nextUrl.pathname === '/login') {
+  // ログインページと認証関連ページへのアクセスは常に許可（管理者がログインできるように）
+  if (req.nextUrl.pathname === '/auth/login' ||
+      req.nextUrl.pathname === '/auth/signup' ||
+      req.nextUrl.pathname === '/auth/reset-password') {
     return res;
   }
 
