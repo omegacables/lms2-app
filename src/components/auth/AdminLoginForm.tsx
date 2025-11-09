@@ -4,29 +4,22 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import { EyeIcon, EyeSlashIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '@/stores/auth';
 import { loginSchema, type LoginFormData } from '@/lib/validation/auth';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
 
-interface LoginFormProps {
+interface AdminLoginFormProps {
   className?: string;
-  redirectTo?: string;
 }
 
-export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormProps) {
+export function AdminLoginForm({ className }: AdminLoginFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { signIn } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-
-  // URLパラメータからredirectToを取得
-  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-  const urlRedirectTo = searchParams?.get('redirectTo') || redirectTo;
-  
-  console.log('[LoginForm] Redirect destination:', urlRedirectTo);
 
   const {
     register,
@@ -37,7 +30,7 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
   });
 
   const onSubmit = async (data: LoginFormData) => {
-    console.log('[LoginForm] Login attempt started');
+    console.log('[AdminLoginForm] Admin login attempt started');
     setError(null);
     setIsLoading(true);
 
@@ -45,36 +38,31 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
       const result = await signIn(data.email, data.password);
 
       if (result.error) {
-        console.error('[LoginForm] Login failed:', result.error);
+        console.error('[AdminLoginForm] Login failed:', result.error);
         setError(result.error);
         setIsLoading(false);
         return;
       }
 
-      console.log('[LoginForm] Login successful, result:', result);
+      console.log('[AdminLoginForm] Login successful, result:', result);
 
-      // ログイン成功後、強制的にリダイレクト
-      // windowオブジェクトを使用して確実にリダイレクトする
+      // ログイン成功後、管理者権限を確認
       const userRole = result.user?.profile?.role;
-      let redirectUrl = urlRedirectTo;
 
-      // URLパラメータが指定されていない場合のデフォルト動作
-      if (!searchParams?.get('redirectTo')) {
-        if (userRole === 'admin') {
-          redirectUrl = '/admin';
-        } else {
-          redirectUrl = '/dashboard';
-        }
+      if (userRole !== 'admin') {
+        setError('管理者権限がありません。一般ユーザーの方は通常のログインページからログインしてください。');
+        setIsLoading(false);
+        // 管理者以外はログアウト
+        return;
       }
 
-      console.log('[LoginForm] Redirecting to:', redirectUrl);
+      console.log('[AdminLoginForm] Admin access confirmed, redirecting to admin panel');
 
-      // window.locationを使用して確実にリダイレクト
-      // React Routerを使わず、ブラウザのネイティブナビゲーションを使用
-      window.location.replace(redirectUrl);
+      // 管理者ページにリダイレクト
+      window.location.replace('/admin');
 
     } catch (err) {
-      console.error('[LoginForm] Unexpected error:', err);
+      console.error('[AdminLoginForm] Unexpected error:', err);
       setError('ログインに失敗しました');
       setIsLoading(false);
     }
@@ -84,11 +72,25 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
     <div className={cn('w-full max-w-md', className)}>
       {/* ヘッダー */}
       <div className="text-center mb-8">
+        <div className="flex justify-center mb-4">
+          <ShieldCheckIcon className="h-16 w-16 text-blue-600" />
+        </div>
         <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          ログイン
+          管理者ログイン
         </h2>
         <p className="text-gray-600 dark:text-gray-400">
-          アカウントにログインして学習を続けましょう
+          管理者専用のログインページです
+        </p>
+      </div>
+
+      {/* 警告メッセージ */}
+      <div className="mb-6 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 p-4">
+        <p className="text-sm text-yellow-800 dark:text-yellow-200">
+          このページは管理者専用です。一般ユーザーの方は{' '}
+          <Link href="/auth/login" className="underline font-medium">
+            こちら
+          </Link>
+          {' '}からログインしてください。
         </p>
       </div>
 
@@ -99,7 +101,7 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
             <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 p-4">
               <div className="flex">
                 <div className="ml-3">
-                  <p className="text-sm text-red-700">{error}</p>
+                  <p className="text-sm text-red-700 dark:text-red-200">{error}</p>
                 </div>
               </div>
             </div>
@@ -108,8 +110,8 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
           <div className="space-y-4">
             <Input
               type="email"
-              label="メールアドレス"
-              placeholder="user@example.com"
+              label="管理者メールアドレス"
+              placeholder="admin@example.com"
               autoComplete="username email"
               error={errors.email?.message}
               {...register('email')}
@@ -145,25 +147,12 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
             loading={isLoading}
             disabled={isSubmitting || isLoading}
           >
-            ログイン
+            管理者としてログイン
           </Button>
         </form>
 
         {/* フッターリンク */}
         <div className="mt-6 text-center space-y-4">
-          {/* 管理者ログインリンク */}
-          <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3">
-            <Link
-              href="/admin/login"
-              className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-500 font-medium flex items-center justify-center gap-2"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-              </svg>
-              管理者の方はこちら
-            </Link>
-          </div>
-
           <Link
             href="/auth/reset-password"
             className="text-sm text-blue-600 hover:text-blue-500"
@@ -172,13 +161,14 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
           </Link>
 
           <div className="text-sm text-gray-600 dark:text-gray-400">
-            アカウントをお持ちでないですか？{' '}
+            一般ユーザーの方は{' '}
             <Link
-              href="/auth/signup"
+              href="/auth/login"
               className="text-blue-600 hover:text-blue-500 font-medium"
             >
-              新規登録
+              通常のログインページ
             </Link>
+            {' '}へ
           </div>
         </div>
       </div>

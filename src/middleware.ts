@@ -15,15 +15,16 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  // ログインページと認証関連ページへのアクセスは常に許可（管理者がログインできるように）
-  if (req.nextUrl.pathname === '/auth/login' ||
-      req.nextUrl.pathname === '/auth/signup' ||
-      req.nextUrl.pathname === '/auth/reset-password') {
+  // 管理者エリア（/admin/*）へのアクセスは常に許可
+  // 管理者ページ内で認証チェックを行うため、middlewareではチェックしない
+  if (req.nextUrl.pathname.startsWith('/admin')) {
     return res;
   }
 
-  // 緊急解除APIへのアクセスは常に許可
-  if (req.nextUrl.pathname === '/api/admin/disable-maintenance') {
+  // ログインページと認証関連ページへのアクセスは常に許可
+  if (req.nextUrl.pathname === '/auth/login' ||
+      req.nextUrl.pathname === '/auth/signup' ||
+      req.nextUrl.pathname === '/auth/reset-password') {
     return res;
   }
 
