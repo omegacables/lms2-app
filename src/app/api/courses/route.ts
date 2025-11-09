@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/database/supabase';
+import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/database/supabase';
 import { cookies } from 'next/headers';
 
 export async function GET(request: NextRequest) {
@@ -17,10 +17,27 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category');
     const difficulty = searchParams.get('difficulty');
     const status = searchParams.get('status') || 'active';
-    const limit = parseInt(searchParams.get('limit') || '20');
+    const limit = parseInt(searchParams.get('limit') || '1000');
     const offset = parseInt(searchParams.get('offset') || '0');
+    const isAdmin = searchParams.get('admin') === 'true';
 
-    let query = supabase
+    // 管理者権限チェック（adminパラメータが指定されている場合）
+    if (isAdmin) {
+      const { data: userProfile } = await supabase
+        .from('user_profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (!userProfile || !['instructor', 'admin'].includes(userProfile.role)) {
+        return NextResponse.json({ error: '管理者権限が必要です' }, { status: 403 });
+      }
+    }
+
+    // 管理者の場合はRLSをバイパスしてすべてのコースを取得
+    const queryClient = isAdmin ? createAdminSupabaseClient() : supabase;
+
+    let query = queryClient
       .from('courses')
       .select(`
         id,
@@ -34,12 +51,20 @@ export async function GET(request: NextRequest) {
         order_index,
         status,
         created_at,
-        videos(count)
+        created_by,
+        updated_at
       `)
-      .eq('status', status)
       .order('order_index', { ascending: true })
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
+
+    // 管理者でない場合はactiveのコースのみ表示
+    if (!isAdmin) {
+      query = query.eq('status', 'active');
+    } else if (status !== 'all') {
+      // 管理者の場合でもstatusフィルタが指定されている場合は適用
+      query = query.eq('status', status);
+    }
 
     if (category) {
       query = query.eq('category', category);
@@ -56,11 +81,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'コース情報の取得に失敗しました' }, { status: 500 });
     }
 
-    // ユーザーの受講状況を取得
+    // コースIDのリストを作成
     const courseIds = courses.map(course => course.id);
-    let userProgress = [];
 
+    // 動画統計情報を取得（管理者の場合は非公開動画も含む）
+    let videoStats = new Map();
     if (courseIds.length > 0) {
+      const { data: videos } = await queryClient
+        .from('videos')
+        .select('course_id, duration')
+        .in('course_id', courseIds);
+
+      videos?.forEach(video => {
+        const stats = videoStats.get(video.course_id) || { count: 0, duration: 0 };
+        stats.count++;
+        stats.duration += video.duration || 0;
+        videoStats.set(video.course_id, stats);
+      });
+    }
+
+    // ユーザーの受講状況を取得（管理者でない場合のみ）
+    let userProgress = [];
+    if (!isAdmin && courseIds.length > 0) {
       const { data: progressData } = await supabase
         .from('user_courses')
         .select('course_id, status, assigned_at')
@@ -70,21 +112,48 @@ export async function GET(request: NextRequest) {
       userProgress = progressData || [];
     }
 
-    // コースに進捗情報を追加
-    const coursesWithProgress = courses.map(course => {
-      const progress = userProgress.find(p => p.course_id === course.id);
-      return {
+    // 受講者数を取得（管理者の場合）
+    let enrollmentStats = new Map();
+    if (isAdmin && courseIds.length > 0) {
+      const { data: enrollments } = await queryClient
+        .from('course_enrollments')
+        .select('course_id')
+        .in('course_id', courseIds);
+
+      enrollments?.forEach(enrollment => {
+        const count = enrollmentStats.get(enrollment.course_id) || 0;
+        enrollmentStats.set(enrollment.course_id, count + 1);
+      });
+    }
+
+    // コースに統計情報を追加
+    const coursesWithStats = courses.map(course => {
+      const videoStat = videoStats.get(course.id) || { count: 0, duration: 0 };
+      const totalDuration = course.estimated_duration || videoStat.duration;
+
+      const result: any = {
         ...course,
-        user_enrollment: progress ? {
+        video_count: videoStat.count,
+        total_duration: totalDuration,
+      };
+
+      // 管理者の場合は受講者数を追加
+      if (isAdmin) {
+        result.enrollment_count = enrollmentStats.get(course.id) || 0;
+      } else {
+        // 一般ユーザーの場合は受講状況を追加
+        const progress = userProgress.find(p => p.course_id === course.id);
+        result.user_enrollment = progress ? {
           status: progress.status,
           assigned_at: progress.assigned_at
-        } : null,
-        video_count: course.videos?.[0]?.count || 0
-      };
+        } : null;
+      }
+
+      return result;
     });
 
     return NextResponse.json({
-      courses: coursesWithProgress,
+      courses: coursesWithStats,
       pagination: {
         offset,
         limit,

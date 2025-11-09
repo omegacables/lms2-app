@@ -8,7 +8,7 @@ import { useAuth } from '@/stores/auth';
 import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { supabase } from '@/lib/database/supabase';
-import { fetchCoursesOptimized, courseCache } from '@/utils/performance';
+import { courseCache } from '@/utils/performance';
 import {
   DndContext,
   closestCenter,
@@ -307,8 +307,17 @@ export default function CoursesPage() {
         return;
       }
 
-      // 最適化されたクエリでコースを取得
-      const processedCourses = await fetchCoursesOptimized();
+      // APIエンドポイント経由でコースを取得（管理者モード）
+      const response = await fetch('/api/courses?admin=true&status=all', {
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('コース取得に失敗しました');
+      }
+
+      const data = await response.json();
+      const processedCourses = data.courses;
 
       // order_indexでソート
       const sortedCourses = (processedCourses as Course[]).sort((a, b) =>
@@ -320,6 +329,7 @@ export default function CoursesPage() {
       setCourses(sortedCourses);
     } catch (error) {
       console.error('コース取得エラー:', error);
+      alert('コースの取得に失敗しました。');
     } finally {
       setLoading(false);
     }
