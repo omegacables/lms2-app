@@ -24,7 +24,9 @@ import {
   AcademicCapIcon,
   FolderIcon,
   LockClosedIcon,
-  LockOpenIcon
+  LockOpenIcon,
+  ChevronDownIcon,
+  ChevronUpIcon
 } from '@heroicons/react/24/outline';
 import {
   CheckCircleIcon as CheckCircleIconSolid,
@@ -87,15 +89,12 @@ export default function AdminUsersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(20);
 
-  // グループ割当モーダル関連
-  const [showGroupModal, setShowGroupModal] = useState(false);
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [selectedUserName, setSelectedUserName] = useState<string>('');
+  // グループ割当関連
+  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [allGroups, setAllGroups] = useState<CourseGroup[]>([]);
-  const [enrolledGroups, setEnrolledGroups] = useState<GroupEnrollment[]>([]);
-  const [selectedGroups, setSelectedGroups] = useState<number[]>([]);
-  const [saving, setSaving] = useState(false);
-  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [userEnrolledGroups, setUserEnrolledGroups] = useState<Map<string, number[]>>(new Map());
+  const [loadingGroups, setLoadingGroups] = useState<Set<string>>(new Set());
+  const [savingGroupChanges, setSavingGroupChanges] = useState<Set<string>>(new Set());
 
   // 管理者チェック
   if (!isAdmin && user) {
@@ -115,7 +114,26 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     fetchUsers();
+    fetchAllGroups();
   }, []);
+
+  // 全グループを取得
+  const fetchAllGroups = async () => {
+    try {
+      const { data: groupsData, error } = await supabase
+        .from('course_groups')
+        .select('id, title, description, is_sequential')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('グループ取得エラー:', error);
+      } else {
+        setAllGroups(groupsData || []);
+      }
+    } catch (error) {
+      console.error('グループ取得エラー:', error);
+    }
+  };
 
   const fetchUsers = async () => {
     try {
@@ -285,45 +303,27 @@ export default function AdminUsersPage() {
     }
   };
 
-  // グループ割当モーダルを開く
-  const handleOpenGroupModal = async (userId: string, userName: string) => {
-    setSelectedUserId(userId);
-    setSelectedUserName(userName);
-    setShowGroupModal(true);
-    setSelectedGroups([]);
-    await fetchGroupsForUser(userId);
+  // トグルを開く/閉じる
+  const handleToggleUser = async (userId: string) => {
+    const newExpanded = new Set(expandedUsers);
+    if (newExpanded.has(userId)) {
+      newExpanded.delete(userId);
+      setExpandedUsers(newExpanded);
+    } else {
+      newExpanded.add(userId);
+      setExpandedUsers(newExpanded);
+      // 初回展開時にグループ情報を取得
+      if (!userEnrolledGroups.has(userId)) {
+        await fetchUserEnrolledGroups(userId);
+      }
+    }
   };
 
-  // グループデータを取得
-  const fetchGroupsForUser = async (userId: string) => {
+  // ユーザーの登録済みグループを取得
+  const fetchUserEnrolledGroups = async (userId: string) => {
     try {
-      setGroupsLoading(true);
+      setLoadingGroups(new Set(loadingGroups).add(userId));
 
-      // 全グループを取得
-      const { data: groupsData, error: groupsError } = await supabase
-        .from('course_groups')
-        .select(`
-          *,
-          items:course_group_items(
-            id,
-            course_id,
-            order_index,
-            course:courses(*)
-          )
-        `)
-        .order('created_at', { ascending: false });
-
-      if (groupsError) {
-        console.error('グループ取得エラー:', groupsError);
-      } else {
-        const sortedGroups = (groupsData || []).map((group: any) => ({
-          ...group,
-          items: group.items?.sort((a: any, b: any) => a.order_index - b.order_index) || []
-        }));
-        setAllGroups(sortedGroups);
-      }
-
-      // ユーザーの登録済みグループを取得
       const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch(`/api/admin/users/${userId}/group-enrollments`, {
         headers: {
@@ -333,82 +333,70 @@ export default function AdminUsersPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setEnrolledGroups(data.data || []);
+        const enrolledGroupIds = (data.data || []).map((e: GroupEnrollment) => e.group_id);
+        setUserEnrolledGroups(new Map(userEnrolledGroups).set(userId, enrolledGroupIds));
       }
     } catch (error) {
-      console.error('グループデータ取得エラー:', error);
+      console.error('グループ取得エラー:', error);
     } finally {
-      setGroupsLoading(false);
+      const newLoading = new Set(loadingGroups);
+      newLoading.delete(userId);
+      setLoadingGroups(newLoading);
     }
   };
 
-  // グループを追加
-  const handleAddGroups = async () => {
-    if (!selectedUserId || selectedGroups.length === 0) return;
-
+  // グループのチェック状態を変更
+  const handleGroupCheckChange = async (userId: string, groupId: number, isChecked: boolean) => {
     try {
-      setSaving(true);
+      setSavingGroupChanges(new Set(savingGroupChanges).add(userId));
       const { data: { session } } = await supabase.auth.getSession();
 
-      const response = await fetch(`/api/admin/users/${selectedUserId}/group-enrollments`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
-        },
-        body: JSON.stringify({ groupIds: selectedGroups }),
-      });
+      if (isChecked) {
+        // グループを追加
+        const response = await fetch(`/api/admin/users/${userId}/group-enrollments`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
+          },
+          body: JSON.stringify({ groupIds: [groupId] }),
+        });
 
-      const data = await response.json();
-
-      if (response.ok) {
-        alert(`${data.enrolled || 0}件のグループを割り当てました`);
-        setSelectedGroups([]);
-        await fetchGroupsForUser(selectedUserId);
+        if (response.ok) {
+          // 成功したら状態を更新
+          const currentEnrolled = userEnrolledGroups.get(userId) || [];
+          setUserEnrolledGroups(new Map(userEnrolledGroups).set(userId, [...currentEnrolled, groupId]));
+        } else {
+          const data = await response.json();
+          alert(`エラー: ${data.error || '割り当てに失敗しました'}`);
+        }
       } else {
-        alert(`エラー: ${data.error || '割り当てに失敗しました'}`);
+        // グループを解除
+        const response = await fetch(`/api/admin/users/${userId}/group-enrollments`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
+          },
+          body: JSON.stringify({ groupId }),
+        });
+
+        if (response.ok) {
+          // 成功したら状態を更新
+          const currentEnrolled = userEnrolledGroups.get(userId) || [];
+          setUserEnrolledGroups(new Map(userEnrolledGroups).set(userId, currentEnrolled.filter(id => id !== groupId)));
+        } else {
+          const data = await response.json();
+          alert(`エラー: ${data.error || '解除に失敗しました'}`);
+        }
       }
     } catch (error) {
-      console.error('グループ追加エラー:', error);
-      alert('グループ追加中にエラーが発生しました');
+      console.error('グループ変更エラー:', error);
+      alert('グループ変更中にエラーが発生しました');
     } finally {
-      setSaving(false);
-    }
-  };
-
-  // グループを解除
-  const handleRemoveGroup = async (groupId: number, groupTitle: string) => {
-    if (!selectedUserId) return;
-    if (!confirm(`「${groupTitle}」の割り当てを解除しますか？\n\n※視聴履歴は削除されません`)) {
-      return;
-    }
-
-    try {
-      setSaving(true);
-      const { data: { session } } = await supabase.auth.getSession();
-
-      const response = await fetch(`/api/admin/users/${selectedUserId}/group-enrollments`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
-        },
-        body: JSON.stringify({ groupId }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        alert('グループ割り当てを解除しました');
-        await fetchGroupsForUser(selectedUserId);
-      } else {
-        alert(`エラー: ${data.error || '解除に失敗しました'}`);
-      }
-    } catch (error) {
-      console.error('グループ削除エラー:', error);
-      alert('グループ解除中にエラーが発生しました');
-    } finally {
-      setSaving(false);
+      const newSaving = new Set(savingGroupChanges);
+      newSaving.delete(userId);
+      setSavingGroupChanges(newSaving);
     }
   };
 
@@ -726,9 +714,13 @@ export default function AdminUsersPage() {
                             variant="outline"
                             size="sm"
                             title="コース割当"
-                            onClick={() => handleOpenGroupModal(user.id, user.display_name || user.email || '')}
+                            onClick={() => handleToggleUser(user.id)}
                           >
-                            <FolderIcon className="h-4 w-4" />
+                            {expandedUsers.has(user.id) ? (
+                              <ChevronUpIcon className="h-4 w-4" />
+                            ) : (
+                              <ChevronDownIcon className="h-4 w-4" />
+                            )}
                           </Button>
                           <Link href={`/admin/users/${user.id}`}>
                             <Button variant="outline" size="sm" title="詳細">
@@ -752,6 +744,84 @@ export default function AdminUsersPage() {
                         </div>
                       </td>
                     </tr>
+
+                    {/* グループ割当展開エリア */}
+                    {expandedUsers.has(user.id) && (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-4 bg-gray-50 dark:bg-neutral-800">
+                          <div className="max-w-4xl">
+                            <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center">
+                              <FolderIcon className="h-4 w-4 mr-2" />
+                              コースグループ割当
+                            </h4>
+
+                            {loadingGroups.has(user.id) ? (
+                              <div className="flex items-center justify-center py-8">
+                                <LoadingSpinner size="md" />
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {allGroups.length === 0 ? (
+                                  <div className="col-span-2 text-center py-6 text-gray-500 dark:text-gray-400">
+                                    <p>利用可能なグループがありません</p>
+                                  </div>
+                                ) : (
+                                  allGroups.map((group) => {
+                                    const isEnrolled = userEnrolledGroups.get(user.id)?.includes(group.id) || false;
+                                    const isSaving = savingGroupChanges.has(user.id);
+
+                                    return (
+                                      <label
+                                        key={group.id}
+                                        className={`
+                                          flex items-start p-3 border rounded-lg cursor-pointer transition-all
+                                          ${isEnrolled
+                                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                                            : 'border-gray-200 dark:border-neutral-700 hover:border-gray-300 dark:hover:border-neutral-600'
+                                          }
+                                          ${isSaving ? 'opacity-50 cursor-wait' : ''}
+                                        `}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={isEnrolled}
+                                          onChange={(e) => handleGroupCheckChange(user.id, group.id, e.target.checked)}
+                                          disabled={isSaving}
+                                          className="mt-1 h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
+                                        />
+                                        <div className="ml-3 flex-1 min-w-0">
+                                          <div className="flex items-center gap-2">
+                                            <h5 className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+                                              {group.title}
+                                            </h5>
+                                            {group.is_sequential ? (
+                                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300">
+                                                <LockClosedIcon className="h-2.5 w-2.5 mr-0.5" />
+                                                順次
+                                              </span>
+                                            ) : (
+                                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
+                                                <LockOpenIcon className="h-2.5 w-2.5 mr-0.5" />
+                                                自由
+                                              </span>
+                                            )}
+                                          </div>
+                                          {group.description && (
+                                            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">
+                                              {group.description}
+                                            </p>
+                                          )}
+                                        </div>
+                                      </label>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                   ))}
                 </tbody>
               </table>
@@ -781,270 +851,6 @@ export default function AdminUsersPage() {
                 >
                   次へ
                 </Button>
-              </div>
-            </div>
-          )}
-
-          {/* グループ割当モーダル */}
-          {showGroupModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-              <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden">
-                <div className="p-6 border-b border-gray-200 dark:border-neutral-800">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                        グループ割当 - {selectedUserName}
-                      </h2>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                        コースグループを割り当てて学習コンテンツを管理します
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setShowGroupModal(false)}
-                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-                    >
-                      <XCircleIcon className="h-6 w-6" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
-                  {groupsLoading ? (
-                    <div className="flex justify-center items-center py-12">
-                      <LoadingSpinner size="lg" />
-                    </div>
-                  ) : (
-                    <>
-                      {/* 登録済みグループ */}
-                      <div className="mb-8">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                          登録済みグループ ({enrolledGroups.length})
-                        </h3>
-
-                        {enrolledGroups.length === 0 ? (
-                          <div className="text-center py-8 bg-gray-50 dark:bg-neutral-800 rounded-lg">
-                            <FolderIcon className="mx-auto h-12 w-12 text-gray-400 mb-2" />
-                            <p className="text-gray-500 dark:text-gray-400">
-                              まだグループが割り当てられていません
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="space-y-4">
-                            {enrolledGroups.map((enrollment) => (
-                              <div
-                                key={enrollment.id}
-                                className="border border-gray-200 dark:border-neutral-700 rounded-lg overflow-hidden"
-                              >
-                                <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 p-4">
-                                  <div className="flex items-start justify-between">
-                                    <div className="flex-1">
-                                      <div className="flex items-center gap-2 mb-2">
-                                        <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
-                                          {enrollment.group.title}
-                                        </h4>
-                                        {enrollment.group.is_sequential ? (
-                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300">
-                                            <LockClosedIcon className="h-3 w-3 mr-1" />
-                                            順次アンロック
-                                          </span>
-                                        ) : (
-                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
-                                            <LockOpenIcon className="h-3 w-3 mr-1" />
-                                            自由受講
-                                          </span>
-                                        )}
-                                      </div>
-                                      {enrollment.group.description && (
-                                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                                          {enrollment.group.description}
-                                        </p>
-                                      )}
-                                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                                        {enrollment.group.items?.length || 0}件のコース
-                                      </div>
-                                    </div>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => handleRemoveGroup(enrollment.group_id, enrollment.group.title)}
-                                      disabled={saving}
-                                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                    >
-                                      <TrashIcon className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                </div>
-
-                                {/* コース一覧 */}
-                                {enrollment.group.items && enrollment.group.items.length > 0 && (
-                                  <div className="p-4 bg-white dark:bg-neutral-900">
-                                    <div className="space-y-2">
-                                      {enrollment.group.items.map((item, index) => (
-                                        <div
-                                          key={item.id}
-                                          className={`
-                                            flex items-center gap-3 p-3 rounded-lg transition-colors
-                                            ${item.isUnlocked
-                                              ? 'bg-white dark:bg-neutral-800'
-                                              : 'bg-gray-50 dark:bg-neutral-800/50'
-                                            }
-                                          `}
-                                        >
-                                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 dark:bg-neutral-700 flex items-center justify-center text-sm font-semibold">
-                                            {index + 1}
-                                          </div>
-                                          <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2">
-                                              <h5 className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                                                {item.course.title}
-                                              </h5>
-                                              {!item.isUnlocked && (
-                                                <div className="flex items-center px-2 py-1 bg-gray-200 dark:bg-neutral-700 rounded-full">
-                                                  <LockClosedIconSolid className="h-3 w-3 text-gray-500 dark:text-gray-400 mr-1" />
-                                                  <span className="text-xs text-gray-600 dark:text-gray-300">ロック中</span>
-                                                </div>
-                                              )}
-                                              {item.isCompleted && (
-                                                <div className="flex items-center px-2 py-1 bg-green-100 dark:bg-green-900/30 rounded-full">
-                                                  <CheckCircleIconSolid className="h-3 w-3 text-green-600 dark:text-green-400 mr-1" />
-                                                  <span className="text-xs text-green-700 dark:text-green-300">完了</span>
-                                                </div>
-                                              )}
-                                            </div>
-                                            <div className="mt-1 flex items-center gap-2">
-                                              <div className="flex-1 bg-gray-200 dark:bg-neutral-700 rounded-full h-2">
-                                                <div
-                                                  className={`h-2 rounded-full transition-all ${
-                                                    item.isCompleted
-                                                      ? 'bg-green-500'
-                                                      : 'bg-blue-500'
-                                                  }`}
-                                                  style={{ width: `${item.progress || 0}%` }}
-                                                />
-                                              </div>
-                                              <span className="text-xs text-gray-500 dark:text-gray-400 font-medium min-w-[3rem] text-right">
-                                                {item.progress || 0}%
-                                              </span>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* グループ追加セクション */}
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                          グループを追加
-                        </h3>
-
-                        {allGroups.filter(group => !enrolledGroups.some(e => e.group_id === group.id)).length === 0 ? (
-                          <div className="text-center py-8 bg-gray-50 dark:bg-neutral-800 rounded-lg">
-                            <CheckCircleIconSolid className="mx-auto h-12 w-12 text-green-400 mb-2" />
-                            <p className="text-gray-500 dark:text-gray-400">
-                              すべてのグループが既に割り当てられています
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="space-y-3">
-                            {allGroups
-                              .filter(group => !enrolledGroups.some(e => e.group_id === group.id))
-                              .map((group) => (
-                                <label
-                                  key={group.id}
-                                  className={`
-                                    flex items-start p-4 border-2 rounded-lg cursor-pointer transition-all
-                                    ${selectedGroups.includes(group.id)
-                                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                                      : 'border-gray-200 dark:border-neutral-700 hover:border-gray-300 dark:hover:border-neutral-600'
-                                    }
-                                  `}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedGroups.includes(group.id)}
-                                    onChange={(e) => {
-                                      if (e.target.checked) {
-                                        setSelectedGroups([...selectedGroups, group.id]);
-                                      } else {
-                                        setSelectedGroups(selectedGroups.filter(id => id !== group.id));
-                                      }
-                                    }}
-                                    className="mt-1 h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
-                                  />
-                                  <div className="ml-3 flex-1">
-                                    <div className="flex items-start justify-between">
-                                      <div className="flex-1">
-                                        <h3 className="font-semibold text-gray-900 dark:text-white">
-                                          {group.title}
-                                        </h3>
-                                        {group.description && (
-                                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                                            {group.description}
-                                          </p>
-                                        )}
-                                        <div className="flex items-center gap-3 mt-2">
-                                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                                            {group.items?.length || 0}件のコース
-                                          </span>
-                                          {group.is_sequential ? (
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300">
-                                              <LockClosedIcon className="h-3 w-3 mr-1" />
-                                              順次アンロック
-                                            </span>
-                                          ) : (
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
-                                              <LockOpenIcon className="h-3 w-3 mr-1" />
-                                              自由受講
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </label>
-                              ))}
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                <div className="p-6 border-t border-gray-200 dark:border-neutral-800 bg-gray-50 dark:bg-neutral-800/50">
-                  <div className="flex justify-between items-center">
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      {selectedGroups.length > 0 ? (
-                        <span className="font-semibold text-blue-600 dark:text-blue-400">
-                          {selectedGroups.length}件のグループを選択中
-                        </span>
-                      ) : (
-                        'グループを選択してください'
-                      )}
-                    </p>
-                    <div className="flex gap-3">
-                      <Button
-                        onClick={() => setShowGroupModal(false)}
-                        variant="secondary"
-                        disabled={saving}
-                      >
-                        閉じる
-                      </Button>
-                      <Button
-                        onClick={handleAddGroups}
-                        disabled={selectedGroups.length === 0 || saving}
-                      >
-                        {saving ? '追加中...' : `${selectedGroups.length}件のグループを追加`}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
           )}
