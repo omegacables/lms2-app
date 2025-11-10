@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -97,8 +97,12 @@ interface GroupEnrollment {
 export default function StudentCoursesPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, isAdmin } = useAuth();
-  const [activeTab, setActiveTab] = useState<'courses' | 'groups'>('courses');
+
+  // URLパラメータからタブを判定（デフォルトは 'courses'）
+  const initialTab = (searchParams.get('tab') === 'groups' ? 'groups' : 'courses') as 'courses' | 'groups';
+  const [activeTab, setActiveTab] = useState<'courses' | 'groups'>(initialTab);
   const [student, setStudent] = useState<StudentInfo | null>(null);
   const [allCourses, setAllCourses] = useState<Course[]>([]);
   const [assignedCourses, setAssignedCourses] = useState<AssignedCourse[]>([]);

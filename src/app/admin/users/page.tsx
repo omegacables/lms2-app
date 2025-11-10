@@ -9,7 +9,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { supabase } from '@/lib/database/supabase';
-import { 
+import {
   UsersIcon,
   MagnifyingGlassIcon,
   AdjustmentsHorizontalIcon,
@@ -21,7 +21,8 @@ import {
   XCircleIcon,
   UserIcon,
   ShieldCheckIcon,
-  AcademicCapIcon
+  AcademicCapIcon,
+  FolderIcon
 } from '@heroicons/react/24/outline';
 import type { Tables } from '@/lib/database/supabase';
 
@@ -542,13 +543,18 @@ export default function AdminUsersPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex justify-end space-x-2">
+                          <Link href={`/admin/users/${user.id}/courses?tab=groups`}>
+                            <Button variant="outline" size="sm" title="コース割当">
+                              <FolderIcon className="h-4 w-4" />
+                            </Button>
+                          </Link>
                           <Link href={`/admin/users/${user.id}`}>
-                            <Button variant="outline" size="sm">
+                            <Button variant="outline" size="sm" title="詳細">
                               <EyeIcon className="h-4 w-4" />
                             </Button>
                           </Link>
                           <Link href={`/admin/users/${user.id}/edit`}>
-                            <Button variant="outline" size="sm">
+                            <Button variant="outline" size="sm" title="編集">
                               <PencilIcon className="h-4 w-4" />
                             </Button>
                           </Link>
@@ -557,6 +563,7 @@ export default function AdminUsersPage() {
                             size="sm"
                             onClick={() => handleDeleteUser(user.id, user.display_name || user.email || '')}
                             className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            title="削除"
                           >
                             <TrashIcon className="h-4 w-4" />
                           </Button>
