@@ -18,10 +18,14 @@ import {
   XCircleIcon,
   ExclamationTriangleIcon,
   ClockIcon,
-  BookOpenIcon
+  BookOpenIcon,
+  FolderIcon,
+  LockClosedIcon,
+  LockOpenIcon
 } from '@heroicons/react/24/outline';
 import {
-  CheckCircleIcon as CheckCircleIconSolid
+  CheckCircleIcon as CheckCircleIconSolid,
+  LockClosedIcon as LockClosedIconSolid
 } from '@heroicons/react/24/solid';
 
 interface Course {
@@ -63,11 +67,38 @@ interface StudentInfo {
   department?: string;
 }
 
+interface CourseGroup {
+  id: number;
+  title: string;
+  description: string | null;
+  is_sequential: boolean;
+  items?: Array<{
+    id: number;
+    course_id: number;
+    order_index: number;
+    progress?: number;
+    isCompleted?: boolean;
+    isUnlocked?: boolean;
+    course: Course;
+  }>;
+}
+
+interface GroupEnrollment {
+  id: number;
+  user_id: string;
+  group_id: number;
+  enrolled_at: string;
+  enrolled_by: string | null;
+  group: CourseGroup;
+  enrolled_by_user?: { display_name: string };
+}
+
 
 export default function StudentCoursesPage() {
   const params = useParams();
   const router = useRouter();
   const { user, isAdmin } = useAuth();
+  const [activeTab, setActiveTab] = useState<'courses' | 'groups'>('courses');
   const [student, setStudent] = useState<StudentInfo | null>(null);
   const [allCourses, setAllCourses] = useState<Course[]>([]);
   const [assignedCourses, setAssignedCourses] = useState<AssignedCourse[]>([]);
@@ -76,13 +107,22 @@ export default function StudentCoursesPage() {
   const [selectedCourses, setSelectedCourses] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
 
+  // グループ関連のstate
+  const [allGroups, setAllGroups] = useState<CourseGroup[]>([]);
+  const [enrolledGroups, setEnrolledGroups] = useState<GroupEnrollment[]>([]);
+  const [showAddGroupModal, setShowAddGroupModal] = useState(false);
+  const [selectedGroups, setSelectedGroups] = useState<number[]>([]);
+
   const studentId = params.id as string;
 
   useEffect(() => {
     if (studentId && isAdmin) {
       fetchData();
+      if (activeTab === 'groups') {
+        fetchGroupData();
+      }
     }
-  }, [studentId, isAdmin]);
+  }, [studentId, isAdmin, activeTab]);
 
   const fetchData = async () => {
     try {
@@ -135,6 +175,58 @@ export default function StudentCoursesPage() {
       }
     } catch (error) {
       console.error('割り当てコース取得エラー:', error);
+    }
+  };
+
+  const fetchGroupData = async () => {
+    try {
+      setLoading(true);
+
+      // 全グループを取得
+      const { data: groupsData, error: groupsError } = await supabase
+        .from('course_groups')
+        .select(`
+          *,
+          items:course_group_items(
+            id,
+            course_id,
+            order_index,
+            course:courses(*)
+          )
+        `)
+        .order('title');
+
+      if (!groupsError && groupsData) {
+        // グループ内のアイテムをorder_indexでソート
+        const sortedGroups = groupsData.map(group => ({
+          ...group,
+          items: group.items?.sort((a: any, b: any) => a.order_index - b.order_index) || []
+        }));
+        setAllGroups(sortedGroups);
+      }
+
+      // ユーザーに割り当て済みのグループを取得
+      await fetchEnrolledGroups();
+
+    } catch (error) {
+      console.error('グループデータ取得エラー:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchEnrolledGroups = async () => {
+    try {
+      const response = await fetch(`/api/admin/users/${studentId}/group-enrollments`);
+      const data = await response.json();
+
+      if (data.success) {
+        setEnrolledGroups(data.data || []);
+      } else {
+        console.error('Failed to fetch enrolled groups:', data.error);
+      }
+    } catch (error) {
+      console.error('登録グループ取得エラー:', error);
     }
   };
 
@@ -200,6 +292,68 @@ export default function StudentCoursesPage() {
     } catch (error) {
       console.error('コース解除エラー:', error);
       alert('コースの解除に失敗しました');
+    }
+  };
+
+  const handleAddGroups = async () => {
+    if (selectedGroups.length === 0) {
+      alert('グループを選択してください');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/admin/users/${studentId}/group-enrollments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ groupIds: selectedGroups })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        await fetchEnrolledGroups();
+        setShowAddGroupModal(false);
+        setSelectedGroups([]);
+        alert(`${data.enrolled}件のグループを割り当てました`);
+      } else {
+        alert(data.error || 'グループの割り当てに失敗しました');
+      }
+    } catch (error) {
+      console.error('グループ割り当てエラー:', error);
+      alert('グループの割り当てに失敗しました');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemoveGroup = async (groupId: number) => {
+    if (!confirm('このグループの割り当てを解除しますか？（コースの視聴履歴は保持されます）')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/users/${studentId}/group-enrollments`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ groupId })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        await fetchEnrolledGroups();
+        alert('グループの割り当てを解除しました');
+      } else {
+        alert(data.error || 'グループの解除に失敗しました');
+      }
+    } catch (error) {
+      console.error('グループ解除エラー:', error);
+      alert('グループの解除に失敗しました');
     }
   };
 
@@ -310,16 +464,57 @@ export default function StudentCoursesPage() {
                 </div>
                 <div>
                   <h1 className="text-3xl font-bold text-gray-900 dark:text-white">コース管理</h1>
-                  <p className="text-gray-600 dark:text-gray-400">{student.display_name}のコース割り当て</p>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    {student.display_name}の
+                    {activeTab === 'courses' ? 'コース割り当て' : 'グループ割り当て'}
+                  </p>
                 </div>
               </div>
-              <Button 
-                onClick={() => setShowAddModal(true)}
-                className="flex items-center"
-              >
-                <PlusIcon className="h-4 w-4 mr-2" />
-                コースを追加
-              </Button>
+              {activeTab === 'courses' ? (
+                <Button
+                  onClick={() => setShowAddModal(true)}
+                  className="flex items-center"
+                >
+                  <PlusIcon className="h-4 w-4 mr-2" />
+                  コースを追加
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => setShowAddGroupModal(true)}
+                  className="flex items-center"
+                >
+                  <PlusIcon className="h-4 w-4 mr-2" />
+                  グループを追加
+                </Button>
+              )}
+            </div>
+
+            {/* Tabs */}
+            <div className="border-b border-gray-200 dark:border-neutral-800 mb-6">
+              <nav className="flex space-x-8" aria-label="Tabs">
+                <button
+                  onClick={() => setActiveTab('courses')}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'courses'
+                      ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                  }`}
+                >
+                  <AcademicCapIcon className="h-5 w-5 inline-block mr-2" />
+                  個別コース割当
+                </button>
+                <button
+                  onClick={() => setActiveTab('groups')}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'groups'
+                      ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                  }`}
+                >
+                  <FolderIcon className="h-5 w-5 inline-block mr-2" />
+                  グループ割当（アンロック機能）
+                </button>
+              </nav>
             </div>
           </div>
 
@@ -340,18 +535,27 @@ export default function StudentCoursesPage() {
                   <span className="ml-2 font-medium">{student.company}</span>
                 </div>
               )}
-              <div>
-                <span className="text-sm text-gray-500 dark:text-gray-400">割当コース数:</span>
-                <span className="ml-2 font-medium text-indigo-600">{assignedCourses.length}件</span>
-              </div>
+              {activeTab === 'courses' ? (
+                <div>
+                  <span className="text-sm text-gray-500 dark:text-gray-400">割当コース数:</span>
+                  <span className="ml-2 font-medium text-indigo-600">{assignedCourses.length}件</span>
+                </div>
+              ) : (
+                <div>
+                  <span className="text-sm text-gray-500 dark:text-gray-400">割当グループ数:</span>
+                  <span className="ml-2 font-medium text-indigo-600">{enrolledGroups.length}件</span>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Assigned Courses */}
-          <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800">
-            <div className="p-6 border-b border-gray-200 dark:border-neutral-800">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">割り当て済みコース</h2>
-            </div>
+          {/* Tab Content */}
+          {activeTab === 'courses' ? (
+            /* Assigned Courses */
+            <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800">
+              <div className="p-6 border-b border-gray-200 dark:border-neutral-800">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">割り当て済みコース</h2>
+              </div>
             
             {assignedCourses.length === 0 ? (
               <div className="p-12 text-center">
@@ -428,7 +632,137 @@ export default function StudentCoursesPage() {
                 ))}
               </div>
             )}
-          </div>
+            </div>
+          ) : (
+            /* Enrolled Groups */
+            <div className="space-y-6">
+              {enrolledGroups.length === 0 ? (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-12 text-center">
+                  <FolderIcon className="h-12 w-12 text-blue-600 dark:text-blue-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-blue-900 dark:text-blue-300 mb-2">
+                    グループが割り当てられていません
+                  </h3>
+                  <p className="text-blue-800 dark:text-blue-400 mb-6">
+                    上のボタンからグループを追加してください
+                  </p>
+                </div>
+              ) : (
+                enrolledGroups.map((enrollment) => (
+                  <div key={enrollment.id} className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 overflow-hidden">
+                    {/* Group Header */}
+                    <div className="bg-gradient-to-br from-purple-500 to-indigo-600 p-6">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center">
+                          <FolderIcon className="h-8 w-8 text-white opacity-80 mr-3" />
+                          <div>
+                            <h3 className="text-xl font-semibold text-white">{enrollment.group.title}</h3>
+                            {enrollment.group.description && (
+                              <p className="text-white/80 text-sm mt-1">{enrollment.group.description}</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          {enrollment.group.is_sequential ? (
+                            <div className="flex items-center px-3 py-1 bg-white/20 rounded-full text-sm text-white">
+                              <LockClosedIcon className="h-4 w-4 mr-1" />
+                              順次アンロック
+                            </div>
+                          ) : (
+                            <div className="flex items-center px-3 py-1 bg-white/20 rounded-full text-sm text-white">
+                              <LockOpenIcon className="h-4 w-4 mr-1" />
+                              自由受講
+                            </div>
+                          )}
+                          <button
+                            onClick={() => handleRemoveGroup(enrollment.group_id)}
+                            className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
+                          >
+                            <TrashIcon className="h-5 w-5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Group Courses */}
+                    <div className="p-6">
+                      {enrollment.group.items && enrollment.group.items.length > 0 ? (
+                        <div className="space-y-4">
+                          {enrollment.group.items.map((item, index) => (
+                            <div
+                              key={item.id}
+                              className={`border rounded-lg p-4 ${
+                                item.isUnlocked
+                                  ? 'border-gray-200 dark:border-neutral-800'
+                                  : 'border-gray-300 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800/50'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between">
+                                <div className="flex items-start flex-1">
+                                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center mr-3">
+                                    <span className="text-indigo-600 dark:text-indigo-400 font-semibold text-sm">
+                                      {index + 1}
+                                    </span>
+                                  </div>
+                                  <div className="flex-1">
+                                    <div className="flex items-center space-x-3 mb-2">
+                                      <h4 className="font-medium text-gray-900 dark:text-white">
+                                        {item.course.title}
+                                      </h4>
+                                      {!item.isUnlocked && (
+                                        <div className="flex items-center px-2 py-1 bg-gray-200 dark:bg-neutral-700 rounded-full text-xs text-gray-700 dark:text-gray-300">
+                                          <LockClosedIconSolid className="h-3 w-3 mr-1" />
+                                          ロック中
+                                        </div>
+                                      )}
+                                      {item.isCompleted && (
+                                        <div className="flex items-center px-2 py-1 bg-green-100 dark:bg-green-900/30 rounded-full text-xs text-green-800 dark:text-green-400">
+                                          <CheckCircleIconSolid className="h-3 w-3 mr-1" />
+                                          完了
+                                        </div>
+                                      )}
+                                    </div>
+                                    {item.course.description && (
+                                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                                        {item.course.description}
+                                      </p>
+                                    )}
+                                    {item.progress !== undefined && (
+                                      <div className="mt-2">
+                                        <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 mb-1">
+                                          <span>進捗率</span>
+                                          <span>{item.progress}%</span>
+                                        </div>
+                                        <div className="bg-gray-200 dark:bg-neutral-700 rounded-full h-2">
+                                          <div
+                                            className={`rounded-full h-2 transition-all ${
+                                              item.isCompleted
+                                                ? 'bg-green-500'
+                                                : item.progress > 0
+                                                ? 'bg-blue-500'
+                                                : 'bg-gray-300 dark:bg-neutral-600'
+                                            }`}
+                                            style={{ width: `${item.progress}%` }}
+                                          />
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-gray-500 dark:text-gray-400 text-center py-4">
+                          このグループにはコースがありません
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
 
           {/* Add Course Modal */}
           {showAddModal && (
@@ -516,6 +850,128 @@ export default function StudentCoursesPage() {
                   >
                     {saving ? '追加中...' : `${selectedCourses.length}件のコースを追加`}
                   </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* グループ追加モーダル */}
+          {showAddGroupModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden">
+                <div className="p-6 border-b border-gray-200 dark:border-neutral-800">
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">グループを追加</h2>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                    追加するコースグループを選択してください
+                  </p>
+                </div>
+
+                <div className="p-6 overflow-y-auto max-h-[60vh]">
+                  {allGroups.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                      <FolderIcon className="mx-auto h-12 w-12 mb-2 opacity-50" />
+                      <p>利用可能なグループがありません</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {allGroups
+                        .filter(group => !enrolledGroups.some(e => e.group_id === group.id))
+                        .map((group) => (
+                          <label
+                            key={group.id}
+                            className={`
+                              flex items-start p-4 border-2 rounded-lg cursor-pointer transition-all
+                              ${selectedGroups.includes(group.id)
+                                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                                : 'border-gray-200 dark:border-neutral-700 hover:border-gray-300 dark:hover:border-neutral-600'
+                              }
+                            `}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedGroups.includes(group.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedGroups([...selectedGroups, group.id]);
+                                } else {
+                                  setSelectedGroups(selectedGroups.filter(id => id !== group.id));
+                                }
+                              }}
+                              className="mt-1 h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
+                            />
+                            <div className="ml-3 flex-1">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <h3 className="font-semibold text-gray-900 dark:text-white">
+                                    {group.title}
+                                  </h3>
+                                  {group.description && (
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                      {group.description}
+                                    </p>
+                                  )}
+                                  <div className="flex items-center gap-3 mt-2">
+                                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                                      {group.items?.length || 0}件のコース
+                                    </span>
+                                    {group.is_sequential ? (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300">
+                                        <LockClosedIcon className="h-3 w-3 mr-1" />
+                                        順次アンロック
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
+                                        <LockOpenIcon className="h-3 w-3 mr-1" />
+                                        自由受講
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </label>
+                        ))}
+
+                      {allGroups.filter(group => !enrolledGroups.some(e => e.group_id === group.id)).length === 0 && (
+                        <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                          <CheckCircleIcon className="mx-auto h-12 w-12 mb-2 opacity-50" />
+                          <p>すべてのグループが既に割り当てられています</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-6 border-t border-gray-200 dark:border-neutral-800 bg-gray-50 dark:bg-neutral-800/50">
+                  <div className="flex justify-between items-center">
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      {selectedGroups.length > 0 ? (
+                        <span className="font-semibold text-blue-600 dark:text-blue-400">
+                          {selectedGroups.length}件のグループを選択中
+                        </span>
+                      ) : (
+                        'グループを選択してください'
+                      )}
+                    </p>
+                    <div className="flex gap-3">
+                      <Button
+                        onClick={() => {
+                          setShowAddGroupModal(false);
+                          setSelectedGroups([]);
+                        }}
+                        variant="secondary"
+                        disabled={saving}
+                      >
+                        キャンセル
+                      </Button>
+                      <Button
+                        onClick={handleAddGroups}
+                        disabled={selectedGroups.length === 0 || saving}
+                      >
+                        {saving ? '追加中...' : `${selectedGroups.length}件のグループを追加`}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
