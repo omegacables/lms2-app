@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -635,8 +635,9 @@ export default function AdminUsersPage() {
                 </thead>
                 <tbody className="bg-white dark:bg-neutral-900 divide-y divide-gray-200">
                   {paginatedUsers.map((user) => (
-                    <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                      <td className="px-6 py-4 whitespace-nowrap">
+                    <React.Fragment key={user.id}>
+                      <tr className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
                             {user.avatar_url ? (
@@ -822,6 +823,7 @@ export default function AdminUsersPage() {
                         </td>
                       </tr>
                     )}
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>
