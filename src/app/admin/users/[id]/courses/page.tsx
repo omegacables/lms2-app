@@ -67,33 +67,6 @@ interface StudentInfo {
   department?: string;
 }
 
-interface CourseGroup {
-  id: number;
-  title: string;
-  description: string | null;
-  is_sequential: boolean;
-  items?: Array<{
-    id: number;
-    course_id: number;
-    order_index: number;
-    progress?: number;
-    isCompleted?: boolean;
-    isUnlocked?: boolean;
-    course: Course;
-  }>;
-}
-
-interface GroupEnrollment {
-  id: number;
-  user_id: string;
-  group_id: number;
-  enrolled_at: string;
-  enrolled_by: string | null;
-  group: CourseGroup;
-  enrolled_by_user?: { display_name: string };
-}
-
-
 export default function StudentCoursesPage() {
   const params = useParams();
   const router = useRouter();

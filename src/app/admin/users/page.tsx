@@ -21,17 +21,8 @@ import {
   XCircleIcon,
   UserIcon,
   ShieldCheckIcon,
-  AcademicCapIcon,
-  FolderIcon,
-  LockClosedIcon,
-  LockOpenIcon,
-  ChevronDownIcon,
-  ChevronUpIcon
+  AcademicCapIcon
 } from '@heroicons/react/24/outline';
-import {
-  CheckCircleIcon as CheckCircleIconSolid,
-  LockClosedIcon as LockClosedIconSolid
-} from '@heroicons/react/24/solid';
 import type { Tables } from '@/lib/database/supabase';
 
 type UserProfile = Tables<'user_profiles'> & {
@@ -43,41 +34,6 @@ type UserProfile = Tables<'user_profiles'> & {
   };
 };
 
-interface Course {
-  id: number;
-  title: string;
-  description: string;
-  category: string;
-  difficulty_level: string;
-  estimated_duration: number;
-  status: string;
-}
-
-interface CourseGroup {
-  id: number;
-  title: string;
-  description: string | null;
-  is_sequential: boolean;
-  items?: Array<{
-    id: number;
-    course_id: number;
-    order_index: number;
-    progress?: number;
-    isCompleted?: boolean;
-    isUnlocked?: boolean;
-    course: Course;
-  }>;
-}
-
-interface GroupEnrollment {
-  id: number;
-  user_id: string;
-  group_id: number;
-  enrolled_at: string;
-  enrolled_by: string | null;
-  group: CourseGroup;
-  enrolled_by_user?: { display_name: string };
-}
 
 export default function AdminUsersPage() {
   const { user, isAdmin } = useAuth();
@@ -88,13 +44,6 @@ export default function AdminUsersPage() {
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(20);
-
-  // グループ割当関連
-  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
-  const [allGroups, setAllGroups] = useState<CourseGroup[]>([]);
-  const [userEnrolledGroups, setUserEnrolledGroups] = useState<Map<string, number[]>>(new Map());
-  const [loadingGroups, setLoadingGroups] = useState<Set<string>>(new Set());
-  const [savingGroupChanges, setSavingGroupChanges] = useState<Set<string>>(new Set());
 
   // 管理者チェック
   if (!isAdmin && user) {
@@ -114,26 +63,7 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     fetchUsers();
-    fetchAllGroups();
   }, []);
-
-  // 全グループを取得
-  const fetchAllGroups = async () => {
-    try {
-      const { data: groupsData, error } = await supabase
-        .from('course_groups')
-        .select('id, title, description, is_sequential')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('グループ取得エラー:', error);
-      } else {
-        setAllGroups(groupsData || []);
-      }
-    } catch (error) {
-      console.error('グループ取得エラー:', error);
-    }
-  };
 
   const fetchUsers = async () => {
     try {
@@ -300,103 +230,6 @@ export default function AdminUsersPage() {
       ));
     } catch (error) {
       console.error('ユーザーロール更新エラー:', error);
-    }
-  };
-
-  // トグルを開く/閉じる
-  const handleToggleUser = async (userId: string) => {
-    const newExpanded = new Set(expandedUsers);
-    if (newExpanded.has(userId)) {
-      newExpanded.delete(userId);
-      setExpandedUsers(newExpanded);
-    } else {
-      newExpanded.add(userId);
-      setExpandedUsers(newExpanded);
-      // 初回展開時にグループ情報を取得
-      if (!userEnrolledGroups.has(userId)) {
-        await fetchUserEnrolledGroups(userId);
-      }
-    }
-  };
-
-  // ユーザーの登録済みグループを取得
-  const fetchUserEnrolledGroups = async (userId: string) => {
-    try {
-      setLoadingGroups(new Set(loadingGroups).add(userId));
-
-      const { data: { session } } = await supabase.auth.getSession();
-      const response = await fetch(`/api/admin/users/${userId}/group-enrollments`, {
-        headers: {
-          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const enrolledGroupIds = (data.data || []).map((e: GroupEnrollment) => e.group_id);
-        setUserEnrolledGroups(new Map(userEnrolledGroups).set(userId, enrolledGroupIds));
-      }
-    } catch (error) {
-      console.error('グループ取得エラー:', error);
-    } finally {
-      const newLoading = new Set(loadingGroups);
-      newLoading.delete(userId);
-      setLoadingGroups(newLoading);
-    }
-  };
-
-  // グループのチェック状態を変更
-  const handleGroupCheckChange = async (userId: string, groupId: number, isChecked: boolean) => {
-    try {
-      setSavingGroupChanges(new Set(savingGroupChanges).add(userId));
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (isChecked) {
-        // グループを追加
-        const response = await fetch(`/api/admin/users/${userId}/group-enrollments`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
-          },
-          body: JSON.stringify({ groupIds: [groupId] }),
-        });
-
-        if (response.ok) {
-          // 成功したら状態を更新
-          const currentEnrolled = userEnrolledGroups.get(userId) || [];
-          setUserEnrolledGroups(new Map(userEnrolledGroups).set(userId, [...currentEnrolled, groupId]));
-        } else {
-          const data = await response.json();
-          alert(`エラー: ${data.error || '割り当てに失敗しました'}`);
-        }
-      } else {
-        // グループを解除
-        const response = await fetch(`/api/admin/users/${userId}/group-enrollments`, {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
-          },
-          body: JSON.stringify({ groupId }),
-        });
-
-        if (response.ok) {
-          // 成功したら状態を更新
-          const currentEnrolled = userEnrolledGroups.get(userId) || [];
-          setUserEnrolledGroups(new Map(userEnrolledGroups).set(userId, currentEnrolled.filter(id => id !== groupId)));
-        } else {
-          const data = await response.json();
-          alert(`エラー: ${data.error || '解除に失敗しました'}`);
-        }
-      }
-    } catch (error) {
-      console.error('グループ変更エラー:', error);
-      alert('グループ変更中にエラーが発生しました');
-    } finally {
-      const newSaving = new Set(savingGroupChanges);
-      newSaving.delete(userId);
-      setSavingGroupChanges(newSaving);
     }
   };
 
@@ -711,18 +544,6 @@ export default function AdminUsersPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex justify-end space-x-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            title="コース割当"
-                            onClick={() => handleToggleUser(user.id)}
-                          >
-                            {expandedUsers.has(user.id) ? (
-                              <ChevronUpIcon className="h-4 w-4" />
-                            ) : (
-                              <ChevronDownIcon className="h-4 w-4" />
-                            )}
-                          </Button>
                           <Link href={`/admin/users/${user.id}`}>
                             <Button variant="outline" size="sm" title="詳細">
                               <EyeIcon className="h-4 w-4" />
@@ -731,6 +552,11 @@ export default function AdminUsersPage() {
                           <Link href={`/admin/users/${user.id}/edit`}>
                             <Button variant="outline" size="sm" title="編集">
                               <PencilIcon className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                          <Link href={`/admin/users/${user.id}/courses`}>
+                            <Button variant="outline" size="sm" title="コース割当">
+                              <AcademicCapIcon className="h-4 w-4" />
                             </Button>
                           </Link>
                           <Button
@@ -745,84 +571,6 @@ export default function AdminUsersPage() {
                         </div>
                       </td>
                     </tr>
-
-                    {/* グループ割当展開エリア */}
-                    {expandedUsers.has(user.id) && (
-                      <tr>
-                        <td colSpan={7} className="px-6 py-4 bg-gray-50 dark:bg-neutral-800">
-                          <div className="max-w-4xl">
-                            <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center">
-                              <FolderIcon className="h-4 w-4 mr-2" />
-                              コースグループ割当
-                            </h4>
-
-                            {loadingGroups.has(user.id) ? (
-                              <div className="flex items-center justify-center py-8">
-                                <LoadingSpinner size="md" />
-                              </div>
-                            ) : (
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {allGroups.length === 0 ? (
-                                  <div className="col-span-2 text-center py-6 text-gray-500 dark:text-gray-400">
-                                    <p>利用可能なグループがありません</p>
-                                  </div>
-                                ) : (
-                                  allGroups.map((group) => {
-                                    const isEnrolled = userEnrolledGroups.get(user.id)?.includes(group.id) || false;
-                                    const isSaving = savingGroupChanges.has(user.id);
-
-                                    return (
-                                      <label
-                                        key={group.id}
-                                        className={`
-                                          flex items-start p-3 border rounded-lg cursor-pointer transition-all
-                                          ${isEnrolled
-                                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                                            : 'border-gray-200 dark:border-neutral-700 hover:border-gray-300 dark:hover:border-neutral-600'
-                                          }
-                                          ${isSaving ? 'opacity-50 cursor-wait' : ''}
-                                        `}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={isEnrolled}
-                                          onChange={(e) => handleGroupCheckChange(user.id, group.id, e.target.checked)}
-                                          disabled={isSaving}
-                                          className="mt-1 h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
-                                        />
-                                        <div className="ml-3 flex-1 min-w-0">
-                                          <div className="flex items-center gap-2">
-                                            <h5 className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-                                              {group.title}
-                                            </h5>
-                                            {group.is_sequential ? (
-                                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300">
-                                                <LockClosedIcon className="h-2.5 w-2.5 mr-0.5" />
-                                                順次
-                                              </span>
-                                            ) : (
-                                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
-                                                <LockOpenIcon className="h-2.5 w-2.5 mr-0.5" />
-                                                自由
-                                              </span>
-                                            )}
-                                          </div>
-                                          {group.description && (
-                                            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">
-                                              {group.description}
-                                            </p>
-                                          )}
-                                        </div>
-                                      </label>
-                                    );
-                                  })
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
                     </React.Fragment>
                   ))}
                 </tbody>
