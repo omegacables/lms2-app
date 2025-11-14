@@ -156,6 +156,54 @@ export default function CourseVideosPage() {
     }
   };
 
+  const handleDuplicateVideo = async (videoId: string) => {
+    if (!confirm('この動画を複製しますか？')) {
+      return;
+    }
+
+    try {
+      // 複製元の動画データを取得
+      const videoToDuplicate = videos.find(v => v.id === videoId);
+      if (!videoToDuplicate) {
+        alert('動画が見つかりません');
+        return;
+      }
+
+      // 最大のorder_indexを取得
+      const maxOrderIndex = Math.max(...videos.map(v => v.order_index), 0);
+
+      // 新しい動画レコードを作成
+      const { data, error } = await supabase
+        .from('videos')
+        .insert({
+          course_id: courseId,
+          title: `${videoToDuplicate.title}（コピー）`,
+          description: videoToDuplicate.description,
+          file_url: videoToDuplicate.file_url,
+          file_path: videoToDuplicate.file_path,
+          file_size: videoToDuplicate.file_size,
+          mime_type: videoToDuplicate.mime_type,
+          duration: videoToDuplicate.duration,
+          order_index: maxOrderIndex + 1,
+          status: 'inactive', // 複製は非公開で作成
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error duplicating video:', error);
+        alert(`複製に失敗しました: ${error.message}`);
+        return;
+      }
+
+      alert('動画を複製しました');
+      await fetchVideos();
+    } catch (error) {
+      console.error('Error duplicating video:', error);
+      alert('複製中にエラーが発生しました');
+    }
+  };
+
   const handleEditVideo = (video: Video) => {
     setEditingVideo(video.id);
     setEditForm({
@@ -617,6 +665,13 @@ export default function CourseVideosPage() {
                                 title="置き換え"
                               >
                                 <ArrowUpTrayIcon className="h-5 w-5" />
+                              </button>
+                              <button
+                                onClick={() => handleDuplicateVideo(video.id)}
+                                className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
+                                title="複製"
+                              >
+                                <DocumentDuplicateIcon className="h-5 w-5" />
                               </button>
                               <button
                                 onClick={() => handleDeleteVideo(video.id)}
