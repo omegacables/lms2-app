@@ -159,9 +159,7 @@ export async function PUT(
     const { title, description, order_index, status, file_url, file_size, mime_type } = body;
 
     // 更新データの作成
-    const updateData: any = {
-      updated_at: new Date().toISOString()
-    };
+    const updateData: any = {};
 
     if (title !== undefined) updateData.title = title;
     if (description !== undefined) updateData.description = description;
