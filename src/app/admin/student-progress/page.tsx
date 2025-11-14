@@ -119,12 +119,11 @@ export default function StudentProgressPage() {
                   return null;
                 }
 
-                // コースの動画一覧を取得
+                // コースの動画一覧を取得（非公開動画も含む）
                 const { data: videosData, error: videosError } = await supabase
                   .from('videos')
                   .select('id')
-                  .eq('course_id', courseId)
-                  .eq('status', 'active');
+                  .eq('course_id', courseId);
 
                 if (videosError) {
                   console.error(`動画一覧取得エラー (コースID: ${courseId}):`, videosError);
