@@ -156,7 +156,7 @@ export async function PUT(
     */
 
     const body = await request.json();
-    const { title, description, order_index, status, file_url, file_size, mime_type } = body;
+    const { title, description, order_index, status, file_url, file_size, mime_type, duration } = body;
 
     // 更新データの作成
     const updateData: any = {};
@@ -165,9 +165,14 @@ export async function PUT(
     if (description !== undefined) updateData.description = description;
     if (order_index !== undefined) updateData.order_index = order_index;
     if (status !== undefined) updateData.status = status;
+    if (duration !== undefined) updateData.duration = duration;
     if (file_url !== undefined) updateData.file_url = file_url;
     if (file_size !== undefined) updateData.file_size = file_size;
     if (mime_type !== undefined) updateData.mime_type = mime_type;
+
+    // デバッグ: 更新データをログ出力
+    console.log('PUT /api/videos/[videoId] - Update Data:', updateData);
+    console.log('PUT /api/videos/[videoId] - Video ID:', videoId);
 
     // 動画情報を更新
     const { data: updatedVideo, error: updateError } = await supabase
@@ -179,7 +184,12 @@ export async function PUT(
 
     if (updateError) {
       console.error('Error updating video:', updateError);
-      return NextResponse.json({ error: '動画の更新に失敗しました' }, { status: 500 });
+      console.error('Error details:', JSON.stringify(updateError, null, 2));
+      return NextResponse.json({
+        error: '動画の更新に失敗しました',
+        details: updateError.message,
+        code: updateError.code
+      }, { status: 500 });
     }
 
     return NextResponse.json({

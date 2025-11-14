@@ -180,7 +180,6 @@ export default function CourseVideosPage() {
           title: `${videoToDuplicate.title}（コピー）`,
           description: videoToDuplicate.description,
           file_url: videoToDuplicate.file_url,
-          file_path: videoToDuplicate.file_path,
           file_size: videoToDuplicate.file_size,
           mime_type: videoToDuplicate.mime_type,
           duration: videoToDuplicate.duration,
