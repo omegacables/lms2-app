@@ -141,18 +141,34 @@ export default function LearningLogsPage() {
     try {
       setLoading(true);
       
-      // まず学習ログを取得
-      const { data: logsData, error: logsError } = await supabase
-        .from('video_view_logs')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // まず学習ログを取得（全件取得、Supabaseのデフォルト1000件制限を回避）
+      let allLogsData: any[] = [];
+      let rangeStart = 0;
+      const rangeSize = 1000;
+      let hasMore = true;
 
-      if (logsError) {
-        console.error('学習ログ取得エラー:', logsError);
-        setLearningLogs([]);
-        setLoading(false);
-        return;
+      while (hasMore) {
+        const { data: logsData, error: logsError } = await supabase
+          .from('video_view_logs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .range(rangeStart, rangeStart + rangeSize - 1);
+
+        if (logsError) {
+          console.error('学習ログ取得エラー:', logsError);
+          break;
+        }
+
+        if (logsData && logsData.length > 0) {
+          allLogsData = [...allLogsData, ...logsData];
+          rangeStart += rangeSize;
+          hasMore = logsData.length === rangeSize;
+        } else {
+          hasMore = false;
+        }
       }
+
+      const logsData = allLogsData;
 
       if (!logsData || logsData.length === 0) {
         setLearningLogs([]);
