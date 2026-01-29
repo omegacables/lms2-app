@@ -67,108 +67,38 @@ export default function NewUserPage() {
     }
 
     setLoading(true);
-    
-    try {
-      // 管理者専用のユーザー作成関数を使用（メール認証不要）
-      const { data: newUserId, error: createError } = await supabase.rpc('create_user_with_profile', {
-        p_email: formData.email,
-        p_password: formData.password,
-        p_display_name: formData.display_name,
-        p_company: formData.company,
-        p_department: formData.department,
-        p_role: formData.role,
-        p_is_active: formData.is_active
-      });
 
-      if (createError) {
-        console.error('ユーザー作成エラー:', createError);
-        
-        // フォールバック: 通常のサインアップを試す
-        const { data: authData, error: authError } = await supabase.auth.signUp({
+    try {
+      // 管理者専用APIエンドポイントを使用（メール認証不要）
+      const response = await fetch('/api/admin/users/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           email: formData.email,
           password: formData.password,
-          options: {
-            data: {
-              display_name: formData.display_name,
-              role: formData.role
-            }
-          }
-        });
+          display_name: formData.display_name,
+          company: formData.company || null,
+          department: formData.department || null,
+          role: formData.role,
+          is_active: formData.is_active,
+        }),
+      });
 
-        if (authError) {
-          throw new Error(`ユーザー作成エラー: ${authError.message}`);
-        }
+      const result = await response.json();
 
-        if (!authData.user) {
-          throw new Error('ユーザーデータが作成されませんでした');
-        }
-
-        // プロフィールを作成/更新
-        const { data: existingProfile } = await supabase
-          .from('user_profiles')
-          .select('id')
-          .eq('id', authData.user.id)
-          .single();
-
-        if (!existingProfile) {
-          const { error: profileError } = await supabase
-            .from('user_profiles')
-            .insert([
-              {
-                id: authData.user.id,
-                email: formData.email,
-                display_name: formData.display_name,
-                company: formData.company,
-                department: formData.department,
-                role: formData.role,
-                is_active: formData.is_active,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-              }
-            ]);
-
-          if (profileError) {
-            console.error('Profile creation error:', profileError);
-            throw new Error(`プロフィール作成エラー: ${profileError.message}`);
-          }
-        } else {
-          // 既存プロフィールがある場合も更新
-          const { error: updateError } = await supabase
-            .from('user_profiles')
-            .update({
-              email: formData.email,
-              display_name: formData.display_name,
-              company: formData.company,
-              department: formData.department,
-              role: formData.role,
-              is_active: formData.is_active,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', authData.user.id);
-
-          if (updateError) {
-            console.error('Profile update error:', updateError);
-            throw new Error(`プロフィール更新エラー: ${updateError.message}`);
-          }
-        }
-
-        // メール確認を自動で行う
-        try {
-          await supabase.rpc('confirm_user_email', {
-            user_id: authData.user.id
-          });
-        } catch (confirmError) {
-          console.warn('メール確認の自動設定に失敗:', confirmError);
-        }
+      if (!response.ok) {
+        throw new Error(result.error || 'ユーザー作成に失敗しました');
       }
 
-      // 3. Log the action
+      // Log the action
       try {
         await supabase.from('system_logs').insert({
           user_id: user.id,
           action: 'user_create',
           resource_type: 'user_profile',
-          resource_id: newUserId || 'unknown',
+          resource_id: result.user?.id || 'unknown',
           details: {
             created_user_email: formData.email,
             created_user_role: formData.role
