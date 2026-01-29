@@ -99,12 +99,11 @@ export default function StudentDetailPage() {
     try {
       setLoading(true);
 
-      // 学生の基本情報を取得（user_profilesから全て取得）
+      // ユーザーの基本情報を取得（user_profilesから全て取得）
       const { data: studentData, error: studentError } = await supabase
         .from('user_profiles')
         .select('*')
         .eq('id', studentId)
-        .eq('role', 'student')
         .single();
 
       if (studentError) {
