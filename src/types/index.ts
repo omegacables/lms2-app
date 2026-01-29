@@ -1,5 +1,5 @@
 // 基本型定義
-export type UserRole = 'student' | 'instructor' | 'admin';
+export type UserRole = 'student' | 'instructor' | 'admin' | 'labor_consultant';
 export type CourseStatus = 'active' | 'inactive';
 export type VideoStatus = 'active' | 'inactive';
 export type LearningStatus = 'not_started' | 'in_progress' | 'completed';

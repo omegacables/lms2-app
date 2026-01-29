@@ -91,29 +91,29 @@ const navigation: NavigationItem[] = [
 ];
 
 const adminNavigation: NavigationItem[] = [
-  { 
-    name: '管理ダッシュボード', 
-    href: '/admin', 
-    icon: HomeIcon, 
-    iconActive: HomeIconSolid 
+  {
+    name: '管理ダッシュボード',
+    href: '/admin',
+    icon: HomeIcon,
+    iconActive: HomeIconSolid
   },
-  { 
-    name: '生徒管理', 
-    href: '/admin/students', 
-    icon: UserGroupIcon, 
-    iconActive: UserGroupIconSolid 
+  {
+    name: '生徒管理',
+    href: '/admin/students',
+    icon: UserGroupIcon,
+    iconActive: UserGroupIconSolid
   },
-  { 
-    name: 'コース管理', 
-    href: '/admin/courses', 
-    icon: AcademicCapIcon, 
-    iconActive: AcademicCapIconSolid 
+  {
+    name: 'コース管理',
+    href: '/admin/courses',
+    icon: AcademicCapIcon,
+    iconActive: AcademicCapIconSolid
   },
-  { 
-    name: '証明書管理', 
-    href: '/admin/certificates', 
-    icon: TrophyIcon, 
-    iconActive: TrophyIconSolid 
+  {
+    name: '証明書管理',
+    href: '/admin/certificates',
+    icon: TrophyIcon,
+    iconActive: TrophyIconSolid
   },
   {
     name: '学習ログ',
@@ -128,6 +128,12 @@ const adminNavigation: NavigationItem[] = [
     iconActive: ClipboardDocumentListIconSolid
   },
   {
+    name: '社労士事務所管理',
+    href: '/admin/labor-consultants',
+    icon: UserGroupIcon,
+    iconActive: UserGroupIconSolid
+  },
+  {
     name: 'システム設定',
     href: '/admin/settings',
     icon: Cog6ToothIcon,
@@ -135,14 +141,47 @@ const adminNavigation: NavigationItem[] = [
   },
 ];
 
+const laborConsultantNavigation: NavigationItem[] = [
+  {
+    name: 'ダッシュボード',
+    href: '/labor-consultant/dashboard',
+    icon: HomeIcon,
+    iconActive: HomeIconSolid
+  },
+  {
+    name: '担当生徒',
+    href: '/labor-consultant/students',
+    icon: UserGroupIcon,
+    iconActive: UserGroupIconSolid
+  },
+  {
+    name: '学習ログ',
+    href: '/labor-consultant/learning-logs',
+    icon: ChartBarIcon,
+    iconActive: ChartBarIconSolid
+  },
+  {
+    name: '証明書',
+    href: '/labor-consultant/certificates',
+    icon: TrophyIcon,
+    iconActive: TrophyIconSolid
+  },
+  {
+    name: 'サポート',
+    href: '/labor-consultant/support',
+    icon: UserCircleIcon,
+    iconActive: UserCircleIcon
+  },
+];
+
 export function MainLayout({ children }: MainLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
-  const { user, isAdmin, signOut } = useAuth();
+  const { user, isAdmin, isLaborConsultant, signOut } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
-  const currentNavigation = isAdmin ? adminNavigation : navigation;
+  const currentNavigation = isAdmin ? adminNavigation : isLaborConsultant ? laborConsultantNavigation : navigation;
 
   // 未読メッセージ数を取得
   const fetchUnreadMessages = async () => {
@@ -156,8 +195,56 @@ export function MainLayout({ children }: MainLayoutProps) {
           .select('*', { count: 'exact', head: true })
           .eq('sender_type', 'student')
           .eq('is_read', false);
-        
+
         setUnreadMessages(count || 0);
+      } else if (isLaborConsultant) {
+        // 社労士事務所の場合：担当会社の生徒からの未読メッセージ数
+        // まず担当会社を取得
+        const { data: assignedCompanies } = await supabase
+          .from('labor_consultant_companies')
+          .select('company')
+          .eq('labor_consultant_id', user.id);
+
+        if (assignedCompanies && assignedCompanies.length > 0) {
+          const companies = assignedCompanies.map(ac => ac.company);
+
+          // 担当会社の生徒を取得
+          const { data: students } = await supabase
+            .from('user_profiles')
+            .select('id')
+            .eq('role', 'student')
+            .in('company', companies);
+
+          if (students && students.length > 0) {
+            const studentIds = students.map(s => s.id);
+
+            // 生徒の会話を取得
+            const { data: conversations } = await supabase
+              .from('support_conversations')
+              .select('id')
+              .in('student_id', studentIds);
+
+            if (conversations && conversations.length > 0) {
+              const conversationIds = conversations.map(conv => conv.id);
+
+              // 生徒からの未読メッセージ数を取得
+              const { count } = await supabase
+                .from('support_messages')
+                .select('*', { count: 'exact', head: true })
+                .eq('sender_type', 'student')
+                .eq('is_read', false)
+                .in('conversation_id', conversationIds);
+
+              setUnreadMessages(count || 0);
+            } else {
+              setUnreadMessages(0);
+            }
+          } else {
+            setUnreadMessages(0);
+          }
+        } else {
+          setUnreadMessages(0);
+        }
       } else {
         // 生徒の場合：まず自分の会話を取得
         const { data: conversations } = await supabase
@@ -202,7 +289,7 @@ export function MainLayout({ children }: MainLayoutProps) {
       clearInterval(interval);
       messageEvents.off('message-read', handleMessageRead);
     };
-  }, [user?.id, isAdmin]);
+  }, [user?.id, isAdmin, isLaborConsultant]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -296,7 +383,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                 {user?.profile?.display_name || user?.email}
               </p>
               <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
-                {user?.profile?.role === 'admin' ? '管理者' : '学習者'}
+                {user?.profile?.role === 'admin' ? '管理者' : user?.profile?.role === 'labor_consultant' ? '社労士事務所' : '学習者'}
               </p>
             </div>
           </div>
@@ -357,7 +444,7 @@ export function MainLayout({ children }: MainLayoutProps) {
 
               {/* サポートチャット */}
               <Link
-                href={isAdmin ? '/admin/support' : '/messages'}
+                href={isAdmin ? '/admin/support' : isLaborConsultant ? '/labor-consultant/support' : '/messages'}
                 className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-950/5 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-zinc-300 transition-colors"
                 title="サポートチャット"
               >

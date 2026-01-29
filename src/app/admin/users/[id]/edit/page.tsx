@@ -25,7 +25,7 @@ interface UserData {
   display_name: string;
   company: string;
   department: string;
-  role: 'student' | 'instructor' | 'admin';
+  role: 'student' | 'instructor' | 'admin' | 'labor_consultant';
   is_active: boolean;
 }
 
@@ -43,7 +43,7 @@ export default function EditUserPage() {
     display_name: '',
     company: '',
     department: '',
-    role: 'student' as 'student' | 'instructor' | 'admin',
+    role: 'student' as 'student' | 'instructor' | 'admin' | 'labor_consultant',
     is_active: true
   });
 
@@ -296,6 +296,7 @@ export default function EditUserPage() {
                   <option value="student">受講者</option>
                   <option value="instructor">講師</option>
                   <option value="admin">管理者</option>
+                  <option value="labor_consultant">社労士事務所</option>
                 </select>
               </div>
 

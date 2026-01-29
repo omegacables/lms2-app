@@ -237,6 +237,8 @@ export default function AdminUsersPage() {
     switch (role) {
       case 'admin':
         return <ShieldCheckIcon className="h-4 w-4" />;
+      case 'labor_consultant':
+        return <AcademicCapIcon className="h-4 w-4" />;
       case 'instructor':
         return <AcademicCapIcon className="h-4 w-4" />;
       case 'student':
@@ -250,6 +252,8 @@ export default function AdminUsersPage() {
     switch (role) {
       case 'admin':
         return '管理者';
+      case 'labor_consultant':
+        return '社労士事務所';
       case 'instructor':
         return '講師';
       case 'student':
@@ -263,6 +267,8 @@ export default function AdminUsersPage() {
     switch (role) {
       case 'admin':
         return 'bg-red-100 text-red-800';
+      case 'labor_consultant':
+        return 'bg-purple-100 text-purple-800';
       case 'instructor':
         return 'bg-blue-100 text-blue-800';
       case 'student':
@@ -374,14 +380,14 @@ export default function AdminUsersPage() {
                   <AcademicCapIcon className="h-6 w-6 text-purple-600" />
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">講師</p>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">社労士事務所</p>
                   <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {users.filter(u => u.role === 'instructor').length}
+                    {users.filter(u => u.role === 'labor_consultant').length}
                   </p>
                 </div>
               </div>
             </div>
-            
+
             <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-sm dark:shadow-gray-900/20 border p-6">
               <div className="flex items-center">
                 <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
@@ -420,7 +426,7 @@ export default function AdminUsersPage() {
               >
                 <option value="all">すべてのロール</option>
                 <option value="student">受講者</option>
-                <option value="instructor">講師</option>
+                <option value="labor_consultant">社労士事務所</option>
                 <option value="admin">管理者</option>
               </select>
 
@@ -504,7 +510,7 @@ export default function AdminUsersPage() {
                           onChange={(e) => handleRoleChange(user.id, e.target.value)}
                         >
                           <option value="student">受講者</option>
-                          <option value="instructor">講師</option>
+                          <option value="labor_consultant">社労士事務所</option>
                           <option value="admin">管理者</option>
                         </select>
                       </td>

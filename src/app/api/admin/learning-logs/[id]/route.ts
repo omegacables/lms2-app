@@ -26,23 +26,65 @@ export async function PATCH(
     }
 
     const token = authHeader.replace('Bearer ', '');
-    
+
     // トークンから現在のユーザーを取得
     const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
-    
+
     if (userError || !user) {
       return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
     }
 
-    // 管理者権限を確認
+    // 管理者または社労士権限を確認
     const { data: currentUser, error: profileError } = await supabaseAdmin
       .from('user_profiles')
       .select('role')
       .eq('id', user.id)
       .single();
 
-    if (profileError || !currentUser || currentUser.role !== 'admin') {
-      return NextResponse.json({ error: '管理者権限が必要です' }, { status: 403 });
+    if (profileError || !currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'labor_consultant')) {
+      return NextResponse.json({ error: '管理者または社労士権限が必要です' }, { status: 403 });
+    }
+
+    const isLaborConsultant = currentUser.role === 'labor_consultant';
+
+    // 社労士の場合、担当会社のユーザーのログのみ編集可能かチェック
+    if (isLaborConsultant) {
+      // 編集対象のログを取得
+      const { data: targetLog, error: targetLogError } = await supabaseAdmin
+        .from('video_view_logs')
+        .select('user_id')
+        .eq('id', logId)
+        .single();
+
+      if (targetLogError || !targetLog) {
+        return NextResponse.json({ error: '学習ログが見つかりません' }, { status: 404 });
+      }
+
+      // 対象ユーザーの会社を取得
+      const { data: targetUser, error: targetUserError } = await supabaseAdmin
+        .from('user_profiles')
+        .select('company')
+        .eq('id', targetLog.user_id)
+        .single();
+
+      if (targetUserError || !targetUser) {
+        return NextResponse.json({ error: 'ユーザー情報が見つかりません' }, { status: 404 });
+      }
+
+      // 社労士の担当会社を取得
+      const { data: assignedCompanies, error: companiesError } = await supabaseAdmin
+        .from('labor_consultant_companies')
+        .select('company')
+        .eq('labor_consultant_id', user.id);
+
+      if (companiesError) {
+        return NextResponse.json({ error: '担当会社の確認に失敗しました' }, { status: 500 });
+      }
+
+      const companies = assignedCompanies?.map(c => c.company) || [];
+      if (!companies.includes(targetUser.company)) {
+        return NextResponse.json({ error: '担当会社のユーザーのみ編集できます' }, { status: 403 });
+      }
     }
 
     // リクエストボディから更新データを取得
@@ -63,7 +105,8 @@ export async function PATCH(
     } = body;
 
     // まず、ユーザー情報を更新（user_name, user_email, company, departmentが提供された場合）
-    if (user_name !== undefined || user_email !== undefined || company !== undefined || department !== undefined) {
+    // 社労士は学習ログのみ編集可能、ユーザー情報・コース・動画情報は編集不可
+    if (!isLaborConsultant && (user_name !== undefined || user_email !== undefined || company !== undefined || department !== undefined)) {
       // 現在の学習ログを取得してuser_idを取得
       const { data: logData, error: logError } = await supabaseAdmin
         .from('video_view_logs')
@@ -86,8 +129,8 @@ export async function PATCH(
       }
     }
 
-    // コース情報を更新（course_titleが提供された場合）
-    if (course_title !== undefined) {
+    // コース情報を更新（course_titleが提供された場合、管理者のみ）
+    if (!isLaborConsultant && course_title !== undefined) {
       const { data: logData, error: logError } = await supabaseAdmin
         .from('video_view_logs')
         .select('course_id')
@@ -102,8 +145,8 @@ export async function PATCH(
       }
     }
 
-    // 動画情報を更新（video_titleが提供された場合）
-    if (video_title !== undefined) {
+    // 動画情報を更新（video_titleが提供された場合、管理者のみ）
+    if (!isLaborConsultant && video_title !== undefined) {
       const { data: logData, error: logError } = await supabaseAdmin
         .from('video_view_logs')
         .select('video_id')

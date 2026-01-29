@@ -547,6 +547,7 @@ export const useAuth = () => {
     initialized: store.initialized,
     isAuthenticated: !!store.user,
     isAdmin: store.user?.profile?.role === 'admin',
+    isLaborConsultant: store.user?.profile?.role === 'labor_consultant',
     signIn: store.signIn,
     signUp: store.signUp,
     signOut: store.signOut,

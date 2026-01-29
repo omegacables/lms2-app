@@ -34,7 +34,7 @@ interface Student {
   email: string;
   company: string;
   department: string;
-  role: 'admin' | 'instructor' | 'student';
+  role: 'admin' | 'instructor' | 'student' | 'labor_consultant';
   last_login_at: string;
   is_active: boolean;
   created_at: string;
@@ -285,6 +285,43 @@ export default function StudentsManagePage() {
         newSet.delete(savingKey);
         return newSet;
       });
+    }
+  };
+
+  const handleRoleChange = async (studentId: string, newRole: 'admin' | 'student' | 'labor_consultant') => {
+    if (!confirm(`本当にこのユーザーの権限を「${getRoleLabel(newRole)}」に変更しますか？`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ role: newRole })
+        .eq('id', studentId);
+
+      if (error) throw error;
+
+      // ローカルステートを更新
+      setStudents(prevStudents =>
+        prevStudents.map(student =>
+          student.id === studentId ? { ...student, role: newRole } : student
+        )
+      );
+
+      alert('権限を変更しました。');
+    } catch (error) {
+      console.error('権限変更エラー:', error);
+      alert('権限の変更に失敗しました。');
+    }
+  };
+
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case 'admin': return '管理者';
+      case 'labor_consultant': return '社労士事務所';
+      case 'instructor': return '講師';
+      case 'student': return '受講者';
+      default: return '未設定';
     }
   };
 
@@ -937,13 +974,18 @@ export default function StudentsManagePage() {
                                   管理者
                                 </span>
                               )}
+                              {student.role === 'labor_consultant' && (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                  社労士事務所
+                                </span>
+                              )}
                               {student.role === 'instructor' && (
                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                   インストラクター
                                 </span>
                               )}
                             </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
                               <div>
                                 <div className="text-xs text-gray-500 dark:text-gray-400">メール</div>
                                 <div className="text-sm font-medium">{student.email}</div>
@@ -959,11 +1001,23 @@ export default function StudentsManagePage() {
                               <div>
                                 <div className="text-xs text-gray-500 dark:text-gray-400">最終ログイン</div>
                                 <div className="text-sm font-medium">
-                                  {student.last_login_at 
+                                  {student.last_login_at
                                     ? new Date(student.last_login_at).toLocaleDateString('ja-JP')
                                     : '未ログイン'
                                   }
                                 </div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400">権限</div>
+                                <select
+                                  value={student.role}
+                                  onChange={(e) => handleRoleChange(student.id, e.target.value as 'admin' | 'student' | 'labor_consultant')}
+                                  className="text-sm font-medium border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
+                                >
+                                  <option value="student">受講者</option>
+                                  <option value="admin">管理者</option>
+                                  <option value="labor_consultant">社労士事務所</option>
+                                </select>
                               </div>
                             </div>
                             
