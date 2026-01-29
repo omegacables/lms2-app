@@ -8,7 +8,7 @@ import { useAuth } from '@/stores/auth';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/database/supabase';
-import { 
+import {
   ChatBubbleLeftRightIcon,
   PaperAirplaneIcon,
   MagnifyingGlassIcon,
@@ -17,7 +17,11 @@ import {
   ClockIcon,
   ExclamationTriangleIcon,
   UserIcon,
-  PaperClipIcon
+  PaperClipIcon,
+  PhotoIcon,
+  DocumentIcon,
+  XMarkIcon,
+  ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
 
 interface SupportConversation {
@@ -43,6 +47,16 @@ interface SupportMessage {
   message: string;
   isRead: boolean;
   createdAt: string;
+  fileUrl?: string;
+  fileName?: string;
+  fileType?: string;
+  fileSize?: number;
+}
+
+interface FilePreview {
+  file: File;
+  previewUrl: string;
+  type: 'image' | 'document';
 }
 
 export default function AdminSupportChat() {
@@ -56,7 +70,10 @@ export default function AdminSupportChat() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
+  const [selectedFile, setSelectedFile] = useState<FilePreview | null>(null);
+  const [uploading, setUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (user && isAdmin) {
@@ -188,7 +205,11 @@ export default function AdminSupportChat() {
         senderName: msg.sender?.display_name || 'ユーザー',
         message: msg.message,
         isRead: msg.is_read,
-        createdAt: msg.created_at
+        createdAt: msg.created_at,
+        fileUrl: msg.file_url,
+        fileName: msg.file_name,
+        fileType: msg.file_type,
+        fileSize: msg.file_size
       })) || [];
 
       setMessages(formattedMessages);
@@ -209,19 +230,96 @@ export default function AdminSupportChat() {
     }
   };
 
+  // ファイル選択処理
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      alert('ファイルサイズは10MB以下にしてください。');
+      return;
+    }
+
+    const allowedTypes = [
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+      'application/pdf',
+      'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain', 'text/csv'
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      alert('このファイル形式はサポートされていません。');
+      return;
+    }
+
+    const isImage = file.type.startsWith('image/');
+    setSelectedFile({
+      file,
+      previewUrl: isImage ? URL.createObjectURL(file) : '',
+      type: isImage ? 'image' : 'document'
+    });
+  };
+
+  const clearSelectedFile = () => {
+    if (selectedFile?.previewUrl) {
+      URL.revokeObjectURL(selectedFile.previewUrl);
+    }
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const uploadFile = async (file: File) => {
+    try {
+      setUploading(true);
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user?.id}/${Date.now()}.${fileExt}`;
+
+      const { error } = await supabase.storage.from('chat-files').upload(fileName, file);
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage.from('chat-files').getPublicUrl(fileName);
+      return { url: publicUrl, name: file.name, type: file.type, size: file.size };
+    } catch (error) {
+      console.error('ファイルアップロードエラー:', error);
+      return null;
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
   const sendMessage = async () => {
-    if (!newMessage.trim() || !selectedConversation || !user) return;
+    if ((!newMessage.trim() && !selectedFile) || !selectedConversation || !user) return;
 
     try {
       setSending(true);
-      
+
+      let fileData = null;
+      if (selectedFile) {
+        fileData = await uploadFile(selectedFile.file);
+        if (!fileData && !newMessage.trim()) {
+          alert('ファイルのアップロードに失敗しました。');
+          return;
+        }
+      }
+
       const { error } = await supabase
         .from('support_messages')
         .insert({
           conversation_id: selectedConversation.id,
           sender_id: user.id,
           sender_type: 'admin',
-          message: newMessage.trim()
+          message: newMessage.trim() || (fileData ? `[ファイル: ${fileData.name}]` : ''),
+          file_url: fileData?.url || null,
+          file_name: fileData?.name || null,
+          file_type: fileData?.type || null,
+          file_size: fileData?.size || null
         });
 
       if (error) throw error;
@@ -229,16 +327,14 @@ export default function AdminSupportChat() {
       // 会話のステータスを更新
       await supabase
         .from('support_conversations')
-        .update({ 
+        .update({
           status: 'in_progress',
           updated_at: new Date()
         })
         .eq('id', selectedConversation.id);
 
-      // メール通知は一時的に無効化（auth.usersへのアクセス権限の問題のため）
-      // sendEmailNotification(selectedConversation.studentId, 'サポートからの返信', newMessage);
-
       setNewMessage('');
+      clearSelectedFile();
       await fetchMessages(selectedConversation.id);
       await fetchConversations();
     } catch (error) {
@@ -547,7 +643,44 @@ export default function AdminSupportChat() {
                               {message.senderType === 'admin' ? '管理者' : message.senderName}
                             </span>
                           </div>
-                          <p className="text-sm">{message.message}</p>
+                          {/* ファイル表示 */}
+                          {message.fileUrl && (
+                            <div className="mb-2">
+                              {message.fileType?.startsWith('image/') ? (
+                                <a href={message.fileUrl} target="_blank" rel="noopener noreferrer">
+                                  <img
+                                    src={message.fileUrl}
+                                    alt={message.fileName || 'Image'}
+                                    className="max-w-full rounded-lg cursor-pointer hover:opacity-90"
+                                    style={{ maxHeight: '200px' }}
+                                  />
+                                </a>
+                              ) : (
+                                <a
+                                  href={message.fileUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={`flex items-center p-2 rounded-lg ${
+                                    message.senderType === 'admin'
+                                      ? 'bg-blue-500 hover:bg-blue-400'
+                                      : 'bg-gray-300 dark:bg-gray-600 hover:bg-gray-400'
+                                  }`}
+                                >
+                                  <DocumentIcon className="h-8 w-8 mr-2 flex-shrink-0" />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-medium truncate">{message.fileName}</p>
+                                    <p className="text-xs opacity-75">
+                                      {message.fileSize ? formatFileSize(message.fileSize) : ''}
+                                    </p>
+                                  </div>
+                                  <ArrowDownTrayIcon className="h-5 w-5 ml-2 flex-shrink-0" />
+                                </a>
+                              )}
+                            </div>
+                          )}
+                          {message.message && !message.message.startsWith('[ファイル:') && (
+                            <p className="text-sm">{message.message}</p>
+                          )}
                           <p className={`text-xs mt-1 ${
                             message.senderType === 'admin' ? 'text-blue-200' : 'text-gray-500 dark:text-gray-400'
                           }`}>
@@ -561,7 +694,37 @@ export default function AdminSupportChat() {
 
                   {/* メッセージ入力 */}
                   <div className="p-4 border-t border-gray-200 dark:border-neutral-800">
+                    {/* ファイルプレビュー */}
+                    {selectedFile && (
+                      <div className="mb-3 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center min-w-0">
+                            {selectedFile.type === 'image' ? (
+                              <img src={selectedFile.previewUrl} alt="Preview" className="h-12 w-12 object-cover rounded mr-3" />
+                            ) : (
+                              <DocumentIcon className="h-10 w-10 text-gray-500 mr-3 flex-shrink-0" />
+                            )}
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{selectedFile.file.name}</p>
+                              <p className="text-xs text-gray-500">{formatFileSize(selectedFile.file.size)}</p>
+                            </div>
+                          </div>
+                          <button onClick={clearSelectedFile} className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded">
+                            <XMarkIcon className="h-5 w-5 text-gray-500" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex space-x-2">
+                      <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" />
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={sending || uploading}
+                        className="p-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+                        title="ファイルを添付"
+                      >
+                        <PaperClipIcon className="h-5 w-5 text-gray-500" />
+                      </button>
                       <input
                         type="text"
                         placeholder="メッセージを入力..."
@@ -574,14 +737,14 @@ export default function AdminSupportChat() {
                             sendMessage();
                           }
                         }}
-                        disabled={sending}
+                        disabled={sending || uploading}
                       />
                       <Button
                         onClick={sendMessage}
-                        disabled={!newMessage.trim() || sending}
+                        disabled={(!newMessage.trim() && !selectedFile) || sending || uploading}
                         className="px-4"
                       >
-                        {sending ? (
+                        {sending || uploading ? (
                           <LoadingSpinner size="sm" />
                         ) : (
                           <PaperAirplaneIcon className="h-4 w-4" />

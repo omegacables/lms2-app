@@ -24,7 +24,7 @@ interface CourseCertificateProps {
 export function CourseCertificate({
   course,
   user,
-  completionDate,
+  completionDate: initialCompletionDate,
   progress
 }: CourseCertificateProps) {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -38,14 +38,59 @@ export function CourseCertificate({
     signer_title: string;
     stamp_image_url: string;
   } | null>(null);
+  const [completionDate, setCompletionDate] = useState<Date>(initialCompletionDate);
 
   // すべての動画を視聴したかチェック（90%以上で証明書発行可能）
   const completionRate = progress.totalVideos > 0 ? (progress.completedVideos / progress.totalVideos) * 100 : 0;
   const isEligibleForCertificate = completionRate >= 90;
 
+  // 完了日付を再計算する関数
+  const recalculateCompletionDate = async () => {
+    try {
+      console.log('=== コース完了日付を再計算中 ===');
+
+      // 視聴ログを取得
+      const { data: logsData, error: logsError } = await supabase
+        .from('video_view_logs')
+        .select('*')
+        .eq('course_id', course.id)
+        .eq('user_id', user.id)
+        .eq('status', 'completed')
+        .order('updated_at', { ascending: false });
+
+      if (logsError) {
+        console.error('❌ 視聴ログ取得エラー:', logsError);
+        return initialCompletionDate;
+      }
+
+      console.log('完了済み視聴ログ件数:', logsData?.length || 0);
+
+      // 最後に完了した動画の日時を取得
+      if (logsData && logsData.length > 0) {
+        const lastCompletedLog = logsData.reduce((latest, log) => {
+          const logDate = new Date(log.updated_at || log.created_at);
+          const latestDate = new Date(latest.updated_at || latest.created_at);
+          return logDate > latestDate ? log : latest;
+        }, logsData[0]);
+
+        const newCompletionDate = new Date(lastCompletedLog.updated_at || lastCompletedLog.created_at);
+        console.log('✅ 再計算した完了日付:', newCompletionDate.toISOString());
+        setCompletionDate(newCompletionDate);
+        return newCompletionDate;
+      }
+
+      console.log('⚠️ 完了済みログがありません。初期値を使用します');
+      return initialCompletionDate;
+    } catch (err) {
+      console.error('❌ 完了日付再計算エラー:', err);
+      return initialCompletionDate;
+    }
+  };
+
   // 証明書設定を取得する関数
   const fetchCertificateSettings = async () => {
     try {
+      console.log('=== 証明書設定を取得中 ===');
       const { data: settingsData, error } = await supabase
         .from('system_settings')
         .select('*')
@@ -57,9 +102,11 @@ export function CourseCertificate({
         ]);
 
       if (error) {
-        console.error('証明書設定取得エラー:', error);
+        console.error('❌ 証明書設定取得エラー:', error);
         return null;
       }
+
+      console.log('取得した設定データ（生データ）:', settingsData);
 
       // 設定を整形
       const settings = {
@@ -70,19 +117,25 @@ export function CourseCertificate({
       };
 
       settingsData?.forEach(item => {
+        console.log(`設定項目: ${item.setting_key} = ${item.setting_value}`);
         const key = item.setting_key.split('.')[1];
         if (key) {
           settings[key as keyof typeof settings] = item.setting_value || '';
         }
       });
 
-      console.log('証明書設定を取得しました:', settings);
+      console.log('✅ 証明書設定を取得しました:', settings);
       return settings;
     } catch (err) {
-      console.error('証明書設定取得エラー:', err);
+      console.error('❌ 証明書設定取得エラー:', err);
       return null;
     }
   };
+
+  // 初期完了日付が変更された時にstateを更新
+  useEffect(() => {
+    setCompletionDate(initialCompletionDate);
+  }, [initialCompletionDate]);
 
   // システム設定から証明書署名情報を取得
   useEffect(() => {
@@ -134,11 +187,16 @@ export function CourseCertificate({
 
   // 証明書データの準備
   const prepareCertificateData = (): CertificateData => {
+    // 手動設定日があればそれを優先、なければcompletionDateを使用
+    const effectiveIssueDate = existingCertificate?.manual_issue_date
+      ? new Date(existingCertificate.manual_issue_date)
+      : completionDate;
+
     return {
       certificateId: existingCertificate?.id || generateCertificateId(),
       courseName: course.title,
       userName: user.display_name || user.email,
-      completionDate: format(completionDate, 'yyyy年MM月dd日', { locale: ja }),
+      completionDate: format(effectiveIssueDate, 'yyyy年MM月dd日', { locale: ja }),
       issueDate: format(new Date(), 'yyyy年MM月dd日', { locale: ja }),
       totalVideos: progress.totalVideos,
       totalWatchTime: Math.round(progress.totalWatchTime / 60), // 分に変換
@@ -228,9 +286,15 @@ export function CourseCertificate({
     setShowReissueConfirm(false);
 
     try {
-      console.log('証明書を削除して再発行します:', existingCertificate.id);
+      console.log('=== 証明書を削除して再発行します ===');
+      console.log('既存証明書ID:', existingCertificate.id);
 
-      // 証明書設定を最新の状態で取得
+      // 1. 完了日付を再計算
+      console.log('ステップ1: 完了日付を再計算');
+      const newCompletionDate = await recalculateCompletionDate();
+
+      // 2. 証明書設定を最新の状態で取得
+      console.log('ステップ2: 証明書設定を取得');
       let settings = certificateSettings;
       if (!settings) {
         console.log('証明書設定を再取得中...');
@@ -241,6 +305,7 @@ export function CourseCertificate({
       }
 
       console.log('再発行時の証明書設定:', settings);
+      console.log('再発行時の完了日付:', newCompletionDate);
 
       // 既存の証明書を削除
       const { error: deleteError } = await certificatesClient
@@ -263,12 +328,12 @@ export function CourseCertificate({
         return;
       }
 
-      // PDFダウンロード（最新の設定を使用）
+      // PDFダウンロード（最新の設定と完了日付を使用）
       const certificateData = {
         certificateId: newCertificate.id,
         courseName: course.title,
         userName: user.display_name || user.email,
-        completionDate: format(completionDate, 'yyyy年MM月dd日', { locale: ja }),
+        completionDate: format(newCompletionDate, 'yyyy年MM月dd日', { locale: ja }),
         issueDate: format(new Date(), 'yyyy年MM月dd日', { locale: ja }),
         totalVideos: progress.totalVideos,
         totalWatchTime: Math.round(progress.totalWatchTime / 60),
@@ -281,7 +346,8 @@ export function CourseCertificate({
         stampImageUrl: settings?.stamp_image_url || undefined,
       };
 
-      console.log('再発行証明書PDFデータ（署名情報含む）:', certificateData);
+      console.log('=== 再発行証明書PDFデータ（署名情報・完了日付含む） ===');
+      console.log(certificateData);
       await generateCertificatePDF(certificateData);
 
       console.log('証明書を再発行しました:', newCertificate.id);

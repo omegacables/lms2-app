@@ -26,6 +26,7 @@ type Certificate = {
   user_name: string;
   course_title: string;
   completion_date: string;
+  manual_issue_date?: string | null;
   pdf_url?: string | null;
   is_active: boolean;
   created_at: string;
@@ -188,12 +189,15 @@ export default function CertificatesPage() {
     setDownloadingId(certificate.id);
 
     try {
+      // 手動設定日があればそれを優先、なければcompletion_dateを使用
+      const effectiveIssueDate = certificate.manual_issue_date || certificate.completion_date;
+
       // 証明書データを準備
       const certificateData: CertificateData = {
         certificateId: certificate.id,
         courseName: certificate.course_title || certificate.courses?.title || 'コース名',
         userName: certificate.user_name || userProfile?.display_name || user?.email || 'ユーザー名',
-        completionDate: new Date(certificate.completion_date).toLocaleDateString('ja-JP', {
+        completionDate: new Date(effectiveIssueDate).toLocaleDateString('ja-JP', {
           year: 'numeric',
           month: 'long',
           day: 'numeric'
@@ -395,7 +399,7 @@ export default function CertificatesPage() {
                     <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
                       <div className="flex items-center">
                         <CalendarIcon className="h-4 w-4 mr-2" />
-                        <span>完了日: {new Date(certificate.completion_date).toLocaleDateString('ja-JP')}</span>
+                        <span>発行日: {new Date(certificate.manual_issue_date || certificate.completion_date).toLocaleDateString('ja-JP')}</span>
                       </div>
                       <div className="flex items-center">
                         <DocumentTextIcon className="h-4 w-4 mr-2" />

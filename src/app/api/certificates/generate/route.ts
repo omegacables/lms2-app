@@ -112,14 +112,18 @@ export async function POST(request: NextRequest) {
 
     const totalVideos = videos?.length || 0;
 
+    // 完了した動画のログを取得（status = 'completed' で判定、受講状況ページと同じ）
     const { data: completedLogs } = await supabaseAdmin
       .from('video_view_logs')
-      .select('video_id')
+      .select('video_id, completed_at, last_updated, created_at, status')
       .eq('user_id', userId)
       .eq('course_id', courseId)
-      .eq('status', 'completed');
+      .eq('status', 'completed')
+      .order('completed_at', { ascending: false });
 
-    const completedVideos = completedLogs?.length || 0;
+    // 重複を除いた完了動画数をカウント
+    const completedVideoIds = new Set(completedLogs?.map(log => log.video_id) || []);
+    const completedVideos = completedVideoIds.size;
 
     console.log(`進捗確認: ${completedVideos}/${totalVideos} 動画完了`);
 
@@ -134,6 +138,21 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
+    // コース完了日付を計算（最後に完了した動画の日時）
+    const lastCompletedLog = completedLogs && completedLogs.length > 0
+      ? completedLogs.reduce((latest, log) => {
+          const logDate = new Date(log.completed_at || log.last_updated || log.created_at);
+          const latestDate = new Date(latest.completed_at || latest.last_updated || latest.created_at);
+          return logDate > latestDate ? log : latest;
+        }, completedLogs[0])
+      : null;
+
+    const courseCompletionDate = lastCompletedLog
+      ? new Date(lastCompletedLog.completed_at || lastCompletedLog.last_updated || lastCompletedLog.created_at)
+      : new Date();
+
+    console.log('コース完了日付:', courseCompletionDate.toISOString());
+
     // 5. Create certificate
     const certificateId = generateCertificateId();
     const certificateData = {
@@ -142,7 +161,7 @@ export async function POST(request: NextRequest) {
       course_id: courseId,
       user_name: userProfile.display_name || userProfile.email || 'ユーザー',
       course_title: course.title,
-      completion_date: new Date().toISOString(),
+      completion_date: courseCompletionDate.toISOString(),
       is_active: true,
       created_at: new Date().toISOString()
     };

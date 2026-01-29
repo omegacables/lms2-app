@@ -4,18 +4,34 @@ const nextConfig: NextConfig = {
   // 画像最適化設定
   images: {
     unoptimized: true,
-    domains: ['tjzdsiaehksqpxuvzqvp.supabase.co']
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'tjzdsiaehksqpxuvzqvp.supabase.co',
+      },
+      {
+        protocol: 'https',
+        hostname: '**',
+      },
+    ],
   },
-  
-  // アップロード設定（3GB制限）
+
+  // アップロード設定
   serverExternalPackages: ['@supabase/supabase-js'],
 
-  // ビルド設定
-  eslint: {
-    ignoreDuringBuilds: true
-  },
+  // ビルド設定（Next.js 16対応）
   typescript: {
-    ignoreBuildErrors: true
+    ignoreBuildErrors: true,
+  },
+
+  // Turbopack設定（Next.js 16対応）
+  turbopack: {},
+
+  // 実験的機能
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '500mb',
+    },
   },
 
   // セキュリティヘッダー

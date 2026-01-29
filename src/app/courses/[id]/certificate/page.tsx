@@ -29,6 +29,7 @@ export default function CourseCertificatePage() {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [completionDate, setCompletionDate] = useState<Date>(new Date());
 
   useEffect(() => {
     if (courseId && user) {
@@ -67,10 +68,24 @@ export default function CourseCertificatePage() {
         .from('video_view_logs')
         .select('*')
         .eq('course_id', courseId)
-        .eq('user_id', user.id);
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false });
 
       if (logsError) console.error('視聴ログ取得エラー:', logsError);
       setViewLogs(logsData || []);
+
+      // コース完了日付を計算（最後に完了した動画の日時）
+      const completedLogs = (logsData || []).filter(log => log.status === 'completed');
+      if (completedLogs.length > 0 && completedLogs.length === videosData?.length) {
+        // 全動画完了している場合、最後に完了した動画の日時を取得
+        const lastCompletedLog = completedLogs.reduce((latest, log) => {
+          const logDate = new Date(log.updated_at || log.created_at);
+          const latestDate = new Date(latest.updated_at || latest.created_at);
+          return logDate > latestDate ? log : latest;
+        }, completedLogs[0]);
+
+        setCompletionDate(new Date(lastCompletedLog.updated_at || lastCompletedLog.created_at));
+      }
 
       // ユーザープロフィールを取得
       const { data: profileData } = await supabase
@@ -155,7 +170,7 @@ export default function CourseCertificatePage() {
             <CourseCertificate
               course={course}
               user={userProfile}
-              completionDate={new Date()}
+              completionDate={completionDate}
               progress={{
                 completedVideos: getCompletedCount(),
                 totalVideos: videos.length,

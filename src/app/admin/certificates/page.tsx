@@ -10,6 +10,9 @@ import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/database/supabase';
 import { certificatesClient } from '@/lib/database/supabase-no-cache';
 import { generateCertificatePDF, type CertificateData } from '@/lib/utils/certificatePDF';
+import { generateCertificateId } from '@/lib/utils';
+import { format } from 'date-fns';
+import { ja } from 'date-fns/locale';
 import {
   DocumentCheckIcon,
   ArrowDownTrayIcon,
@@ -50,12 +53,102 @@ export default function CertificatesManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [reissuingId, setReissuingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (user && isAdmin) {
       fetchCertificates();
     }
   }, [user, isAdmin]);
+
+  // 証明書署名設定を取得
+  const fetchCertificateSettings = async () => {
+    try {
+      console.log('=== 証明書設定を取得中（管理者画面） ===');
+      const { data: settingsData, error } = await supabase
+        .from('system_settings')
+        .select('*')
+        .in('setting_key', [
+          'certificate.company_name',
+          'certificate.signer_name',
+          'certificate.signer_title',
+          'certificate.stamp_image_url'
+        ]);
+
+      if (error) {
+        console.error('❌ 証明書設定取得エラー:', error);
+        return null;
+      }
+
+      console.log('取得した設定データ（生データ）:', settingsData);
+
+      // 設定を整形
+      const settings = {
+        company_name: '',
+        signer_name: '',
+        signer_title: '',
+        stamp_image_url: ''
+      };
+
+      settingsData?.forEach(item => {
+        console.log(`設定項目: ${item.setting_key} = ${item.setting_value}`);
+        const key = item.setting_key.split('.')[1];
+        if (key) {
+          settings[key as keyof typeof settings] = item.setting_value || '';
+        }
+      });
+
+      console.log('✅ 証明書設定を取得しました:', settings);
+      return settings;
+    } catch (err) {
+      console.error('❌ 証明書設定取得エラー:', err);
+      return null;
+    }
+  };
+
+  // コース完了日付を再計算（status='completed'の動画の最終日時、受講状況ページと同じ判定）
+  const recalculateCompletionDate = async (userId: string, courseId: number) => {
+    try {
+      console.log('=== コース完了日付を再計算中（管理者画面） ===');
+      console.log('ユーザーID:', userId);
+      console.log('コースID:', courseId);
+
+      // 完了した視聴ログを取得（status = 'completed'）
+      const { data: logsData, error: logsError } = await supabase
+        .from('video_view_logs')
+        .select('*')
+        .eq('course_id', courseId)
+        .eq('user_id', userId)
+        .eq('status', 'completed')
+        .order('completed_at', { ascending: false });
+
+      if (logsError) {
+        console.error('❌ 視聴ログ取得エラー:', logsError);
+        return new Date();
+      }
+
+      console.log('完了済み視聴ログ件数:', logsData?.length || 0);
+
+      // 最後に完了した動画の日時を取得
+      if (logsData && logsData.length > 0) {
+        const lastCompletedLog = logsData.reduce((latest, log) => {
+          const logDate = new Date(log.completed_at || log.last_updated || log.created_at);
+          const latestDate = new Date(latest.completed_at || latest.last_updated || latest.created_at);
+          return logDate > latestDate ? log : latest;
+        }, logsData[0]);
+
+        const completionDate = new Date(lastCompletedLog.completed_at || lastCompletedLog.last_updated || lastCompletedLog.created_at);
+        console.log('✅ 再計算した完了日付:', completionDate.toISOString());
+        return completionDate;
+      }
+
+      console.log('⚠️ 完了済みログがありません。現在時刻を使用します');
+      return new Date();
+    } catch (err) {
+      console.error('❌ 完了日付再計算エラー:', err);
+      return new Date();
+    }
+  };
 
   const fetchCertificates = async () => {
     try {
@@ -154,22 +247,139 @@ export default function CertificatesManagement() {
     }
   };
 
-  const handleReissueCertificate = async (certificateId: string) => {
-    if (!confirm('この証明書を再発行しますか？')) return;
+  const handleReissueCertificate = async (certificate: Certificate) => {
+    if (!confirm('既存の証明書を削除して、新しい証明書番号で再発行します。完了日付は視聴ログから再計算されます。よろしいですか？')) return;
+
+    setReissuingId(certificate.id);
 
     try {
-      const { error } = await supabase
-        .from('certificates')
-        .update({ is_active: true })
-        .eq('id', certificateId);
+      console.log('=== 証明書を削除して再発行します（管理者画面） ===');
+      console.log('既存証明書ID:', certificate.id);
+      console.log('ユーザーID:', certificate.user_id);
+      console.log('コースID:', certificate.course_id);
 
-      if (error) throw error;
+      // 1. 完了日付を再計算
+      console.log('ステップ1: 完了日付を再計算');
+      const newCompletionDate = await recalculateCompletionDate(certificate.user_id, certificate.course_id);
 
+      // 2. 証明書設定を取得
+      console.log('ステップ2: 証明書設定を取得');
+      const settings = await fetchCertificateSettings();
+
+      console.log('再発行時の証明書設定:', settings);
+      console.log('再発行時の完了日付:', newCompletionDate);
+
+      // 3. 既存の証明書を削除
+      console.log('ステップ3: 既存証明書を削除');
+      const { error: deleteError } = await certificatesClient.delete(certificate.id);
+
+      if (deleteError) {
+        console.error('証明書削除エラー:', deleteError);
+        throw new Error('既存の証明書の削除に失敗しました');
+      }
+
+      console.log('✅ 既存証明書を削除しました');
+
+      // 4. 新しい証明書を生成
+      console.log('ステップ4: 新しい証明書を生成');
+      await new Promise(resolve => setTimeout(resolve, 500)); // 少し待機
+
+      const newCertificateId = generateCertificateId();
+
+      // ユーザー情報を取得
+      const { data: userProfile } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', certificate.user_id)
+        .single();
+
+      // コース情報を取得
+      const { data: courseData } = await supabase
+        .from('courses')
+        .select('*')
+        .eq('id', certificate.course_id)
+        .single();
+
+      // 視聴ログを取得して総視聴時間を計算
+      const { data: viewLogs } = await supabase
+        .from('video_view_logs')
+        .select('*')
+        .eq('course_id', certificate.course_id)
+        .eq('user_id', certificate.user_id);
+
+      const totalWatchTime = viewLogs?.reduce((sum, log) => sum + (log.total_watched_time || 0), 0) || 0;
+
+      // 動画数を取得
+      const { data: videos } = await supabase
+        .from('videos')
+        .select('id')
+        .eq('course_id', certificate.course_id)
+        .eq('status', 'active');
+
+      const totalVideos = videos?.length || 0;
+
+      // データベースに保存
+      const insertData = {
+        id: newCertificateId,
+        user_id: certificate.user_id,
+        course_id: certificate.course_id,
+        user_name: userProfile?.display_name || userProfile?.email || 'ユーザー',
+        course_title: courseData?.title || 'コース名',
+        completion_date: newCompletionDate.toISOString(),
+        pdf_url: null,
+        is_active: true,
+        created_at: new Date().toISOString()
+      };
+
+      console.log('新規証明書データ:', insertData);
+
+      const { data: newCertificate, error: dbError } = await certificatesClient
+        .insert(insertData)
+        .then(result => result.single());
+
+      if (dbError) {
+        console.error('証明書保存エラー:', dbError);
+        throw new Error('新しい証明書の保存に失敗しました');
+      }
+
+      console.log('✅ 新しい証明書を生成しました:', newCertificate);
+
+      // 5. PDFダウンロード（最新の設定と完了日付を使用）
+      console.log('ステップ5: PDFを生成してダウンロード');
+      const certificateData: CertificateData = {
+        certificateId: newCertificate.id,
+        courseName: courseData?.title || 'コース名',
+        userName: userProfile?.display_name || userProfile?.email || 'ユーザー',
+        completionDate: format(newCompletionDate, 'yyyy年MM月dd日', { locale: ja }),
+        issueDate: format(new Date(), 'yyyy年MM月dd日', { locale: ja }),
+        totalVideos: totalVideos,
+        totalWatchTime: Math.round(totalWatchTime / 60),
+        courseDescription: courseData?.description || '',
+        organization: '企業研修LMS',
+        company: userProfile?.company || undefined,
+        issuerCompanyName: settings?.company_name || undefined,
+        signerName: settings?.signer_name || undefined,
+        signerTitle: settings?.signer_title || undefined,
+        stampImageUrl: settings?.stamp_image_url || undefined,
+      };
+
+      console.log('=== 再発行証明書PDFデータ（署名情報・完了日付含む） ===');
+      console.log(certificateData);
+      await generateCertificatePDF(certificateData);
+
+      console.log('✅ 証明書を再発行しました:', newCertificate.id);
+
+      // 証明書一覧を更新
       await fetchCertificates();
-      alert('証明書を再発行しました。');
+      alert('証明書を再発行しました。PDFがダウンロードされます。');
+
     } catch (error) {
-      console.error('証明書再発行エラー:', error);
-      alert('証明書の再発行に失敗しました。');
+      console.error('❌ 証明書再発行エラー:', error);
+      alert('証明書の再発行に失敗しました: ' + (error instanceof Error ? error.message : '不明なエラー'));
+      // エラー時は証明書一覧を再取得
+      await fetchCertificates();
+    } finally {
+      setReissuingId(null);
     }
   };
 
@@ -179,11 +389,37 @@ export default function CertificatesManagement() {
     setDownloadingId(certificate.id);
 
     try {
+      console.log('=== 証明書PDFをダウンロード（管理者画面） ===');
+
+      // 証明書設定を取得
+      const settings = await fetchCertificateSettings();
+
+      // 視聴ログを取得して総視聴時間を計算
+      const { data: viewLogs } = await supabase
+        .from('video_view_logs')
+        .select('*')
+        .eq('course_id', certificate.course_id)
+        .eq('user_id', certificate.user_id);
+
+      const totalWatchTime = viewLogs?.reduce((sum, log) => sum + (log.total_watched_time || 0), 0) || 0;
+
+      // 動画数を取得
+      const { data: videos } = await supabase
+        .from('videos')
+        .select('id')
+        .eq('course_id', certificate.course_id)
+        .eq('status', 'active');
+
+      const totalVideos = videos?.length || 0;
+
+      // 手動設定日があればそれを優先、なければcompletion_dateを使用
+      const effectiveIssueDate = certificate.manual_issue_date || certificate.completion_date;
+
       const certificateData: CertificateData = {
         certificateId: certificate.id,
         courseName: certificate.course_title || certificate.courses?.title || 'コース名',
         userName: certificate.user_name || certificate.user_profiles?.display_name || certificate.user_profiles?.email || 'ユーザー名',
-        completionDate: new Date(certificate.completion_date).toLocaleDateString('ja-JP', {
+        completionDate: new Date(effectiveIssueDate).toLocaleDateString('ja-JP', {
           year: 'numeric',
           month: 'long',
           day: 'numeric'
@@ -193,13 +429,18 @@ export default function CertificatesManagement() {
           month: 'long',
           day: 'numeric'
         }),
-        totalVideos: 0,
-        totalWatchTime: 0,
+        totalVideos: totalVideos,
+        totalWatchTime: Math.round(totalWatchTime / 60),
         courseDescription: certificate.courses?.description || '',
         organization: '企業研修LMS',
         company: certificate.user_profiles?.company || undefined,
+        issuerCompanyName: settings?.company_name || undefined,
+        signerName: settings?.signer_name || undefined,
+        signerTitle: settings?.signer_title || undefined,
+        stampImageUrl: settings?.stamp_image_url || undefined,
       };
 
+      console.log('証明書PDFデータ（署名情報含む）:', certificateData);
       await generateCertificatePDF(certificateData);
     } catch (error) {
       console.error('ダウンロードエラー:', error);
@@ -364,7 +605,7 @@ export default function CertificatesManagement() {
                       コース
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      完了日
+                      発行日
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       ステータス
@@ -399,7 +640,10 @@ export default function CertificatesManagement() {
                         {certificate.course_title || certificate.courses?.title}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                        {new Date(certificate.completion_date).toLocaleDateString('ja-JP')}
+                        {new Date(certificate.manual_issue_date || certificate.completion_date).toLocaleDateString('ja-JP')}
+                        {certificate.manual_issue_date && (
+                          <span className="ml-1 text-xs text-blue-600 dark:text-blue-400">(手動)</span>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 text-xs rounded-full ${
@@ -422,6 +666,15 @@ export default function CertificatesManagement() {
                             <DocumentArrowDownIcon className="h-4 w-4 mr-1" />
                             {downloadingId === certificate.id ? '生成中...' : 'PDF'}
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-orange-600 hover:text-orange-700"
+                            onClick={() => handleReissueCertificate(certificate)}
+                            disabled={reissuingId === certificate.id}
+                          >
+                            {reissuingId === certificate.id ? '再発行中...' : '再発行'}
+                          </Button>
                           {certificate.is_active ? (
                             <Button
                               size="sm"
@@ -431,16 +684,7 @@ export default function CertificatesManagement() {
                             >
                               無効化
                             </Button>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-green-600 hover:text-green-700"
-                              onClick={() => handleReissueCertificate(certificate.id)}
-                            >
-                              再発行
-                            </Button>
-                          )}
+                          ) : null}
                         </div>
                       </td>
                     </tr>

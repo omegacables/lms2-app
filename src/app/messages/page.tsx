@@ -15,7 +15,12 @@ import {
   UserIcon,
   ExclamationTriangleIcon,
   CheckCircleIcon,
-  ClockIcon
+  ClockIcon,
+  PaperClipIcon,
+  PhotoIcon,
+  DocumentIcon,
+  XMarkIcon,
+  ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
 
 interface SupportConversation {
@@ -38,6 +43,16 @@ interface SupportMessage {
   message: string;
   isRead: boolean;
   createdAt: string;
+  fileUrl?: string;
+  fileName?: string;
+  fileType?: string;
+  fileSize?: number;
+}
+
+interface FilePreview {
+  file: File;
+  previewUrl: string;
+  type: 'image' | 'document';
 }
 
 export default function SupportMessages() {
@@ -51,7 +66,10 @@ export default function SupportMessages() {
   const [showNewConversationModal, setShowNewConversationModal] = useState(false);
   const [newSubject, setNewSubject] = useState('');
   const [newPriority, setNewPriority] = useState('normal');
+  const [selectedFile, setSelectedFile] = useState<FilePreview | null>(null);
+  const [uploading, setUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (user) {
@@ -232,7 +250,11 @@ export default function SupportMessages() {
         senderName: msg.sender?.display_name || 'ユーザー',
         message: msg.message,
         isRead: msg.is_read,
-        createdAt: msg.created_at
+        createdAt: msg.created_at,
+        fileUrl: msg.file_url,
+        fileName: msg.file_name,
+        fileType: msg.file_type,
+        fileSize: msg.file_size
       })) || [];
 
       setMessages(formattedMessages);
@@ -309,19 +331,122 @@ export default function SupportMessages() {
     }
   };
 
+  // ファイル選択処理
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // ファイルサイズ制限（10MB）
+    if (file.size > 10 * 1024 * 1024) {
+      alert('ファイルサイズは10MB以下にしてください。');
+      return;
+    }
+
+    // 許可するファイルタイプ
+    const allowedTypes = [
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+      'application/pdf',
+      'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain', 'text/csv'
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      alert('このファイル形式はサポートされていません。\n対応形式: 画像(JPEG, PNG, GIF, WebP), PDF, Word, Excel, テキスト');
+      return;
+    }
+
+    const isImage = file.type.startsWith('image/');
+    const previewUrl = isImage ? URL.createObjectURL(file) : '';
+
+    setSelectedFile({
+      file,
+      previewUrl,
+      type: isImage ? 'image' : 'document'
+    });
+  };
+
+  // ファイル選択解除
+  const clearSelectedFile = () => {
+    if (selectedFile?.previewUrl) {
+      URL.revokeObjectURL(selectedFile.previewUrl);
+    }
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // ファイルアップロード
+  const uploadFile = async (file: File): Promise<{ url: string; name: string; type: string; size: number } | null> => {
+    try {
+      setUploading(true);
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user?.id}/${Date.now()}.${fileExt}`;
+
+      const { data, error } = await supabase.storage
+        .from('chat-files')
+        .upload(fileName, file);
+
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('chat-files')
+        .getPublicUrl(fileName);
+
+      return {
+        url: publicUrl,
+        name: file.name,
+        type: file.type,
+        size: file.size
+      };
+    } catch (error) {
+      console.error('ファイルアップロードエラー:', error);
+      return null;
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ファイルサイズをフォーマット
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
+  // ファイルアイコンを取得
+  const getFileIcon = (fileType: string) => {
+    if (fileType.startsWith('image/')) return PhotoIcon;
+    return DocumentIcon;
+  };
+
   const sendMessage = async () => {
-    if (!newMessage.trim() || !selectedConversation || !user) return;
+    if ((!newMessage.trim() && !selectedFile) || !selectedConversation || !user) return;
 
     try {
       setSending(true);
-      
+
+      let fileData = null;
+      if (selectedFile) {
+        fileData = await uploadFile(selectedFile.file);
+        if (!fileData && !newMessage.trim()) {
+          alert('ファイルのアップロードに失敗しました。');
+          return;
+        }
+      }
+
       const { error } = await supabase
         .from('support_messages')
         .insert({
           conversation_id: selectedConversation.id,
           sender_id: user.id,
           sender_type: 'student',
-          message: newMessage.trim()
+          message: newMessage.trim() || (fileData ? `[ファイル: ${fileData.name}]` : ''),
+          file_url: fileData?.url || null,
+          file_name: fileData?.name || null,
+          file_type: fileData?.type || null,
+          file_size: fileData?.size || null
         });
 
       if (error) throw error;
@@ -330,7 +455,7 @@ export default function SupportMessages() {
       if (selectedConversation.status === 'resolved' || selectedConversation.status === 'closed') {
         await supabase
           .from('support_conversations')
-          .update({ 
+          .update({
             status: 'open',
             updated_at: new Date()
           })
@@ -338,6 +463,7 @@ export default function SupportMessages() {
       }
 
       setNewMessage('');
+      clearSelectedFile();
       await fetchMessages(selectedConversation.id);
       await fetchConversations();
     } catch (error) {
@@ -535,7 +661,47 @@ export default function SupportMessages() {
                               {message.senderType === 'student' ? message.senderName || 'あなた' : 'サポート'}
                             </span>
                           </div>
-                          <p className="text-sm">{message.message}</p>
+                          {/* ファイル表示 */}
+                          {message.fileUrl && (
+                            <div className="mb-2">
+                              {message.fileType?.startsWith('image/') ? (
+                                <a href={message.fileUrl} target="_blank" rel="noopener noreferrer">
+                                  <img
+                                    src={message.fileUrl}
+                                    alt={message.fileName || 'Image'}
+                                    className="max-w-full rounded-lg cursor-pointer hover:opacity-90"
+                                    style={{ maxHeight: '200px' }}
+                                  />
+                                </a>
+                              ) : (
+                                <a
+                                  href={message.fileUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={`flex items-center p-2 rounded-lg ${
+                                    message.senderType === 'student'
+                                      ? 'bg-blue-500 hover:bg-blue-400'
+                                      : 'bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500'
+                                  }`}
+                                >
+                                  <DocumentIcon className="h-8 w-8 mr-2 flex-shrink-0" />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-medium truncate">{message.fileName}</p>
+                                    <p className={`text-xs ${
+                                      message.senderType === 'student' ? 'text-blue-200' : 'text-gray-500 dark:text-gray-400'
+                                    }`}>
+                                      {message.fileSize ? formatFileSize(message.fileSize) : ''}
+                                    </p>
+                                  </div>
+                                  <ArrowDownTrayIcon className="h-5 w-5 ml-2 flex-shrink-0" />
+                                </a>
+                              )}
+                            </div>
+                          )}
+                          {/* メッセージテキスト（ファイルのみの場合は非表示） */}
+                          {message.message && !message.message.startsWith('[ファイル:') && (
+                            <p className="text-sm">{message.message}</p>
+                          )}
                           <p className={`text-xs mt-1 ${
                             message.senderType === 'student' ? 'text-blue-200' : 'text-gray-500 dark:text-gray-400'
                           }`}>
@@ -549,7 +715,55 @@ export default function SupportMessages() {
 
                   {/* メッセージ入力 */}
                   <div className="p-4 border-t border-gray-200 dark:border-neutral-800">
+                    {/* ファイルプレビュー */}
+                    {selectedFile && (
+                      <div className="mb-3 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center min-w-0">
+                            {selectedFile.type === 'image' ? (
+                              <img
+                                src={selectedFile.previewUrl}
+                                alt="Preview"
+                                className="h-12 w-12 object-cover rounded mr-3"
+                              />
+                            ) : (
+                              <DocumentIcon className="h-10 w-10 text-gray-500 mr-3 flex-shrink-0" />
+                            )}
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                {selectedFile.file.name}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {formatFileSize(selectedFile.file.size)}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={clearSelectedFile}
+                            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
+                          >
+                            <XMarkIcon className="h-5 w-5 text-gray-500" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex space-x-2">
+                      {/* ファイル選択ボタン */}
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileSelect}
+                        className="hidden"
+                        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+                      />
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={sending || uploading}
+                        className="p-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+                        title="ファイルを添付"
+                      >
+                        <PaperClipIcon className="h-5 w-5 text-gray-500" />
+                      </button>
                       <input
                         type="text"
                         placeholder="メッセージを入力..."
@@ -562,20 +776,23 @@ export default function SupportMessages() {
                             sendMessage();
                           }
                         }}
-                        disabled={sending}
+                        disabled={sending || uploading}
                       />
                       <Button
                         onClick={sendMessage}
-                        disabled={!newMessage.trim() || sending}
+                        disabled={(!newMessage.trim() && !selectedFile) || sending || uploading}
                         className="px-4"
                       >
-                        {sending ? (
+                        {sending || uploading ? (
                           <LoadingSpinner size="sm" />
                         ) : (
                           <PaperAirplaneIcon className="h-4 w-4" />
                         )}
                       </Button>
                     </div>
+                    <p className="text-xs text-gray-400 mt-2">
+                      対応ファイル: 画像, PDF, Word, Excel, テキスト（最大10MB）
+                    </p>
                   </div>
                 </>
               ) : (

@@ -24,6 +24,17 @@ export async function generateCertificatePDF(certificateData: CertificateData) {
   const certificateNumber = certificateData.certificateId || generateCertificateId();
   const verificationCode = Math.random().toString(36).substring(2, 18).toUpperCase();
 
+  console.log('=== 証明書PDF生成開始 ===');
+  console.log('証明書データ:', {
+    certificateId: certificateNumber,
+    userName: certificateData.userName,
+    courseName: certificateData.courseName,
+    issuerCompanyName: certificateData.issuerCompanyName,
+    signerName: certificateData.signerName,
+    signerTitle: certificateData.signerTitle,
+    stampImageUrl: certificateData.stampImageUrl
+  });
+
   const doc = new jsPDF({
     orientation: 'landscape',
     unit: 'mm',
@@ -89,40 +100,50 @@ export async function generateCertificatePDF(certificateData: CertificateData) {
   // 発行日
   ctx.font = '45px "Noto Sans JP", sans-serif';
   ctx.fillStyle = '#505050';
-  ctx.fillText(`発行日: ${certificateData.issueDate || new Date().toLocaleDateString('ja-JP')}`, canvas.width / 2, 1500);
+  ctx.fillText(`発行日: ${certificateData.completionDate || new Date().toLocaleDateString('ja-JP')}`, canvas.width / 2, 1500);
 
   // 証明書番号
   ctx.font = '40px "Noto Sans JP", sans-serif';
   ctx.fillStyle = '#787878';
+  ctx.textAlign = 'center';
   ctx.fillText(`証明書番号: ${certificateNumber}`, canvas.width / 2, 1600);
 
   // 検証コード
   ctx.fillText(`検証コード: ${verificationCode}`, canvas.width / 2, 1680);
 
   // 署名欄 - 発行元会社名
-  ctx.font = '45px "Noto Sans JP", sans-serif';
-  ctx.fillStyle = '#323232';
   ctx.textAlign = 'right';
+  ctx.font = 'bold 50px "Noto Sans JP", sans-serif';
+  ctx.fillStyle = '#323232';
   if (certificateData.issuerCompanyName) {
-    ctx.fillText(certificateData.issuerCompanyName, 2650, 1680);
+    console.log('✅ 発行元会社名を描画:', certificateData.issuerCompanyName);
+    ctx.fillText(certificateData.issuerCompanyName, 2700, 1750);
+  } else {
+    console.log('⚠️ 発行元会社名が設定されていません');
   }
 
   // 署名者役職と氏名
-  ctx.font = '40px "Noto Sans JP", sans-serif';
+  ctx.font = '42px "Noto Sans JP", sans-serif';
   ctx.fillStyle = '#505050';
-  if (certificateData.signerTitle) {
-    ctx.fillText(certificateData.signerTitle, 2650, 1740);
-  }
-  if (certificateData.signerName) {
-    ctx.fillText(certificateData.signerName, 2650, 1800);
+  if (certificateData.signerTitle && certificateData.signerName) {
+    console.log('✅ 署名者役職と氏名を描画:', `${certificateData.signerTitle} ${certificateData.signerName}`);
+    ctx.fillText(`${certificateData.signerTitle} ${certificateData.signerName}`, 2700, 1820);
+  } else if (certificateData.signerTitle) {
+    console.log('✅ 署名者役職を描画:', certificateData.signerTitle);
+    ctx.fillText(certificateData.signerTitle, 2700, 1820);
+  } else if (certificateData.signerName) {
+    console.log('✅ 署名者氏名を描画:', certificateData.signerName);
+    ctx.fillText(certificateData.signerName, 2700, 1820);
+  } else {
+    console.log('⚠️ 署名者情報が設定されていません');
   }
 
   // 署名欄の線（名前の下）
   ctx.strokeStyle = '#969696';
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.moveTo(2200, 1850);
-  ctx.lineTo(2650, 1850);
+  ctx.moveTo(2300, 1870);
+  ctx.lineTo(2720, 1870);
   ctx.stroke();
 
   // 装飾的な要素
@@ -159,65 +180,50 @@ export async function generateCertificatePDF(certificateData: CertificateData) {
 
   // 印鑑画像または印鑑を表示
   if (certificateData.stampImageUrl) {
+    console.log('✅ 印鑑画像URLが設定されています:', certificateData.stampImageUrl);
     // 印鑑画像を表示
     try {
       const stampImg = new Image();
       stampImg.crossOrigin = 'anonymous';
+      console.log('印鑑画像の読み込み開始...');
       await new Promise<void>((resolve, reject) => {
         stampImg.onload = () => {
-          // 印鑑画像を署名欄の右側に表示
-          const stampSize = 200; // 印鑑のサイズ
-          const stampX = 2400; // X座標
-          const stampY = 1600; // Y座標
+          console.log('✅ 印鑑画像の読み込み成功');
+          // 印鑑画像を署名者名の左に表示
+          const stampSize = 180; // 印鑑のサイズ
+          const stampX = 2350; // X座標（署名者名の左側）
+          const stampY = 1680; // Y座標
+          console.log(`印鑑画像を描画: サイズ=${stampSize}px, 位置=(${stampX}, ${stampY})`);
           ctx.drawImage(stampImg, stampX, stampY, stampSize, stampSize);
           resolve();
         };
-        stampImg.onerror = () => {
-          console.error('印鑑画像の読み込みに失敗しました');
+        stampImg.onerror = (error) => {
+          console.error('❌ 印鑑画像の読み込みに失敗しました:', error);
+          console.error('画像URL:', certificateData.stampImageUrl);
           resolve(); // エラーでも処理を続行
         };
         stampImg.src = certificateData.stampImageUrl;
       });
+      console.log('印鑑画像の処理完了');
     } catch (error) {
-      console.error('印鑑画像の読み込みエラー:', error);
-      // エラーの場合はトロフィーアイコンを表示
-      ctx.fillStyle = '#ffd700';
-      ctx.beginPath();
-      ctx.arc(canvas.width / 2, 1750, 80, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.arc(canvas.width / 2, 1750, 60, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#ffd700';
-      ctx.beginPath();
-      ctx.arc(canvas.width / 2, 1750, 40, 0, Math.PI * 2);
-      ctx.fill();
+      console.error('❌ 印鑑画像の読み込みエラー:', error);
     }
   } else {
-    // 印鑑画像がない場合はトロフィーアイコンを表示
-    ctx.fillStyle = '#ffd700';
-    ctx.beginPath();
-    ctx.arc(canvas.width / 2, 1750, 80, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(canvas.width / 2, 1750, 60, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffd700';
-    ctx.beginPath();
-    ctx.arc(canvas.width / 2, 1750, 40, 0, Math.PI * 2);
-    ctx.fill();
+    console.log('⚠️ 印鑑画像URLが設定されていません');
   }
 
   // CanvasをPDFに追加
+  console.log('CanvasをPDFに変換中...');
   const imgData = canvas.toDataURL('image/png');
   doc.addImage(imgData, 'PNG', 0, 0, 297, 210);
 
   // PDFをダウンロード
   const safeCourseName = (certificateData.courseName || 'certificate').replace(/[^a-zA-Z0-9]/g, '_');
   const fileName = `certificate_${safeCourseName}_${Date.now()}.pdf`;
+  console.log('PDFをダウンロード:', fileName);
   doc.save(fileName);
+
+  console.log('=== 証明書PDF生成完了 ===');
 
   // 証明書情報を返す（データベースへの保存用）
   return {

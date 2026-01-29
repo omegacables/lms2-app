@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import { supabase } from '@/lib/database/supabase';
 import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import * as tus from 'tus-js-client';
 import {
   CloudArrowUpIcon,
   XMarkIcon,
@@ -129,40 +130,50 @@ export function VideoUploader({ courseId, onSuccess, onError }: VideoUploaderPro
         filePath: filePath
       });
 
-      // プログレスを模擬的に更新（実際のプログレスは取得できないため）
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => Math.min(prev + 10, 90));
-      }, 1000);
+      // Supabaseプロジェクトの情報を取得
+      const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('videos')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-          duplex: 'half', // より安定した接続のため
+      // TUSプロトコルでアップロード
+      await new Promise<void>((resolve, reject) => {
+        const upload = new tus.Upload(file, {
+          endpoint: `${projectUrl}/storage/v1/upload/resumable`,
+          retryDelays: [0, 3000, 5000, 10000, 20000],
+          headers: {
+            authorization: `Bearer ${session.access_token}`,
+            'x-upsert': 'false'
+          },
+          uploadDataDuringCreation: true,
+          removeFingerprintOnSuccess: true,
+          metadata: {
+            bucketName: 'videos',
+            objectName: filePath,
+            contentType: file.type,
+            cacheControl: '3600'
+          },
+          chunkSize: 6 * 1024 * 1024, // 6MB chunks
+          onError: (error) => {
+            console.error('TUS upload error:', error);
+            reject(error);
+          },
+          onProgress: (bytesUploaded, bytesTotal) => {
+            const percentage = (bytesUploaded / bytesTotal) * 90;
+            setUploadProgress(Math.floor(percentage));
+          },
+          onSuccess: () => {
+            console.log('TUS upload successful');
+            resolve();
+          }
         });
 
-      clearInterval(progressInterval);
+        upload.findPreviousUploads().then((previousUploads) => {
+          if (previousUploads.length) {
+            upload.resumeFromPreviousUpload(previousUploads[0]);
+          }
+          upload.start();
+        });
+      });
 
-      if (uploadError) {
-        console.error('アップロードエラー:', uploadError);
-
-        // エラーメッセージをより分かりやすく
-        let errorMessage = 'アップロードに失敗しました';
-        if (uploadError.message?.includes('timeout')) {
-          errorMessage = 'アップロードがタイムアウトしました。ファイルサイズが大きすぎるか、ネットワーク接続が不安定です。';
-        } else if (uploadError.message?.includes('413')) {
-          errorMessage = 'ファイルサイズが大きすぎます。500MB以下のファイルを選択してください。';
-        } else if (uploadError.message?.includes('network')) {
-          errorMessage = 'ネットワークエラーが発生しました。接続を確認してください。';
-        } else {
-          errorMessage = `アップロードに失敗しました: ${uploadError.message}`;
-        }
-
-        throw new Error(errorMessage);
-      }
-
-      console.log('アップロード成功:', uploadData);
+      console.log('アップロード成功');
 
       // 公開URLを取得
       const { data: { publicUrl } } = supabase.storage

@@ -483,7 +483,35 @@ export default function LearningLogsPage() {
         console.error('追加エラー:', error);
         alert(`追加に失敗しました: ${error.message}`);
       } else {
-        alert('学習ログを追加しました');
+        // ログ追加後、コースが完了したか確認して証明書生成を試みる
+        if (newLog.user_id && newLog.course_id) {
+          try {
+            console.log('学習ログ追加後、コース完了・証明書生成を確認中...');
+            const certResponse = await fetch('/api/certificates/generate', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                userId: newLog.user_id,
+                courseId: parseInt(newLog.course_id)
+              })
+            });
+            const certResult = await certResponse.json();
+            if (certResult.success) {
+              console.log('証明書が発行されました:', certResult.certificateId);
+              alert('学習ログを追加しました。コース完了により証明書が発行されました。');
+            } else {
+              console.log('証明書発行条件未達:', certResult.error);
+              alert('学習ログを追加しました');
+            }
+          } catch (certError) {
+            console.error('証明書生成確認エラー:', certError);
+            alert('学習ログを追加しました');
+          }
+        } else {
+          alert('学習ログを追加しました');
+        }
         setShowAddModal(false);
         setNewLog({
           user_name: '',
@@ -585,7 +613,35 @@ export default function LearningLogsPage() {
       });
 
       if (response.ok) {
-        alert('学習ログを更新しました');
+        // ログ更新後、コースが完了したか確認して証明書生成を試みる
+        if (editingLog.user_id && editingLog.course_id) {
+          try {
+            console.log('学習ログ更新後、コース完了・証明書生成を確認中...');
+            const certResponse = await fetch('/api/certificates/generate', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                userId: editingLog.user_id,
+                courseId: parseInt(editingLog.course_id)
+              })
+            });
+            const certResult = await certResponse.json();
+            if (certResult.success) {
+              console.log('証明書が発行されました:', certResult.certificateId);
+              alert('学習ログを更新しました。コース完了により証明書が発行されました。');
+            } else {
+              console.log('証明書発行条件未達:', certResult.error);
+              alert('学習ログを更新しました');
+            }
+          } catch (certError) {
+            console.error('証明書生成確認エラー:', certError);
+            alert('学習ログを更新しました');
+          }
+        } else {
+          alert('学習ログを更新しました');
+        }
         setEditingLog(null);
         setSelectedCourseForEdit('');
         setSelectedVideoForEdit('');
@@ -990,7 +1046,7 @@ export default function LearningLogsPage() {
                   <table className="min-w-full divide-y divide-gray-200 dark:divide-neutral-800">
                     <thead className="bg-gray-50 dark:bg-black">
                       <tr>
-                        <th className="px-3 py-3 text-left">
+                        <th className="px-2 py-3 text-left">
                           <input
                             type="checkbox"
                             checked={selectedLogs.size === filteredAndSortedLogs.length && filteredAndSortedLogs.length > 0}
@@ -999,7 +1055,7 @@ export default function LearningLogsPage() {
                           />
                         </th>
                         <th
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
+                          className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
                           onClick={() => handleSort('user_name')}
                         >
                           <div className="flex items-center">
@@ -1009,8 +1065,8 @@ export default function LearningLogsPage() {
                             )}
                           </div>
                         </th>
-                        <th 
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
+                        <th
+                          className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
                           onClick={() => handleSort('company')}
                         >
                           <div className="flex items-center">
@@ -1021,7 +1077,7 @@ export default function LearningLogsPage() {
                           </div>
                         </th>
                         <th
-                          className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
+                          className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
                           onClick={() => handleSort('course_title')}
                         >
                           <div className="flex items-center">
@@ -1032,7 +1088,7 @@ export default function LearningLogsPage() {
                           </div>
                         </th>
                         <th
-                          className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
+                          className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
                           onClick={() => handleSort('video_title')}
                         >
                           <div className="flex items-center">
@@ -1042,17 +1098,17 @@ export default function LearningLogsPage() {
                             )}
                           </div>
                         </th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           開始時刻
                         </th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           終了時刻
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           視聴時間
                         </th>
-                        <th 
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
+                        <th
+                          className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
                           onClick={() => handleSort('progress')}
                         >
                           <div className="flex items-center">
@@ -1062,14 +1118,14 @@ export default function LearningLogsPage() {
                             )}
                           </div>
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           ステータス
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           履歴
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                          アクション
+                        <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          操作
                         </th>
                       </tr>
                     </thead>
@@ -1077,7 +1133,7 @@ export default function LearningLogsPage() {
                       {paginatedLogs.map((log) => (
                         <React.Fragment key={log.id}>
                         <tr className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                          <td className="px-3 py-4">
+                          <td className="px-2 py-3">
                             <input
                               type="checkbox"
                               checked={selectedLogs.has(log.id)}
@@ -1085,78 +1141,52 @@ export default function LearningLogsPage() {
                               className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                             />
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div>
-                              <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                {log.user_name}
-                              </div>
-                              <div className="text-xs text-gray-500 dark:text-gray-400">
-                                {log.user_email}
-                              </div>
+                          <td className="px-2 py-3 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900 dark:text-white">
+                              {log.user_name}
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div>
-                              <div className="text-sm text-gray-900 dark:text-white">
-                                {log.company || '-'}
-                              </div>
-                              {log.department && (
-                                <div className="text-xs text-gray-500 dark:text-gray-400">
-                                  {log.department}
-                                </div>
-                              )}
-                            </div>
+                          <td className="px-2 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                            {log.company || '-'}{log.department ? ` / ${log.department}` : ''}
                           </td>
-                          <td className="px-4 py-4">
-                            <div className="text-sm text-gray-900 dark:text-white max-w-[180px] break-words">
+                          <td className="px-2 py-3">
+                            <div className="text-sm text-gray-900 dark:text-white max-w-[140px] truncate" title={log.course_title}>
                               {log.course_title}
                             </div>
                           </td>
-                          <td className="px-4 py-4">
-                            <div className="text-sm text-gray-900 dark:text-white max-w-[200px] break-words">
+                          <td className="px-2 py-3">
+                            <div className="text-sm text-gray-900 dark:text-white max-w-[140px] truncate" title={log.video_title}>
                               {log.video_title}
                             </div>
                           </td>
-                          <td className="px-3 py-4 text-sm text-gray-900 dark:text-white">
+                          <td className="px-2 py-3 text-xs text-gray-900 dark:text-white whitespace-nowrap">
                             {log.start_time ? new Date(log.start_time).toLocaleString('ja-JP', {
                               month: '2-digit',
                               day: '2-digit',
                               hour: '2-digit',
-                              minute: '2-digit',
-                              second: '2-digit'
+                              minute: '2-digit'
                             }) : '-'}
                           </td>
-                          <td className="px-3 py-4 text-sm text-gray-900 dark:text-white">
+                          <td className="px-2 py-3 text-xs text-gray-900 dark:text-white whitespace-nowrap">
                             {log.end_time ? new Date(log.end_time).toLocaleString('ja-JP', {
                               month: '2-digit',
                               day: '2-digit',
                               hour: '2-digit',
-                              minute: '2-digit',
-                              second: '2-digit'
+                              minute: '2-digit'
                             }) : '-'}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                          <td className="px-2 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                             {formatTime(log.watch_duration)}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center">
-                              <div className="flex-1">
-                                <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                  {Math.round(log.progress)}%
-                                </div>
-                                <div className="w-20 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mt-1">
-                                  <div 
-                                    className="bg-blue-600 h-1.5 rounded-full" 
-                                    style={{ width: `${log.progress}%` }}
-                                  />
-                                </div>
-                              </div>
+                          <td className="px-2 py-3 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900 dark:text-white">
+                              {Math.round(log.progress)}%
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-2 py-3 whitespace-nowrap">
                             {getStatusBadge(log.status)}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-2 py-3 whitespace-nowrap">
                             {log.historyCount && log.historyCount > 1 ? (
                               <button
                                 onClick={() => toggleRowExpansion(log.id)}
@@ -1174,8 +1204,8 @@ export default function LearningLogsPage() {
                               <span className="text-sm text-gray-500 dark:text-gray-400">-</span>
                             )}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center space-x-2">
+                          <td className="px-2 py-3 whitespace-nowrap">
+                            <div className="flex items-center space-x-1">
                               <button
                                 onClick={() => handleEditLog(log)}
                                 className="p-1 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"

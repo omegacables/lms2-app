@@ -15,6 +15,7 @@ import {
   formatFileSize
 } from '@/utils/supabase-storage';
 import { VideoUploader } from '@/components/admin/VideoUploader';
+import * as tus from 'tus-js-client';
 import {
   ArrowLeftIcon,
   PlusIcon,
@@ -285,42 +286,80 @@ export default function CourseVideosPage() {
         return;
       }
 
-      setUploadProgress(10);
+      setUploadProgress(5);
 
-      // 1. 新しいファイルをSupabase Storageに直接アップロード（大きなファイル対応）
-      const fileName = `${Date.now()}-${replaceFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-      const filePath = `course-${courseId}/${fileName}`;
-
-      setUploadProgress(20);
-
-      // Supabase Storageに直接アップロード
-      const { error: uploadError } = await supabase.storage
-        .from('videos')
-        .upload(filePath, replaceFile, {
-          contentType: replaceFile.type,
-          cacheControl: '3600',
-          upsert: false
-        });
-
-      if (uploadError) {
-        throw new Error(`アップロードエラー: ${uploadError.message}`);
+      // 認証トークンを取得
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('ログインが必要です');
       }
 
-      setUploadProgress(60);
+      setUploadProgress(10);
 
-      // 2. 動画URLを取得
-      const { data: urlData } = supabase.storage
+      // ファイルパスを生成
+      const safeFileName = replaceFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const timestamp = Date.now();
+      const filePath = `course-${courseId}/${timestamp}-${safeFileName}`;
+
+      // Supabaseプロジェクトの情報を取得
+      const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+      const projectId = projectUrl.split('//')[1].split('.')[0];
+
+      // TUSプロトコルでアップロード
+      await new Promise<void>((resolve, reject) => {
+        const upload = new tus.Upload(replaceFile, {
+          endpoint: `${projectUrl}/storage/v1/upload/resumable`,
+          retryDelays: [0, 3000, 5000, 10000, 20000],
+          headers: {
+            authorization: `Bearer ${session.access_token}`,
+            'x-upsert': 'false'
+          },
+          uploadDataDuringCreation: true,
+          removeFingerprintOnSuccess: true,
+          metadata: {
+            bucketName: 'videos',
+            objectName: filePath,
+            contentType: replaceFile.type,
+            cacheControl: '3600'
+          },
+          chunkSize: 6 * 1024 * 1024, // 6MB chunks
+          onError: (error) => {
+            console.error('TUS upload error:', error);
+            reject(error);
+          },
+          onProgress: (bytesUploaded, bytesTotal) => {
+            const percentage = ((bytesUploaded / bytesTotal) * 75) + 10; // 10-85%
+            setUploadProgress(Math.floor(percentage));
+          },
+          onSuccess: () => {
+            console.log('TUS upload successful');
+            resolve();
+          }
+        });
+
+        upload.findPreviousUploads().then((previousUploads) => {
+          if (previousUploads.length) {
+            upload.resumeFromPreviousUpload(previousUploads[0]);
+          }
+          upload.start();
+        });
+      });
+
+      setUploadProgress(85);
+
+      // 公開URLを取得
+      const { data: { publicUrl } } = supabase.storage
         .from('videos')
         .getPublicUrl(filePath);
 
-      setUploadProgress(70);
+      setUploadProgress(90);
 
-      // 3. データベースを更新（video_idは変更せず、ファイル情報のみ更新）
-      // これにより、既存の学習ログ（viewing_logs）は自動的に保持されます
+      // データベースを更新
       const { error: updateError } = await supabase
         .from('videos')
         .update({
-          file_url: urlData.publicUrl,
+          file_url: publicUrl,
+          file_path: filePath,
           file_size: replaceFile.size,
           mime_type: replaceFile.type,
           updated_at: new Date().toISOString()
@@ -328,18 +367,29 @@ export default function CourseVideosPage() {
         .eq('id', videoId);
 
       if (updateError) {
-        console.error('Database update error:', updateError);
+        console.error('データベース更新エラー:', updateError);
         // アップロードしたファイルを削除
         await supabase.storage.from('videos').remove([filePath]);
-        throw new Error(`データベース更新に失敗しました: ${updateError.message}`);
+        throw new Error('動画情報の更新に失敗しました');
       }
 
-      setUploadProgress(90);
+      // 古いファイルを削除
+      if (video.file_url) {
+        const urlParts = video.file_url.split('/storage/v1/object/public/videos/');
+        if (urlParts.length > 1) {
+          const oldPath = urlParts[1];
+          try {
+            const { error: deleteError } = await supabase.storage
+              .from('videos')
+              .remove([oldPath]);
 
-      // 4. 古いファイルを削除
-      const oldFilePath = video.file_url?.split('/storage/v1/object/public/videos/')[1];
-      if (oldFilePath) {
-        await supabase.storage.from('videos').remove([oldFilePath]);
+            if (deleteError) {
+              console.warn('古いファイルの削除に失敗:', deleteError);
+            }
+          } catch (deleteError) {
+            console.warn('古いファイルの削除エラー:', deleteError);
+          }
+        }
       }
 
       setUploadProgress(100);
