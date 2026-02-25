@@ -98,6 +98,7 @@ export default function LearningLogsPage() {
   });
   const [allUsers, setAllUsers] = useState<{ id: string; display_name: string; email: string; company?: string; department?: string }[]>([]);
   const [selectedLogs, setSelectedLogs] = useState<Set<string>>(new Set());
+  const [showUnstarted, setShowUnstarted] = useState(false);
   const itemsPerPage = 50;
 
   useEffect(() => {
@@ -542,55 +543,9 @@ export default function LearningLogsPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
 
-      // 開始時刻と終了時刻から視聴時間を計算（設定されている場合）
-      let calculatedDuration = editingLog.watch_duration;
-      if (editingLog.start_time && editingLog.end_time) {
-        // データベースの時刻文字列をローカル時刻として扱い、差分を計算
-        const calculateDurationFromTimes = () => {
-          // .000Zを削除して純粋な時刻文字列にする
-          const startStr = editingLog.start_time.replace('.000Z', '').replace('Z', '');
-          const endStr = editingLog.end_time.replace('.000Z', '').replace('Z', '');
+      // ユーザーが手動入力した視聴時間をそのまま使用
+      const calculatedDuration = editingLog.watch_duration;
 
-          // 時刻要素を抽出
-          const [startDate, startTime] = startStr.split('T');
-          const [endDate, endTime] = endStr.split('T');
-
-          const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
-          const [startHour, startMin, startSec] = startTime.split(':').map(Number);
-
-          const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
-          const [endHour, endMin, endSec] = endTime.split(':').map(Number);
-
-          // 各要素の差を計算
-          let seconds = endSec - startSec;
-          let minutes = endMin - startMin;
-          let hours = endHour - startHour;
-          let days = endDay - startDay;
-
-          // 繰り下がり処理
-          if (seconds < 0) {
-            seconds += 60;
-            minutes -= 1;
-          }
-          if (minutes < 0) {
-            minutes += 60;
-            hours -= 1;
-          }
-          if (hours < 0) {
-            hours += 24;
-            days -= 1;
-          }
-
-          // 合計秒数を計算
-          return (days * 24 * 3600) + (hours * 3600) + (minutes * 60) + seconds;
-        };
-
-        const duration = calculateDurationFromTimes();
-        if (duration > 0) {
-          calculatedDuration = duration;
-        }
-      }
-      
       const response = await fetch(`/api/admin/learning-logs/${editingLog.id}`, {
         method: 'PATCH',
         headers: {
@@ -699,8 +654,8 @@ export default function LearningLogsPage() {
               historyLog.department,
               historyLog.course_title,
               historyLog.video_title,
-              historyLog.start_time ? new Date(historyLog.start_time).toLocaleString('ja-JP') : '',
-              historyLog.end_time ? new Date(historyLog.end_time).toLocaleString('ja-JP') : '',
+              historyLog.start_time ? new Date(historyLog.start_time).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '',
+              historyLog.end_time ? new Date(historyLog.end_time).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '',
               formatTime(historyLog.watch_duration),
               Math.round(historyLog.progress).toString(),
               historyLog.status === 'completed' ? '完了' :
@@ -718,8 +673,8 @@ export default function LearningLogsPage() {
             log.department,
             log.course_title,
             log.video_title,
-            log.start_time ? new Date(log.start_time).toLocaleString('ja-JP') : '',
-            log.end_time ? new Date(log.end_time).toLocaleString('ja-JP') : '',
+            log.start_time ? new Date(log.start_time).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '',
+            log.end_time ? new Date(log.end_time).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '',
             formatTime(log.watch_duration),
             Math.round(log.progress).toString(),
             log.status === 'completed' ? '完了' :
@@ -794,8 +749,52 @@ export default function LearningLogsPage() {
     );
   };
 
+  // 未開始講座のデータを生成
+  const unstartedLogs: LearningLog[] = React.useMemo(() => {
+    if (!showUnstarted) return [];
+
+    // 既存ログのユーザー×動画の組み合わせを集める
+    const existingKeys = new Set(
+      learningLogs.map(log => `${log.user_id}_${log.video_id}`)
+    );
+
+    const result: LearningLog[] = [];
+    allUsers.forEach(user => {
+      allVideos.forEach(video => {
+        const key = `${user.id}_${video.id}`;
+        if (!existingKeys.has(key)) {
+          const course = courses.find(c => c.id === video.course_id);
+          result.push({
+            id: `unstarted_${key}`,
+            user_id: user.id,
+            user_name: user.display_name || 'Unknown',
+            user_email: user.email || '',
+            company: user.company || '',
+            department: user.department || '',
+            course_id: video.course_id,
+            course_title: course?.title || 'Unknown Course',
+            video_id: video.id,
+            video_title: video.title || 'Unknown Video',
+            start_time: '',
+            end_time: '',
+            watch_duration: 0,
+            progress: 0,
+            status: 'not_started',
+            created_at: '',
+            updated_at: '',
+          });
+        }
+      });
+    });
+
+    return result;
+  }, [showUnstarted, learningLogs, allUsers, allVideos, courses]);
+
+  // 表示用ログ（既存ログ + 未開始ログ）
+  const displayableLogs = showUnstarted ? [...learningLogs, ...unstartedLogs] : learningLogs;
+
   // フィルタリングとソート
-  const filteredAndSortedLogs = learningLogs
+  const filteredAndSortedLogs = displayableLogs
     .filter(log => {
       const matchesSearch = 
         log.user_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1007,9 +1006,23 @@ export default function LearningLogsPage() {
             </div>
 
             <div className="mt-4 flex items-center justify-between">
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                {filteredAndSortedLogs.length}件の学習ログが見つかりました
-              </p>
+              <div className="flex items-center gap-4">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  {filteredAndSortedLogs.length}件の学習ログが見つかりました
+                </p>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showUnstarted}
+                    onChange={(e) => {
+                      setShowUnstarted(e.target.checked);
+                      setCurrentPage(1);
+                    }}
+                    className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">未開始を表示する</span>
+                </label>
+              </div>
               {(searchTerm || filterStatus !== 'all' || filterCompany !== 'all' || filterCourse !== 'all' || dateRange.start || dateRange.end) && (
                 <Button
                   variant="ghost"
@@ -1134,12 +1147,16 @@ export default function LearningLogsPage() {
                         <React.Fragment key={log.id}>
                         <tr className="hover:bg-gray-50 dark:hover:bg-gray-700">
                           <td className="px-2 py-3">
-                            <input
-                              type="checkbox"
-                              checked={selectedLogs.has(log.id)}
-                              onChange={() => toggleSelectLog(log.id)}
-                              className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                            />
+                            {log.id.startsWith('unstarted_') ? (
+                              <span />
+                            ) : (
+                              <input
+                                type="checkbox"
+                                checked={selectedLogs.has(log.id)}
+                                onChange={() => toggleSelectLog(log.id)}
+                                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                              />
+                            )}
                           </td>
                           <td className="px-2 py-3 whitespace-nowrap">
                             <div className="text-sm font-medium text-gray-900 dark:text-white">
@@ -1205,27 +1222,31 @@ export default function LearningLogsPage() {
                             )}
                           </td>
                           <td className="px-2 py-3 whitespace-nowrap">
-                            <div className="flex items-center space-x-1">
-                              <button
-                                onClick={() => handleEditLog(log)}
-                                className="p-1 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
-                                title="編集"
-                              >
-                                <PencilIcon className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteLog(log.id)}
-                                disabled={deletingLogId === log.id}
-                                className="p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded disabled:opacity-50"
-                                title="削除"
-                              >
-                                {deletingLogId === log.id ? (
-                                  <LoadingSpinner size="sm" />
-                                ) : (
-                                  <TrashIcon className="h-4 w-4" />
-                                )}
-                              </button>
-                            </div>
+                            {log.id.startsWith('unstarted_') ? (
+                              <span className="text-xs text-gray-400">-</span>
+                            ) : (
+                              <div className="flex items-center space-x-1">
+                                <button
+                                  onClick={() => handleEditLog(log)}
+                                  className="p-1 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
+                                  title="編集"
+                                >
+                                  <PencilIcon className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteLog(log.id)}
+                                  disabled={deletingLogId === log.id}
+                                  className="p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded disabled:opacity-50"
+                                  title="削除"
+                                >
+                                  {deletingLogId === log.id ? (
+                                    <LoadingSpinner size="sm" />
+                                  ) : (
+                                    <TrashIcon className="h-4 w-4" />
+                                  )}
+                                </button>
+                              </div>
+                            )}
                           </td>
                         </tr>
                         {/* 履歴の展開行 */}
