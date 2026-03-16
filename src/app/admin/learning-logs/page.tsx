@@ -212,7 +212,7 @@ export default function LearningLogsPage() {
         const video = videoMap.get(log.video_id);
 
         return {
-          id: log.id,
+          id: String(log.id),
           user_id: log.user_id,
           user_name: user?.display_name || 'Unknown',
           user_email: user?.email || '',
