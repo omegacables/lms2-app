@@ -248,17 +248,16 @@ export function CourseCertificate({
 
       console.log('Inserting certificate data:', insertData);
 
-      const { data: newCertificate, error: dbError } = await certificatesClient
-        .insert(insertData)
-        .then(result => result.single());
+      const { data: newCertificateArr, error: dbError } = await certificatesClient
+        .insert(insertData);
+      const newCertificate = Array.isArray(newCertificateArr) ? newCertificateArr[0] : newCertificateArr;
 
       if (dbError) {
         console.error('Certificate save error:', dbError);
         // 重複エラーの場合は既存の証明書を取得
         if (dbError.code === '23505' || dbError.message?.includes('duplicate')) {
-          const { data: existingData } = await certificatesClient
-            .select(user.id, course.id)
-            .then(query => query.maybeSingle());
+          const selectResult = await certificatesClient.select(user.id, course.id);
+          const existingData = Array.isArray(selectResult.data) ? selectResult.data[0] : selectResult.data;
 
           if (existingData) {
             setExistingCertificate(existingData);

@@ -8,7 +8,6 @@ import { useAuth } from '@/stores/auth';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/database/supabase';
-import { certificatesClient } from '@/lib/database/supabase-no-cache';
 import { generateCertificatePDF, type CertificateData } from '@/lib/utils/certificatePDF';
 import { generateCertificateId } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -155,70 +154,41 @@ export default function CertificatesManagement() {
       setLoading(true);
       console.log('管理者画面: 証明書を取得中...');
 
-      // 直接Supabaseから取得
+      // 証明書を取得
       const { data: certificatesData, error: certError } = await supabase
         .from('certificates')
-        .select(`
-          *,
-          user_profiles (
-            id,
-            display_name,
-            email,
-            company,
-            department
-          ),
-          courses (
-            id,
-            title,
-            description
-          )
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (certError) {
         console.error('証明書取得エラー:', certError);
+        setCertificates([]);
+      } else if (certificatesData) {
+        // ユーザー情報とコース情報を個別に取得
+        const enrichedCertificates = await Promise.all(
+          certificatesData.map(async (cert) => {
+            const { data: userProfile } = await supabase
+              .from('user_profiles')
+              .select('id, display_name, email, company, department')
+              .eq('id', cert.user_id)
+              .single();
 
-        // エラー時はフォールバックとして個別に取得
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('certificates')
-          .select('*')
-          .order('created_at', { ascending: false });
+            const { data: courseData } = await supabase
+              .from('courses')
+              .select('id, title, description')
+              .eq('id', cert.course_id)
+              .single();
 
-        if (fallbackError) {
-          console.error('フォールバッククエリも失敗:', fallbackError);
-          setCertificates([]);
-        } else if (fallbackData) {
-          console.log('フォールバックで取得した証明書:', fallbackData);
+            return {
+              ...cert,
+              user_profiles: userProfile,
+              courses: courseData
+            };
+          })
+        );
 
-          // ユーザー情報とコース情報を個別に取得
-          const enrichedCertificates = await Promise.all(
-            fallbackData.map(async (cert) => {
-              const { data: userProfile } = await supabase
-                .from('user_profiles')
-                .select('id, display_name, email, company, department')
-                .eq('id', cert.user_id)
-                .single();
-
-              const { data: courseData } = await supabase
-                .from('courses')
-                .select('id, title, description')
-                .eq('id', cert.course_id)
-                .single();
-
-              return {
-                ...cert,
-                user_profiles: userProfile,
-                courses: courseData
-              };
-            })
-          );
-
-          setCertificates(enrichedCertificates);
-          console.log('管理者画面: 証明書データ（フォールバック）:', enrichedCertificates);
-        }
-      } else {
-        console.log('管理者画面: 取得した証明書:', certificatesData);
-        setCertificates(certificatesData || []);
+        console.log('管理者画面: 取得した証明書:', enrichedCertificates);
+        setCertificates(enrichedCertificates);
       }
     } catch (error) {
       console.error('証明書データの取得エラー:', error);
@@ -247,6 +217,25 @@ export default function CertificatesManagement() {
     }
   };
 
+  const handleActivateCertificate = async (certificateId: string) => {
+    if (!confirm('この証明書を有効化しますか？')) return;
+
+    try {
+      const { error } = await supabase
+        .from('certificates')
+        .update({ is_active: true })
+        .eq('id', certificateId);
+
+      if (error) throw error;
+
+      await fetchCertificates();
+      alert('証明書を有効化しました。');
+    } catch (error) {
+      console.error('証明書有効化エラー:', error);
+      alert('証明書の有効化に失敗しました。');
+    }
+  };
+
   const handleReissueCertificate = async (certificate: Certificate) => {
     if (!confirm('既存の証明書を削除して、新しい証明書番号で再発行します。完了日付は視聴ログから再計算されます。よろしいですか？')) return;
 
@@ -269,31 +258,14 @@ export default function CertificatesManagement() {
       console.log('再発行時の証明書設定:', settings);
       console.log('再発行時の完了日付:', newCompletionDate);
 
-      // 3. 既存の証明書を削除
-      console.log('ステップ3: 既存証明書を削除');
-      const { error: deleteError } = await certificatesClient.delete(certificate.id);
-
-      if (deleteError) {
-        console.error('証明書削除エラー:', deleteError);
-        throw new Error('既存の証明書の削除に失敗しました');
-      }
-
-      console.log('✅ 既存証明書を削除しました');
-
-      // 4. 新しい証明書を生成
-      console.log('ステップ4: 新しい証明書を生成');
-      await new Promise(resolve => setTimeout(resolve, 500)); // 少し待機
-
-      const newCertificateId = generateCertificateId();
-
-      // ユーザー情報を取得
+      // 3. ユーザー情報・コース情報を先に取得（最新の氏名を反映）
+      console.log('ステップ3: ユーザー・コース情報を取得');
       const { data: userProfile } = await supabase
         .from('user_profiles')
         .select('*')
         .eq('id', certificate.user_id)
         .single();
 
-      // コース情報を取得
       const { data: courseData } = await supabase
         .from('courses')
         .select('*')
@@ -318,12 +290,30 @@ export default function CertificatesManagement() {
 
       const totalVideos = videos?.length || 0;
 
-      // データベースに保存
+      // 4. 既存の証明書を削除
+      console.log('ステップ4: 既存証明書を削除');
+      const { error: deleteError } = await supabase
+        .from('certificates')
+        .delete()
+        .eq('id', certificate.id);
+
+      if (deleteError) {
+        console.error('証明書削除エラー:', deleteError);
+        throw new Error('既存の証明書の削除に失敗しました');
+      }
+
+      console.log('✅ 既存証明書を削除しました');
+
+      // 5. 新しい証明書を生成
+      console.log('ステップ5: 新しい証明書を生成');
+      const newCertificateId = generateCertificateId();
+      const newUserName = userProfile?.display_name || userProfile?.email || 'ユーザー';
+
       const insertData = {
         id: newCertificateId,
         user_id: certificate.user_id,
         course_id: certificate.course_id,
-        user_name: userProfile?.display_name || userProfile?.email || 'ユーザー',
+        user_name: newUserName,
         course_title: courseData?.title || 'コース名',
         completion_date: newCompletionDate.toISOString(),
         pdf_url: null,
@@ -333,13 +323,21 @@ export default function CertificatesManagement() {
 
       console.log('新規証明書データ:', insertData);
 
-      const { data: newCertificate, error: dbError } = await certificatesClient
+      const { data: newCertificateData, error: dbError } = await supabase
+        .from('certificates')
         .insert(insertData)
-        .then(result => result.single());
+        .select()
+        .single();
 
       if (dbError) {
         console.error('証明書保存エラー:', dbError);
         throw new Error('新しい証明書の保存に失敗しました');
+      }
+
+      const newCertificate = newCertificateData;
+
+      if (!newCertificate) {
+        throw new Error('新しい証明書の生成結果が空です');
       }
 
       console.log('✅ 新しい証明書を生成しました:', newCertificate);
@@ -684,7 +682,16 @@ export default function CertificatesManagement() {
                             >
                               無効化
                             </Button>
-                          ) : null}
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-green-600 hover:text-green-700"
+                              onClick={() => handleActivateCertificate(certificate.id)}
+                            >
+                              有効化
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>

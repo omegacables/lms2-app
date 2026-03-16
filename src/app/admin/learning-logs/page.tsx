@@ -1147,7 +1147,7 @@ export default function LearningLogsPage() {
                         <React.Fragment key={log.id}>
                         <tr className="hover:bg-gray-50 dark:hover:bg-gray-700">
                           <td className="px-2 py-3">
-                            {log.id.startsWith('unstarted_') ? (
+                            {String(log.id).startsWith('unstarted_') ? (
                               <span />
                             ) : (
                               <input
@@ -1222,7 +1222,7 @@ export default function LearningLogsPage() {
                             )}
                           </td>
                           <td className="px-2 py-3 whitespace-nowrap">
-                            {log.id.startsWith('unstarted_') ? (
+                            {String(log.id).startsWith('unstarted_') ? (
                               <span className="text-xs text-gray-400">-</span>
                             ) : (
                               <div className="flex items-center space-x-1">
