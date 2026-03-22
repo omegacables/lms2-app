@@ -9,18 +9,11 @@ import { supabase } from '@/lib/database/supabase';
 import {
   MagnifyingGlassIcon,
   ChartBarIcon,
-  ClockIcon,
-  AcademicCapIcon,
-  UserIcon,
   ArrowUpIcon,
   ArrowDownIcon,
   DocumentArrowDownIcon,
   PencilIcon,
-  XMarkIcon,
-  CheckIcon,
   Cog6ToothIcon,
-  EyeIcon,
-  EyeSlashIcon
 } from '@heroicons/react/24/outline';
 
 interface LearningLog {
@@ -36,6 +29,7 @@ interface LearningLog {
   video_id: number;
   video_title: string;
   video_order: number;
+  video_duration: number;
   start_time: string;
   end_time: string;
   total_watched_time: number;
@@ -197,9 +191,9 @@ export default function LaborConsultantLearningLogsPage() {
       // 動画情報を取得（order_indexを含む）
       const videoIds = [...new Set(logsData?.map(log => log.video_id) || [])];
       const videosData = videoIds.length > 0
-        ? await fetchAllWithPagination<{ id: number; title: string; order_index: number }>(
+        ? await fetchAllWithPagination<{ id: number; title: string; order_index: number; duration: number }>(
             'videos',
-            'id, title, order_index',
+            'id, title, order_index, duration',
             [{ column: 'id', operator: 'in', value: videoIds }]
           )
         : [];
@@ -219,7 +213,8 @@ export default function LaborConsultantLearningLogsPage() {
           course_title: course?.title || '',
           course_order: course?.order_index ?? 999999,
           video_title: video?.title || '',
-          video_order: video?.order_index ?? 999999
+          video_order: video?.order_index ?? 999999,
+          video_duration: video?.duration ?? 0
         };
       });
 
@@ -345,48 +340,8 @@ export default function LaborConsultantLearningLogsPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
 
-      // 開始時刻と終了時刻から視聴時間を計算（設定されている場合）
-      let calculatedDuration = editingLog.total_watched_time;
-      if (editingLog.start_time && editingLog.end_time) {
-        const calculateDurationFromTimes = () => {
-          const startStr = editingLog.start_time.replace('.000Z', '').replace('Z', '');
-          const endStr = editingLog.end_time.replace('.000Z', '').replace('Z', '');
-
-          const [startDate, startTime] = startStr.split('T');
-          const [endDate, endTime] = endStr.split('T');
-
-          const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
-          const [startHour, startMin, startSec] = startTime.split(':').map(Number);
-
-          const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
-          const [endHour, endMin, endSec] = endTime.split(':').map(Number);
-
-          let seconds = endSec - startSec;
-          let minutes = endMin - startMin;
-          let hours = endHour - startHour;
-          let days = endDay - startDay;
-
-          if (seconds < 0) {
-            seconds += 60;
-            minutes -= 1;
-          }
-          if (minutes < 0) {
-            minutes += 60;
-            hours -= 1;
-          }
-          if (hours < 0) {
-            hours += 24;
-            days -= 1;
-          }
-
-          return (days * 24 * 3600) + (hours * 3600) + (minutes * 60) + seconds;
-        };
-
-        const duration = calculateDurationFromTimes();
-        if (duration > 0) {
-          calculatedDuration = duration;
-        }
-      }
+      // editingLogのtotal_watched_timeをそのまま使用（モーダル内で手動入力 or 自動計算済み）
+      const calculatedDuration = editingLog.total_watched_time;
 
       const response = await fetch(`/api/admin/learning-logs/${editingLog.id}`, {
         method: 'PATCH',
@@ -397,6 +352,7 @@ export default function LaborConsultantLearningLogsPage() {
         body: JSON.stringify({
           total_watched_time: Math.round(calculatedDuration),
           progress_percent: editingLog.progress_percent,
+          status: editingLog.status,
           start_time: editingLog.start_time || null,
           end_time: editingLog.end_time || null,
         }),
@@ -813,79 +769,19 @@ export default function LaborConsultantLearningLogsPage() {
                             </td>
                             {columnVisibility.startTime && (
                               <td className="px-2 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
-                                {editingLog?.id === log.id ? (
-                                  <input
-                                    type="datetime-local"
-                                    step="1"
-                                    value={formatDateTimeForInput(editingLog.start_time)}
-                                    onChange={(e) => {
-                                      if (e.target.value) {
-                                        // YYYY-MM-DDTHH:mm:ss形式の入力を処理
-                                        let dateTimeStr = e.target.value;
-                                        // 秒がない場合は:00を追加
-                                        if (dateTimeStr.length === 16) {
-                                          dateTimeStr += ':00';
-                                        }
-                                        dateTimeStr += '.000Z';
-                                        setEditingLog({ ...editingLog, start_time: dateTimeStr });
-                                      } else {
-                                        setEditingLog({ ...editingLog, start_time: '' });
-                                      }
-                                    }}
-                                    className="px-1 py-1 border border-gray-300 dark:border-gray-600 rounded text-xs bg-white dark:bg-neutral-800 text-gray-900 dark:text-white w-36"
-                                  />
-                                ) : (
-                                  formatDateTime(log.start_time)
-                                )}
+                                {formatDateTime(log.start_time)}
                               </td>
                             )}
                             {columnVisibility.endTime && (
                               <td className="px-2 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
-                                {editingLog?.id === log.id ? (
-                                  <input
-                                    type="datetime-local"
-                                    step="1"
-                                    value={formatDateTimeForInput(editingLog.end_time)}
-                                    onChange={(e) => {
-                                      if (e.target.value) {
-                                        // YYYY-MM-DDTHH:mm:ss形式の入力を処理
-                                        let dateTimeStr = e.target.value;
-                                        // 秒がない場合は:00を追加
-                                        if (dateTimeStr.length === 16) {
-                                          dateTimeStr += ':00';
-                                        }
-                                        dateTimeStr += '.000Z';
-                                        setEditingLog({ ...editingLog, end_time: dateTimeStr });
-                                      } else {
-                                        setEditingLog({ ...editingLog, end_time: '' });
-                                      }
-                                    }}
-                                    className="px-1 py-1 border border-gray-300 dark:border-gray-600 rounded text-xs bg-white dark:bg-neutral-800 text-gray-900 dark:text-white w-36"
-                                  />
-                                ) : (
-                                  formatDateTime(log.end_time)
-                                )}
+                                {formatDateTime(log.end_time)}
                               </td>
                             )}
                             {columnVisibility.progress && (
                               <td className="px-2 py-3 whitespace-nowrap">
-                                {editingLog?.id === log.id ? (
-                                  <div className="flex items-center">
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      max="100"
-                                      value={Math.round(editingLog.progress_percent)}
-                                      onChange={(e) => setEditingLog({ ...editingLog, progress_percent: parseInt(e.target.value) || 0 })}
-                                      className="w-14 px-1 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-neutral-800 text-gray-900 dark:text-white"
-                                    />
-                                    <span className="ml-1 text-sm text-gray-900 dark:text-white">%</span>
-                                  </div>
-                                ) : (
-                                  <span className="text-sm font-medium text-gray-900 dark:text-white">
-                                    {Math.round(log.progress_percent)}%
-                                  </span>
-                                )}
+                                <span className="text-sm font-medium text-gray-900 dark:text-white">
+                                  {Math.round(log.progress_percent)}%
+                                </span>
                               </td>
                             )}
                             {columnVisibility.watchedTime && (
@@ -905,34 +801,13 @@ export default function LaborConsultantLearningLogsPage() {
                             </td>
                             {columnVisibility.actions && (
                               <td className="px-2 py-3 whitespace-nowrap text-sm">
-                                {editingLog?.id === log.id ? (
-                                  <div className="flex items-center space-x-1">
-                                    <button
-                                      onClick={handleSaveLog}
-                                      disabled={savingLog}
-                                      className="p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 disabled:opacity-50"
-                                      title="保存"
-                                    >
-                                      <CheckIcon className="h-4 w-4" />
-                                    </button>
-                                    <button
-                                      onClick={() => setEditingLog(null)}
-                                      disabled={savingLog}
-                                      className="p-1 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50"
-                                      title="キャンセル"
-                                    >
-                                      <XMarkIcon className="h-4 w-4" />
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <button
-                                    onClick={() => setEditingLog(log)}
-                                    className="p-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                                    title="編集"
-                                  >
-                                    <PencilIcon className="h-4 w-4" />
-                                  </button>
-                                )}
+                                <button
+                                  onClick={() => setEditingLog({ ...log })}
+                                  className="p-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                                  title="編集"
+                                >
+                                  <PencilIcon className="h-4 w-4" />
+                                </button>
                               </td>
                             )}
                           </tr>
@@ -948,6 +823,321 @@ export default function LaborConsultantLearningLogsPage() {
                 {filteredAndSortedLogs.length} 件の学習ログ
               </div>
             </>
+          )}
+
+          {/* 編集モーダル */}
+          {editingLog && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
+              <div className="bg-white dark:bg-neutral-900 rounded-xl p-6 max-w-2xl w-full mx-4 my-8">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                  学習ログを編集
+                </h3>
+
+                <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+                  {/* ユーザー情報（読み取り専用） */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        ユーザー名
+                      </label>
+                      <p className="px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-gray-100">
+                        {editingLog.user_name}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        会社名
+                      </label>
+                      <p className="px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-gray-100">
+                        {editingLog.company}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* コース・動画情報（読み取り専用） */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        コース名
+                      </label>
+                      <p className="px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-gray-100">
+                        {editingLog.course_title}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        動画タイトル
+                      </label>
+                      <p className="px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-gray-100">
+                        {editingLog.video_title}
+                        {editingLog.video_duration > 0 && (
+                          <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+                            （動画時間: {formatTime(editingLog.video_duration)}）
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 開始時刻 */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      開始時刻
+                    </label>
+                    <input
+                      type="datetime-local"
+                      step="1"
+                      value={formatDateTimeForInput(editingLog.start_time)}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          let dateTimeStr = e.target.value;
+                          if (dateTimeStr.length === 16) {
+                            dateTimeStr += ':00';
+                          }
+                          dateTimeStr += '.000Z';
+                          setEditingLog({ ...editingLog, start_time: dateTimeStr });
+                        } else {
+                          setEditingLog({ ...editingLog, start_time: '' });
+                        }
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    />
+                  </div>
+
+                  {/* 終了時刻 */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      終了時刻
+                    </label>
+                    <input
+                      type="datetime-local"
+                      step="1"
+                      value={formatDateTimeForInput(editingLog.end_time)}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          let dateTimeStr = e.target.value;
+                          if (dateTimeStr.length === 16) {
+                            dateTimeStr += ':00';
+                          }
+                          dateTimeStr += '.000Z';
+                          setEditingLog({ ...editingLog, end_time: dateTimeStr });
+                        } else {
+                          setEditingLog({ ...editingLog, end_time: '' });
+                        }
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    />
+                    {/* 動画時間から終了時刻を自動設定ボタン */}
+                    {editingLog.start_time && editingLog.video_duration > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const videoDuration = editingLog.video_duration;
+                          if (videoDuration && editingLog.start_time) {
+                            const startTimeStr = editingLog.start_time.replace('Z', '').replace('.000', '');
+                            const [datePart, timePart] = startTimeStr.split('T');
+                            const [year, month, day] = datePart.split('-');
+                            const [hours, minutes, seconds] = timePart.split(':');
+
+                            let totalSeconds = parseInt(seconds) + videoDuration;
+                            let totalMinutes = parseInt(minutes) + Math.floor(totalSeconds / 60);
+                            let totalHours = parseInt(hours) + Math.floor(totalMinutes / 60);
+                            let totalDays = parseInt(day) + Math.floor(totalHours / 24);
+
+                            const newSeconds = totalSeconds % 60;
+                            const newMinutes = totalMinutes % 60;
+                            const newHours = totalHours % 24;
+
+                            let newMonth = parseInt(month);
+                            let newYear = parseInt(year);
+                            let newDay = totalDays;
+
+                            const daysInMonth = new Date(newYear, newMonth, 0).getDate();
+                            if (newDay > daysInMonth) {
+                              newDay = newDay - daysInMonth;
+                              newMonth++;
+                              if (newMonth > 12) {
+                                newMonth = 1;
+                                newYear++;
+                              }
+                            }
+
+                            const pad = (num: number) => num.toString().padStart(2, '0');
+                            const endDateStr = `${newYear}-${pad(newMonth)}-${pad(newDay)}T${pad(newHours)}:${pad(newMinutes)}:${pad(newSeconds)}.000Z`;
+
+                            setEditingLog({
+                              ...editingLog,
+                              end_time: endDateStr,
+                              total_watched_time: videoDuration
+                            });
+                          }
+                        }}
+                        className="mt-1 text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                      >
+                        動画時間から終了時刻を自動設定
+                      </button>
+                    )}
+                  </div>
+
+                  {/* 視聴時間（分:秒） */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      視聴時間（分:秒）
+                    </label>
+                    <div className="flex items-center space-x-2">
+                      <div className="flex-1">
+                        <div className="flex items-center">
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="分"
+                            value={Math.floor(editingLog.total_watched_time / 60)}
+                            onChange={(e) => {
+                              const mins = parseInt(e.target.value) || 0;
+                              const secs = editingLog.total_watched_time % 60;
+                              setEditingLog({
+                                ...editingLog,
+                                total_watched_time: mins * 60 + secs
+                              });
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                          />
+                          <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">分</span>
+                        </div>
+                      </div>
+                      <span className="text-lg font-bold text-gray-600 dark:text-gray-400">:</span>
+                      <div className="flex-1">
+                        <div className="flex items-center">
+                          <input
+                            type="number"
+                            min="0"
+                            max="59"
+                            placeholder="秒"
+                            value={editingLog.total_watched_time % 60}
+                            onChange={(e) => {
+                              const secs = parseInt(e.target.value) || 0;
+                              const mins = Math.floor(editingLog.total_watched_time / 60);
+                              setEditingLog({
+                                ...editingLog,
+                                total_watched_time: mins * 60 + Math.min(59, secs)
+                              });
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                          />
+                          <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">秒</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-2 space-y-1">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        現在の視聴時間: {formatTime(editingLog.total_watched_time)}
+                      </p>
+                      {/* 開始・終了時刻から自動計算ボタン */}
+                      {editingLog.start_time && editingLog.end_time && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const startStr = editingLog.start_time.replace('.000Z', '').replace('Z', '');
+                            const endStr = editingLog.end_time.replace('.000Z', '').replace('Z', '');
+
+                            const [startDate, startTime] = startStr.split('T');
+                            const [endDate, endTime] = endStr.split('T');
+
+                            const [, , startDay] = startDate.split('-').map(Number);
+                            const [startHour, startMin, startSec] = startTime.split(':').map(Number);
+
+                            const [, , endDay] = endDate.split('-').map(Number);
+                            const [endHour, endMin, endSec] = endTime.split(':').map(Number);
+
+                            let seconds = endSec - startSec;
+                            let minutes = endMin - startMin;
+                            let hours = endHour - startHour;
+                            let days = endDay - startDay;
+
+                            if (seconds < 0) {
+                              seconds += 60;
+                              minutes -= 1;
+                            }
+                            if (minutes < 0) {
+                              minutes += 60;
+                              hours -= 1;
+                            }
+                            if (hours < 0) {
+                              hours += 24;
+                              days -= 1;
+                            }
+
+                            const duration = (days * 24 * 3600) + (hours * 3600) + (minutes * 60) + seconds;
+                            if (duration > 0) {
+                              setEditingLog({
+                                ...editingLog,
+                                total_watched_time: duration
+                              });
+                            }
+                          }}
+                          className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                        >
+                          開始・終了時刻から自動計算
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 進捗率 */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      進捗率（%）
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={Math.round(editingLog.progress_percent)}
+                      onChange={(e) => setEditingLog({
+                        ...editingLog,
+                        progress_percent: parseInt(e.target.value) || 0
+                      })}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    />
+                  </div>
+
+                  {/* ステータス */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      ステータス
+                    </label>
+                    <select
+                      value={editingLog.status}
+                      onChange={(e) => setEditingLog({
+                        ...editingLog,
+                        status: e.target.value
+                      })}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    >
+                      <option value="not_started">未開始</option>
+                      <option value="in_progress">受講中</option>
+                      <option value="completed">完了</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    onClick={() => setEditingLog(null)}
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={handleSaveLog}
+                    disabled={savingLog}
+                    className="px-4 py-2 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700 disabled:opacity-50"
+                  >
+                    {savingLog ? '保存中...' : '保存'}
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       </MainLayout>
