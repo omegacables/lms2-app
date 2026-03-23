@@ -1719,7 +1719,7 @@ export default function LearningLogsPage() {
                         const video = allVideos.find(v => v.id === (selectedVideoForEdit || editingLog.video_id));
                         const timeDiff = Math.floor(calcTimeDiff(editingLog.start_time, editingLog.end_time));
                         const videoDuration = Math.floor(video?.duration || 0);
-                        if (videoDuration > 0 && timeDiff > 0 && videoDuration > timeDiff) {
+                        if (videoDuration > 0 && timeDiff > 0 && videoDuration - timeDiff > 1) {
                           return (
                             <p className="text-xs text-red-600 dark:text-red-400 font-medium">
                               ⚠ 開始〜終了時刻の間隔（{formatTime(timeDiff)}）が動画時間（{formatTime(videoDuration)}）より短いです
@@ -2132,7 +2132,7 @@ export default function LearningLogsPage() {
                         const video = allVideos.find(v => String(v.id) === String(newLog.video_id));
                         const timeDiff = Math.floor(calcTimeDiff(newLog.start_time!, newLog.end_time!));
                         const videoDuration = Math.floor(video?.duration || 0);
-                        if (videoDuration > 0 && timeDiff > 0 && videoDuration > timeDiff) {
+                        if (videoDuration > 0 && timeDiff > 0 && videoDuration - timeDiff > 1) {
                           return (
                             <p className="text-xs text-red-600 dark:text-red-400 font-medium">
                               ⚠ 開始〜終了時刻の間隔（{formatTime(timeDiff)}）が動画時間（{formatTime(videoDuration)}）より短いです
