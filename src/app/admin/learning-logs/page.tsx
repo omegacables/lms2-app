@@ -705,9 +705,9 @@ export default function LearningLogsPage() {
     const [startDate, startT] = startStr.split('T');
     const [endDate, endT] = endStr.split('T');
     const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
-    const [startHour, startMin, startSec] = startT.split(':').map(Number);
+    const [startHour, startMin, startSec] = startT.split(':').map(v => Math.floor(Number(v)));
     const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
-    const [endHour, endMin, endSec] = endT.split(':').map(Number);
+    const [endHour, endMin, endSec] = endT.split(':').map(v => Math.floor(Number(v)));
     let seconds = endSec - startSec;
     let minutes = endMin - startMin;
     let hours = endHour - startHour;
