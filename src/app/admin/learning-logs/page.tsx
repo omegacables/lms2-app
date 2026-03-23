@@ -686,9 +686,10 @@ export default function LearningLogsPage() {
   };
 
   const formatTime = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
+    const totalSec = Math.floor(seconds);
+    const hours = Math.floor(totalSec / 3600);
+    const minutes = Math.floor((totalSec % 3600) / 60);
+    const secs = totalSec % 60;
 
     if (hours > 0) {
       return `${hours}時間${minutes}分${secs.toString().padStart(2, '0')}秒`;
@@ -1716,11 +1717,12 @@ export default function LearningLogsPage() {
                       )}
                       {editingLog.start_time && editingLog.end_time && (selectedVideoForEdit || editingLog.video_id) && (() => {
                         const video = allVideos.find(v => v.id === (selectedVideoForEdit || editingLog.video_id));
-                        const timeDiff = calcTimeDiff(editingLog.start_time, editingLog.end_time);
-                        if (video?.duration && timeDiff > 0 && video.duration > timeDiff) {
+                        const timeDiff = Math.floor(calcTimeDiff(editingLog.start_time, editingLog.end_time));
+                        const videoDuration = Math.floor(video?.duration || 0);
+                        if (videoDuration > 0 && timeDiff > 0 && videoDuration > timeDiff) {
                           return (
                             <p className="text-xs text-red-600 dark:text-red-400 font-medium">
-                              ⚠ 開始〜終了時刻の間隔（{formatTime(timeDiff)}）が動画時間（{formatTime(video.duration)}）より短いです
+                              ⚠ 開始〜終了時刻の間隔（{formatTime(timeDiff)}）が動画時間（{formatTime(videoDuration)}）より短いです
                             </p>
                           );
                         }
@@ -2128,11 +2130,12 @@ export default function LearningLogsPage() {
                       )}
                       {newLog.start_time && newLog.end_time && newLog.video_id && (() => {
                         const video = allVideos.find(v => String(v.id) === String(newLog.video_id));
-                        const timeDiff = calcTimeDiff(newLog.start_time!, newLog.end_time!);
-                        if (video?.duration && timeDiff > 0 && video.duration > timeDiff) {
+                        const timeDiff = Math.floor(calcTimeDiff(newLog.start_time!, newLog.end_time!));
+                        const videoDuration = Math.floor(video?.duration || 0);
+                        if (videoDuration > 0 && timeDiff > 0 && videoDuration > timeDiff) {
                           return (
                             <p className="text-xs text-red-600 dark:text-red-400 font-medium">
-                              ⚠ 開始〜終了時刻の間隔（{formatTime(timeDiff)}）が動画時間（{formatTime(video.duration)}）より短いです
+                              ⚠ 開始〜終了時刻の間隔（{formatTime(timeDiff)}）が動画時間（{formatTime(videoDuration)}）より短いです
                             </p>
                           );
                         }
