@@ -423,46 +423,12 @@ export default function LearningLogsPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
 
-      // 開始時刻と終了時刻から視聴時間を計算（設定されている場合）
+      // 視聴時間を決定：動画のdurationを優先的に使用
       let calculatedDuration = newLog.watch_duration || 0;
-      if (newLog.start_time && newLog.end_time) {
-        const calculateDurationFromTimes = () => {
-          const startStr = newLog.start_time!.replace('.000Z', '').replace('Z', '');
-          const endStr = newLog.end_time!.replace('.000Z', '').replace('Z', '');
-
-          const [startDate, startTime] = startStr.split('T');
-          const [endDate, endTime] = endStr.split('T');
-
-          const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
-          const [startHour, startMin, startSec] = startTime.split(':').map(Number);
-
-          const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
-          const [endHour, endMin, endSec] = endTime.split(':').map(Number);
-
-          let seconds = endSec - startSec;
-          let minutes = endMin - startMin;
-          let hours = endHour - startHour;
-          let days = endDay - startDay;
-
-          if (seconds < 0) {
-            seconds += 60;
-            minutes -= 1;
-          }
-          if (minutes < 0) {
-            minutes += 60;
-            hours -= 1;
-          }
-          if (hours < 0) {
-            hours += 24;
-            days -= 1;
-          }
-
-          return (days * 24 * 3600) + (hours * 3600) + (minutes * 60) + seconds;
-        };
-
-        const duration = calculateDurationFromTimes();
-        if (duration > 0) {
-          calculatedDuration = duration;
+      if (newLog.video_id) {
+        const video = allVideos.find(v => String(v.id) === String(newLog.video_id));
+        if (video?.duration && video.duration > 0) {
+          calculatedDuration = video.duration;
         }
       }
 
@@ -1711,63 +1677,22 @@ export default function LearningLogsPage() {
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         現在の視聴時間: {formatTime(editingLog.watch_duration)}
                       </p>
-                      {editingLog.start_time && editingLog.end_time && (
+                      {editingLog.start_time && editingLog.end_time && (selectedVideoForEdit || editingLog.video_id) && (
                         <button
                           type="button"
                           onClick={() => {
-                            // datetime-localの入力値から直接計算
-                            // editingLogには"YYYY-MM-DDTHH:mm:ss.000Z"形式で保存されているが、
-                            // これはローカル時刻として扱う
-                            const calculateDuration = () => {
-                              // .000Zを削除して純粋な時刻文字列にする
-                              const startStr = editingLog.start_time.replace('.000Z', '').replace('Z', '');
-                              const endStr = editingLog.end_time.replace('.000Z', '').replace('Z', '');
-
-                              // 時刻要素を抽出
-                              const [startDate, startTime] = startStr.split('T');
-                              const [endDate, endTime] = endStr.split('T');
-
-                              const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
-                              const [startHour, startMin, startSec] = startTime.split(':').map(Number);
-
-                              const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
-                              const [endHour, endMin, endSec] = endTime.split(':').map(Number);
-
-                              // 各要素の差を計算
-                              let seconds = endSec - startSec;
-                              let minutes = endMin - startMin;
-                              let hours = endHour - startHour;
-                              let days = endDay - startDay;
-
-                              // 繰り下がり処理
-                              if (seconds < 0) {
-                                seconds += 60;
-                                minutes -= 1;
-                              }
-                              if (minutes < 0) {
-                                minutes += 60;
-                                hours -= 1;
-                              }
-                              if (hours < 0) {
-                                hours += 24;
-                                days -= 1;
-                              }
-
-                              // 合計秒数を計算
-                              return (days * 24 * 3600) + (hours * 3600) + (minutes * 60) + seconds;
-                            };
-
-                            const duration = calculateDuration();
-                            if (duration > 0) {
+                            // 動画の長さを視聴時間として設定（開始・終了時刻の差分ではなく動画durationを使用）
+                            const video = allVideos.find(v => v.id === (selectedVideoForEdit || editingLog.video_id));
+                            if (video?.duration && video.duration > 0) {
                               setEditingLog({
                                 ...editingLog,
-                                watch_duration: duration
+                                watch_duration: video.duration
                               });
                             }
                           }}
                           className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
                         >
-                          開始・終了時刻から自動計算
+                          動画時間から視聴時間を自動設定
                         </button>
                       )}
                     </div>
@@ -2153,55 +2078,22 @@ export default function LearningLogsPage() {
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         現在の視聴時間: {formatTime(newLog.watch_duration || 0)}
                       </p>
-                      {newLog.start_time && newLog.end_time && (
+                      {newLog.start_time && newLog.end_time && newLog.video_id && (
                         <button
                           type="button"
                           onClick={() => {
-                            const calculateDuration = () => {
-                              const startStr = newLog.start_time!.replace('.000Z', '').replace('Z', '');
-                              const endStr = newLog.end_time!.replace('.000Z', '').replace('Z', '');
-
-                              const [startDate, startTime] = startStr.split('T');
-                              const [endDate, endTime] = endStr.split('T');
-
-                              const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
-                              const [startHour, startMin, startSec] = startTime.split(':').map(Number);
-
-                              const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
-                              const [endHour, endMin, endSec] = endTime.split(':').map(Number);
-
-                              let seconds = endSec - startSec;
-                              let minutes = endMin - startMin;
-                              let hours = endHour - startHour;
-                              let days = endDay - startDay;
-
-                              if (seconds < 0) {
-                                seconds += 60;
-                                minutes -= 1;
-                              }
-                              if (minutes < 0) {
-                                minutes += 60;
-                                hours -= 1;
-                              }
-                              if (hours < 0) {
-                                hours += 24;
-                                days -= 1;
-                              }
-
-                              return (days * 24 * 3600) + (hours * 3600) + (minutes * 60) + seconds;
-                            };
-
-                            const duration = calculateDuration();
-                            if (duration > 0) {
+                            // 動画の長さを視聴時間として設定（開始・終了時刻の差分ではなく動画durationを使用）
+                            const video = allVideos.find(v => String(v.id) === String(newLog.video_id));
+                            if (video?.duration && video.duration > 0) {
                               setNewLog({
                                 ...newLog,
-                                watch_duration: duration
+                                watch_duration: video.duration
                               });
                             }
                           }}
                           className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
                         >
-                          開始・終了時刻から自動計算
+                          動画時間から視聴時間を自動設定
                         </button>
                       )}
                     </div>
