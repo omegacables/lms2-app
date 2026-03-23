@@ -697,6 +697,26 @@ export default function LearningLogsPage() {
     }
   };
 
+  // 開始時刻と終了時刻の差分（秒）を計算
+  const calcTimeDiff = (startTime: string, endTime: string): number => {
+    const startStr = startTime.replace('.000Z', '').replace('Z', '');
+    const endStr = endTime.replace('.000Z', '').replace('Z', '');
+    const [startDate, startT] = startStr.split('T');
+    const [endDate, endT] = endStr.split('T');
+    const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+    const [startHour, startMin, startSec] = startT.split(':').map(Number);
+    const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+    const [endHour, endMin, endSec] = endT.split(':').map(Number);
+    let seconds = endSec - startSec;
+    let minutes = endMin - startMin;
+    let hours = endHour - startHour;
+    let days = endDay - startDay;
+    if (seconds < 0) { seconds += 60; minutes -= 1; }
+    if (minutes < 0) { minutes += 60; hours -= 1; }
+    if (hours < 0) { hours += 24; days -= 1; }
+    return (days * 24 * 3600) + (hours * 3600) + (minutes * 60) + seconds;
+  };
+
   const getStatusBadge = (status: string) => {
     const statusConfig = {
       'completed': { text: '完了', color: 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300', icon: CheckCircleIconSolid },
@@ -1681,7 +1701,6 @@ export default function LearningLogsPage() {
                         <button
                           type="button"
                           onClick={() => {
-                            // 動画の長さを視聴時間として設定（開始・終了時刻の差分ではなく動画durationを使用）
                             const video = allVideos.find(v => v.id === (selectedVideoForEdit || editingLog.video_id));
                             if (video?.duration && video.duration > 0) {
                               setEditingLog({
@@ -1695,9 +1714,21 @@ export default function LearningLogsPage() {
                           動画時間から視聴時間を自動設定
                         </button>
                       )}
+                      {editingLog.start_time && editingLog.end_time && (selectedVideoForEdit || editingLog.video_id) && (() => {
+                        const video = allVideos.find(v => v.id === (selectedVideoForEdit || editingLog.video_id));
+                        const timeDiff = calcTimeDiff(editingLog.start_time, editingLog.end_time);
+                        if (video?.duration && timeDiff > 0 && video.duration > timeDiff) {
+                          return (
+                            <p className="text-xs text-red-600 dark:text-red-400 font-medium">
+                              ⚠ 開始〜終了時刻の間隔（{formatTime(timeDiff)}）が動画時間（{formatTime(video.duration)}）より短いです
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       進捗率（%）
@@ -2082,7 +2113,6 @@ export default function LearningLogsPage() {
                         <button
                           type="button"
                           onClick={() => {
-                            // 動画の長さを視聴時間として設定（開始・終了時刻の差分ではなく動画durationを使用）
                             const video = allVideos.find(v => String(v.id) === String(newLog.video_id));
                             if (video?.duration && video.duration > 0) {
                               setNewLog({
@@ -2096,6 +2126,18 @@ export default function LearningLogsPage() {
                           動画時間から視聴時間を自動設定
                         </button>
                       )}
+                      {newLog.start_time && newLog.end_time && newLog.video_id && (() => {
+                        const video = allVideos.find(v => String(v.id) === String(newLog.video_id));
+                        const timeDiff = calcTimeDiff(newLog.start_time!, newLog.end_time!);
+                        if (video?.duration && timeDiff > 0 && video.duration > timeDiff) {
+                          return (
+                            <p className="text-xs text-red-600 dark:text-red-400 font-medium">
+                              ⚠ 開始〜終了時刻の間隔（{formatTime(timeDiff)}）が動画時間（{formatTime(video.duration)}）より短いです
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                   </div>
 
