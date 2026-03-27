@@ -44,19 +44,18 @@ export function CourseCertificate({
   const completionRate = progress.totalVideos > 0 ? (progress.completedVideos / progress.totalVideos) * 100 : 0;
   const isEligibleForCertificate = completionRate >= 90;
 
-  // 完了日付を再計算する関数
+  // 完了日付を再計算する関数（end_time基準）
   const recalculateCompletionDate = async () => {
     try {
-      console.log('=== コース完了日付を再計算中 ===');
+      console.log('=== コース完了日付を再計算中（end_time基準） ===');
 
-      // 視聴ログを取得
+      // 完了した視聴ログを取得
       const { data: logsData, error: logsError } = await supabase
         .from('video_view_logs')
         .select('*')
         .eq('course_id', course.id)
         .eq('user_id', user.id)
-        .eq('status', 'completed')
-        .order('updated_at', { ascending: false });
+        .eq('status', 'completed');
 
       if (logsError) {
         console.error('❌ 視聴ログ取得エラー:', logsError);
@@ -65,16 +64,16 @@ export function CourseCertificate({
 
       console.log('完了済み視聴ログ件数:', logsData?.length || 0);
 
-      // 最後に完了した動画の日時を取得
+      // end_timeが最も遅いログの日付 = コース完了日
       if (logsData && logsData.length > 0) {
-        const lastCompletedLog = logsData.reduce((latest, log) => {
-          const logDate = new Date(log.updated_at || log.created_at);
-          const latestDate = new Date(latest.updated_at || latest.created_at);
+        const lastLog = logsData.reduce((latest, log) => {
+          const logDate = new Date(log.end_time || log.completed_at || log.last_updated || log.created_at);
+          const latestDate = new Date(latest.end_time || latest.completed_at || latest.last_updated || latest.created_at);
           return logDate > latestDate ? log : latest;
         }, logsData[0]);
 
-        const newCompletionDate = new Date(lastCompletedLog.updated_at || lastCompletedLog.created_at);
-        console.log('✅ 再計算した完了日付:', newCompletionDate.toISOString());
+        const newCompletionDate = new Date(lastLog.end_time || lastLog.completed_at || lastLog.last_updated || lastLog.created_at);
+        console.log('✅ 再計算した完了日付（end_time基準）:', newCompletionDate.toISOString());
         setCompletionDate(newCompletionDate);
         return newCompletionDate;
       }
@@ -185,7 +184,7 @@ export function CourseCertificate({
     checkAndGenerateCertificate();
   }, [user?.id, course?.id, progress.completedVideos, progress.totalVideos]);
 
-  // 視聴ログの最終完了日を取得する関数
+  // 視聴ログのend_time（終了時刻）の最終日を取得する関数
   const getIssueDateFromViewLogs = async (): Promise<Date> => {
     try {
       const { data: logsData } = await supabase
@@ -193,16 +192,16 @@ export function CourseCertificate({
         .select('*')
         .eq('course_id', course.id)
         .eq('user_id', user.id)
-        .eq('status', 'completed')
-        .order('completed_at', { ascending: false });
+        .eq('status', 'completed');
 
       if (logsData && logsData.length > 0) {
+        // end_timeが最も遅いログの日付 = コース完了日
         const lastLog = logsData.reduce((latest, log) => {
-          const logDate = new Date(log.completed_at || log.last_updated || log.created_at);
-          const latestDate = new Date(latest.completed_at || latest.last_updated || latest.created_at);
+          const logDate = new Date(log.end_time || log.completed_at || log.last_updated || log.created_at);
+          const latestDate = new Date(latest.end_time || latest.completed_at || latest.last_updated || latest.created_at);
           return logDate > latestDate ? log : latest;
         }, logsData[0]);
-        return new Date(lastLog.completed_at || lastLog.last_updated || lastLog.created_at);
+        return new Date(lastLog.end_time || lastLog.completed_at || lastLog.last_updated || lastLog.created_at);
       }
     } catch (err) {
       console.error('視聴ログ取得エラー:', err);

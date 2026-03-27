@@ -110,12 +110,10 @@ export default function CertificatesManagement() {
     }
   };
 
-  // コース完了日付を再計算（status='completed'の動画の最終日時、受講状況ページと同じ判定）
+  // コース完了日付を再計算（完了した動画のend_timeの最終日時）
   const recalculateCompletionDate = async (userId: string, courseId: number) => {
     try {
       console.log('=== コース完了日付を再計算中（管理者画面） ===');
-      console.log('ユーザーID:', userId);
-      console.log('コースID:', courseId);
 
       // 完了した視聴ログを取得（status = 'completed'）
       const { data: logsData, error: logsError } = await supabase
@@ -123,8 +121,7 @@ export default function CertificatesManagement() {
         .select('*')
         .eq('course_id', courseId)
         .eq('user_id', userId)
-        .eq('status', 'completed')
-        .order('completed_at', { ascending: false });
+        .eq('status', 'completed');
 
       if (logsError) {
         console.error('❌ 視聴ログ取得エラー:', logsError);
@@ -133,16 +130,16 @@ export default function CertificatesManagement() {
 
       console.log('完了済み視聴ログ件数:', logsData?.length || 0);
 
-      // 最後に完了した動画の日時を取得
+      // end_timeが最も遅いログの日付 = コース完了日
       if (logsData && logsData.length > 0) {
-        const lastCompletedLog = logsData.reduce((latest, log) => {
-          const logDate = new Date(log.completed_at || log.last_updated || log.created_at);
-          const latestDate = new Date(latest.completed_at || latest.last_updated || latest.created_at);
+        const lastLog = logsData.reduce((latest, log) => {
+          const logDate = new Date(log.end_time || log.completed_at || log.last_updated || log.created_at);
+          const latestDate = new Date(latest.end_time || latest.completed_at || latest.last_updated || latest.created_at);
           return logDate > latestDate ? log : latest;
         }, logsData[0]);
 
-        const completionDate = new Date(lastCompletedLog.completed_at || lastCompletedLog.last_updated || lastCompletedLog.created_at);
-        console.log('✅ 再計算した完了日付:', completionDate.toISOString());
+        const completionDate = new Date(lastLog.end_time || lastLog.completed_at || lastLog.last_updated || lastLog.created_at);
+        console.log('✅ 再計算した完了日付（end_time基準）:', completionDate.toISOString());
         return completionDate;
       }
 
@@ -457,19 +454,19 @@ export default function CertificatesManagement() {
       .eq('course_id', certificate.course_id)
       .eq('status', 'active');
 
-    // 発行日: 視聴ログの最終完了日を取得
+    // 発行日: 完了した動画のend_time（終了時刻）の最終日を取得
     const completedLogs = viewLogs?.filter(log => log.status === 'completed') || [];
     let effectiveIssueDate: Date;
     if (certificate.manual_issue_date) {
       effectiveIssueDate = new Date(certificate.manual_issue_date);
     } else if (completedLogs.length > 0) {
-      // 完了ログの最終日を使用
+      // end_timeが最も遅いログの日付 = コース完了日
       const lastLog = completedLogs.reduce((latest, log) => {
-        const logDate = new Date(log.completed_at || log.last_updated || log.created_at);
-        const latestDate = new Date(latest.completed_at || latest.last_updated || latest.created_at);
+        const logDate = new Date(log.end_time || log.completed_at || log.last_updated || log.created_at);
+        const latestDate = new Date(latest.end_time || latest.completed_at || latest.last_updated || latest.created_at);
         return logDate > latestDate ? log : latest;
       }, completedLogs[0]);
-      effectiveIssueDate = new Date(lastLog.completed_at || lastLog.last_updated || lastLog.created_at);
+      effectiveIssueDate = new Date(lastLog.end_time || lastLog.completed_at || lastLog.last_updated || lastLog.created_at);
     } else {
       effectiveIssueDate = new Date(certificate.completion_date);
     }

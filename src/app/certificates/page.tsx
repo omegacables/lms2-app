@@ -189,27 +189,26 @@ export default function CertificatesPage() {
     setDownloadingId(certificate.id);
 
     try {
-      // 視聴ログから最終完了日を取得して発行日とする
+      // 発行日: 完了した動画のend_time（終了時刻）の最終日を取得
       let effectiveIssueDate: Date;
       if (certificate.manual_issue_date) {
         effectiveIssueDate = new Date(certificate.manual_issue_date);
       } else {
-        // 視聴ログの最終完了日を取得
+        // 完了した視聴ログのend_timeの最終日を取得
         const { data: viewLogs } = await supabase
           .from('video_view_logs')
           .select('*')
           .eq('course_id', certificate.course_id)
           .eq('user_id', certificate.user_id)
-          .eq('status', 'completed')
-          .order('completed_at', { ascending: false });
+          .eq('status', 'completed');
 
         if (viewLogs && viewLogs.length > 0) {
           const lastLog = viewLogs.reduce((latest, log) => {
-            const logDate = new Date(log.completed_at || log.last_updated || log.created_at);
-            const latestDate = new Date(latest.completed_at || latest.last_updated || latest.created_at);
+            const logDate = new Date(log.end_time || log.completed_at || log.last_updated || log.created_at);
+            const latestDate = new Date(latest.end_time || latest.completed_at || latest.last_updated || latest.created_at);
             return logDate > latestDate ? log : latest;
           }, viewLogs[0]);
-          effectiveIssueDate = new Date(lastLog.completed_at || lastLog.last_updated || lastLog.created_at);
+          effectiveIssueDate = new Date(lastLog.end_time || lastLog.completed_at || lastLog.last_updated || lastLog.created_at);
         } else {
           effectiveIssueDate = new Date(certificate.completion_date);
         }

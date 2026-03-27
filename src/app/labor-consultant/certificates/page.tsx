@@ -258,20 +258,20 @@ export default function LaborConsultantCertificatesPage() {
         .eq('id', cert.course_id)
         .single();
 
-      // 発行日: 手動設定日 > 視聴ログの最終完了日 > completion_date
+      // 発行日: 手動設定日 > 視聴ログのend_time最終日 > completion_date
       let effectiveIssueDate: Date;
       if (cert.manual_issue_date) {
         effectiveIssueDate = new Date(cert.manual_issue_date);
       } else {
-        // 視聴ログから最終完了日を取得
+        // 完了した動画のend_time（終了時刻）の最終日を取得
         const completedLogs = viewLogs?.filter(log => log.status === 'completed') || [];
         if (completedLogs.length > 0) {
           const lastLog = completedLogs.reduce((latest, log) => {
-            const logDate = new Date(log.completed_at || log.last_updated || log.created_at);
-            const latestDate = new Date(latest.completed_at || latest.last_updated || latest.created_at);
+            const logDate = new Date(log.end_time || log.completed_at || log.last_updated || log.created_at);
+            const latestDate = new Date(latest.end_time || latest.completed_at || latest.last_updated || latest.created_at);
             return logDate > latestDate ? log : latest;
           }, completedLogs[0]);
-          effectiveIssueDate = new Date(lastLog.completed_at || lastLog.last_updated || lastLog.created_at);
+          effectiveIssueDate = new Date(lastLog.end_time || lastLog.completed_at || lastLog.last_updated || lastLog.created_at);
         } else {
           effectiveIssueDate = new Date(cert.completion_date);
         }
