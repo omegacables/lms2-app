@@ -185,19 +185,47 @@ export function CourseCertificate({
     checkAndGenerateCertificate();
   }, [user?.id, course?.id, progress.completedVideos, progress.totalVideos]);
 
-  // 証明書データの準備
-  const prepareCertificateData = (): CertificateData => {
-    // 手動設定日があればそれを優先、なければcompletionDateを使用
-    const effectiveIssueDate = existingCertificate?.manual_issue_date
-      ? new Date(existingCertificate.manual_issue_date)
-      : completionDate;
+  // 視聴ログの最終完了日を取得する関数
+  const getIssueDateFromViewLogs = async (): Promise<Date> => {
+    try {
+      const { data: logsData } = await supabase
+        .from('video_view_logs')
+        .select('*')
+        .eq('course_id', course.id)
+        .eq('user_id', user.id)
+        .eq('status', 'completed')
+        .order('completed_at', { ascending: false });
+
+      if (logsData && logsData.length > 0) {
+        const lastLog = logsData.reduce((latest, log) => {
+          const logDate = new Date(log.completed_at || log.last_updated || log.created_at);
+          const latestDate = new Date(latest.completed_at || latest.last_updated || latest.created_at);
+          return logDate > latestDate ? log : latest;
+        }, logsData[0]);
+        return new Date(lastLog.completed_at || lastLog.last_updated || lastLog.created_at);
+      }
+    } catch (err) {
+      console.error('視聴ログ取得エラー:', err);
+    }
+    return completionDate;
+  };
+
+  // 証明書データの準備（視聴ログの最終完了日を発行日として使用）
+  const prepareCertificateData = async (): Promise<CertificateData> => {
+    // 手動設定日があればそれを優先、なければ視聴ログの最終完了日を使用
+    let effectiveIssueDate: Date;
+    if (existingCertificate?.manual_issue_date) {
+      effectiveIssueDate = new Date(existingCertificate.manual_issue_date);
+    } else {
+      effectiveIssueDate = await getIssueDateFromViewLogs();
+    }
 
     return {
       certificateId: existingCertificate?.id || generateCertificateId(),
       courseName: course.title,
       userName: user.display_name || user.email,
       completionDate: format(effectiveIssueDate, 'yyyy年MM月dd日', { locale: ja }),
-      issueDate: format(new Date(), 'yyyy年MM月dd日', { locale: ja }),
+      issueDate: format(effectiveIssueDate, 'yyyy年MM月dd日', { locale: ja }),
       totalVideos: progress.totalVideos,
       totalWatchTime: Math.round(progress.totalWatchTime / 60), // 分に変換
       courseDescription: course.description || '',
@@ -327,13 +355,13 @@ export function CourseCertificate({
         return;
       }
 
-      // PDFダウンロード（最新の設定と完了日付を使用）
+      // PDFダウンロード（視聴ログの最終完了日を発行日として使用）
       const certificateData = {
         certificateId: newCertificate.id,
         courseName: course.title,
         userName: user.display_name || user.email,
         completionDate: format(newCompletionDate, 'yyyy年MM月dd日', { locale: ja }),
-        issueDate: format(new Date(), 'yyyy年MM月dd日', { locale: ja }),
+        issueDate: format(newCompletionDate, 'yyyy年MM月dd日', { locale: ja }),
         totalVideos: progress.totalVideos,
         totalWatchTime: Math.round(progress.totalWatchTime / 60),
         courseDescription: course.description || '',
@@ -396,14 +424,22 @@ export function CourseCertificate({
         }
       }
 
-      // PDFダウンロード（最新の設定を使用）
+      // PDFダウンロード（視聴ログの最終完了日を発行日として使用）
       if (certificate) {
+        // 視聴ログの最終完了日を取得
+        let effectiveIssueDate: Date;
+        if (certificate.manual_issue_date) {
+          effectiveIssueDate = new Date(certificate.manual_issue_date);
+        } else {
+          effectiveIssueDate = await getIssueDateFromViewLogs();
+        }
+
         const certificateData = {
           certificateId: certificate.id,
           courseName: course.title,
           userName: user.display_name || user.email,
-          completionDate: format(completionDate, 'yyyy年MM月dd日', { locale: ja }),
-          issueDate: format(new Date(), 'yyyy年MM月dd日', { locale: ja }),
+          completionDate: format(effectiveIssueDate, 'yyyy年MM月dd日', { locale: ja }),
+          issueDate: format(effectiveIssueDate, 'yyyy年MM月dd日', { locale: ja }),
           totalVideos: progress.totalVideos,
           totalWatchTime: Math.round(progress.totalWatchTime / 60),
           courseDescription: course.description || '',

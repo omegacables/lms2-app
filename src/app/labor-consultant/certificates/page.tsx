@@ -258,19 +258,35 @@ export default function LaborConsultantCertificatesPage() {
         .eq('id', cert.course_id)
         .single();
 
-      // 手動設定日があればそれを優先、なければcompletion_dateを使用
-      const effectiveIssueDate = cert.manual_issue_date || cert.completion_date;
+      // 発行日: 手動設定日 > 視聴ログの最終完了日 > completion_date
+      let effectiveIssueDate: Date;
+      if (cert.manual_issue_date) {
+        effectiveIssueDate = new Date(cert.manual_issue_date);
+      } else {
+        // 視聴ログから最終完了日を取得
+        const completedLogs = viewLogs?.filter(log => log.status === 'completed') || [];
+        if (completedLogs.length > 0) {
+          const lastLog = completedLogs.reduce((latest, log) => {
+            const logDate = new Date(log.completed_at || log.last_updated || log.created_at);
+            const latestDate = new Date(latest.completed_at || latest.last_updated || latest.created_at);
+            return logDate > latestDate ? log : latest;
+          }, completedLogs[0]);
+          effectiveIssueDate = new Date(lastLog.completed_at || lastLog.last_updated || lastLog.created_at);
+        } else {
+          effectiveIssueDate = new Date(cert.completion_date);
+        }
+      }
 
       const certificateData: CertificateData = {
         certificateId: cert.id,
         courseName: cert.course_title || 'コース名',
         userName: cert.user_name || 'ユーザー名',
-        completionDate: new Date(effectiveIssueDate).toLocaleDateString('ja-JP', {
+        completionDate: effectiveIssueDate.toLocaleDateString('ja-JP', {
           year: 'numeric',
           month: 'long',
           day: 'numeric'
         }),
-        issueDate: new Date(cert.created_at).toLocaleDateString('ja-JP', {
+        issueDate: effectiveIssueDate.toLocaleDateString('ja-JP', {
           year: 'numeric',
           month: 'long',
           day: 'numeric'

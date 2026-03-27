@@ -354,7 +354,7 @@ export default function CertificatesManagement() {
         courseName: courseData?.title || 'コース名',
         userName: userProfile?.display_name || userProfile?.email || 'ユーザー',
         completionDate: format(newCompletionDate, 'yyyy年MM月dd日', { locale: ja }),
-        issueDate: format(new Date(), 'yyyy年MM月dd日', { locale: ja }),
+        issueDate: format(newCompletionDate, 'yyyy年MM月dd日', { locale: ja }),
         totalVideos: totalVideos,
         totalWatchTime: Math.round(totalWatchTime / 60),
         courseDescription: courseData?.description || '',

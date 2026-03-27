@@ -189,26 +189,49 @@ export default function CertificatesPage() {
     setDownloadingId(certificate.id);
 
     try {
-      // 手動設定日があればそれを優先、なければcompletion_dateを使用
-      const effectiveIssueDate = certificate.manual_issue_date || certificate.completion_date;
+      // 視聴ログから最終完了日を取得して発行日とする
+      let effectiveIssueDate: Date;
+      if (certificate.manual_issue_date) {
+        effectiveIssueDate = new Date(certificate.manual_issue_date);
+      } else {
+        // 視聴ログの最終完了日を取得
+        const { data: viewLogs } = await supabase
+          .from('video_view_logs')
+          .select('*')
+          .eq('course_id', certificate.course_id)
+          .eq('user_id', certificate.user_id)
+          .eq('status', 'completed')
+          .order('completed_at', { ascending: false });
+
+        if (viewLogs && viewLogs.length > 0) {
+          const lastLog = viewLogs.reduce((latest, log) => {
+            const logDate = new Date(log.completed_at || log.last_updated || log.created_at);
+            const latestDate = new Date(latest.completed_at || latest.last_updated || latest.created_at);
+            return logDate > latestDate ? log : latest;
+          }, viewLogs[0]);
+          effectiveIssueDate = new Date(lastLog.completed_at || lastLog.last_updated || lastLog.created_at);
+        } else {
+          effectiveIssueDate = new Date(certificate.completion_date);
+        }
+      }
 
       // 証明書データを準備
       const certificateData: CertificateData = {
         certificateId: certificate.id,
         courseName: certificate.course_title || certificate.courses?.title || 'コース名',
         userName: certificate.user_name || userProfile?.display_name || user?.email || 'ユーザー名',
-        completionDate: new Date(effectiveIssueDate).toLocaleDateString('ja-JP', {
+        completionDate: effectiveIssueDate.toLocaleDateString('ja-JP', {
           year: 'numeric',
           month: 'long',
           day: 'numeric'
         }),
-        issueDate: new Date(certificate.created_at).toLocaleDateString('ja-JP', {
+        issueDate: effectiveIssueDate.toLocaleDateString('ja-JP', {
           year: 'numeric',
           month: 'long',
           day: 'numeric'
         }),
-        totalVideos: 0, // 実際の動画数を取得する必要がある場合は別途クエリ
-        totalWatchTime: 0, // 実際の視聴時間を取得する必要がある場合は別途クエリ
+        totalVideos: 0,
+        totalWatchTime: 0,
         courseDescription: certificate.courses?.description || '',
         organization: '企業研修LMS',
         company: userProfile?.company || undefined,
