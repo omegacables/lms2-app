@@ -8,10 +8,11 @@ import { useAuth } from '@/stores/auth';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/database/supabase';
-import { generateCertificatePDF, type CertificateData } from '@/lib/utils/certificatePDF';
+import { generateCertificatePDF, generateCertificatePDFBlob, type CertificateData } from '@/lib/utils/certificatePDF';
 import { generateCertificateId } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import JSZip from 'jszip';
 import {
   DocumentCheckIcon,
   ArrowDownTrayIcon,
@@ -28,6 +29,7 @@ interface Certificate {
   user_name: string;
   course_title: string;
   completion_date: string;
+  manual_issue_date?: string | null;
   pdf_url?: string | null;
   is_active: boolean;
   created_at: string;
@@ -53,6 +55,9 @@ export default function CertificatesManagement() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [reissuingId, setReissuingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, action: '' });
 
   useEffect(() => {
     if (user && isAdmin) {
@@ -391,52 +396,7 @@ export default function CertificatesManagement() {
 
       // 証明書設定を取得
       const settings = await fetchCertificateSettings();
-
-      // 視聴ログを取得して総視聴時間を計算
-      const { data: viewLogs } = await supabase
-        .from('video_view_logs')
-        .select('*')
-        .eq('course_id', certificate.course_id)
-        .eq('user_id', certificate.user_id);
-
-      const totalWatchTime = viewLogs?.reduce((sum, log) => sum + (log.total_watched_time || 0), 0) || 0;
-
-      // 動画数を取得
-      const { data: videos } = await supabase
-        .from('videos')
-        .select('id')
-        .eq('course_id', certificate.course_id)
-        .eq('status', 'active');
-
-      const totalVideos = videos?.length || 0;
-
-      // 手動設定日があればそれを優先、なければcompletion_dateを使用
-      const effectiveIssueDate = certificate.manual_issue_date || certificate.completion_date;
-
-      const certificateData: CertificateData = {
-        certificateId: certificate.id,
-        courseName: certificate.course_title || certificate.courses?.title || 'コース名',
-        userName: certificate.user_name || certificate.user_profiles?.display_name || certificate.user_profiles?.email || 'ユーザー名',
-        completionDate: new Date(effectiveIssueDate).toLocaleDateString('ja-JP', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric'
-        }),
-        issueDate: new Date(certificate.created_at).toLocaleDateString('ja-JP', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric'
-        }),
-        totalVideos: totalVideos,
-        totalWatchTime: Math.round(totalWatchTime / 60),
-        courseDescription: certificate.courses?.description || '',
-        organization: '企業研修LMS',
-        company: certificate.user_profiles?.company || undefined,
-        issuerCompanyName: settings?.company_name || undefined,
-        signerName: settings?.signer_name || undefined,
-        signerTitle: settings?.signer_title || undefined,
-        stampImageUrl: settings?.stamp_image_url || undefined,
-      };
+      const certificateData = await buildCertificateData(certificate, settings);
 
       console.log('証明書PDFデータ（署名情報含む）:', certificateData);
       await generateCertificatePDF(certificateData);
@@ -445,6 +405,253 @@ export default function CertificatesManagement() {
       alert('ダウンロードに失敗しました。');
     } finally {
       setDownloadingId(null);
+    }
+  };
+
+  // 選択操作
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredCertificates.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredCertificates.map(c => c.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  // 証明書データを構築する共通関数
+  const buildCertificateData = async (certificate: Certificate, settings: any): Promise<CertificateData> => {
+    const { data: userProfile } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('id', certificate.user_id)
+      .single();
+
+    const { data: courseData } = await supabase
+      .from('courses')
+      .select('*')
+      .eq('id', certificate.course_id)
+      .single();
+
+    const { data: viewLogs } = await supabase
+      .from('video_view_logs')
+      .select('*')
+      .eq('course_id', certificate.course_id)
+      .eq('user_id', certificate.user_id);
+
+    const totalWatchTime = viewLogs?.reduce((sum, log) => sum + (log.total_watched_time || 0), 0) || 0;
+
+    const { data: videos } = await supabase
+      .from('videos')
+      .select('id')
+      .eq('course_id', certificate.course_id)
+      .eq('status', 'active');
+
+    // 発行日: 視聴ログの最終完了日を取得
+    const completedLogs = viewLogs?.filter(log => log.status === 'completed') || [];
+    let effectiveIssueDate: Date;
+    if (certificate.manual_issue_date) {
+      effectiveIssueDate = new Date(certificate.manual_issue_date);
+    } else if (completedLogs.length > 0) {
+      // 完了ログの最終日を使用
+      const lastLog = completedLogs.reduce((latest, log) => {
+        const logDate = new Date(log.completed_at || log.last_updated || log.created_at);
+        const latestDate = new Date(latest.completed_at || latest.last_updated || latest.created_at);
+        return logDate > latestDate ? log : latest;
+      }, completedLogs[0]);
+      effectiveIssueDate = new Date(lastLog.completed_at || lastLog.last_updated || lastLog.created_at);
+    } else {
+      effectiveIssueDate = new Date(certificate.completion_date);
+    }
+
+    return {
+      certificateId: certificate.id,
+      courseName: certificate.course_title || courseData?.title || 'コース名',
+      userName: certificate.user_name || userProfile?.display_name || userProfile?.email || 'ユーザー名',
+      completionDate: effectiveIssueDate.toLocaleDateString('ja-JP', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }),
+      issueDate: effectiveIssueDate.toLocaleDateString('ja-JP', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }),
+      totalVideos: videos?.length || 0,
+      totalWatchTime: Math.round(totalWatchTime / 60),
+      courseDescription: courseData?.description || '',
+      organization: '企業研修LMS',
+      company: userProfile?.company || undefined,
+      issuerCompanyName: settings?.company_name || undefined,
+      signerName: settings?.signer_name || undefined,
+      signerTitle: settings?.signer_title || undefined,
+      stampImageUrl: settings?.stamp_image_url || undefined,
+    };
+  };
+
+  // 一括PDF出力
+  const handleBulkDownload = async () => {
+    const selectedCerts = filteredCertificates.filter(c => selectedIds.has(c.id));
+    if (selectedCerts.length === 0) {
+      alert('証明書を選択してください。');
+      return;
+    }
+    if (!confirm(`${selectedCerts.length}件の証明書PDFを一括ダウンロードします。よろしいですか？`)) return;
+
+    setBulkProcessing(true);
+    setBulkProgress({ current: 0, total: selectedCerts.length, action: 'PDF一括出力' });
+
+    try {
+      const settings = await fetchCertificateSettings();
+      const zip = new JSZip();
+
+      for (let i = 0; i < selectedCerts.length; i++) {
+        setBulkProgress({ current: i + 1, total: selectedCerts.length, action: 'PDF一括出力' });
+        const cert = selectedCerts[i];
+        const certData = await buildCertificateData(cert, settings);
+        const { blob, fileName } = await generateCertificatePDFBlob(certData);
+        zip.file(fileName, blob);
+      }
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `certificates_bulk_${format(new Date(), 'yyyyMMdd_HHmmss')}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      alert(`${selectedCerts.length}件の証明書PDFをダウンロードしました。`);
+    } catch (error) {
+      console.error('一括ダウンロードエラー:', error);
+      alert('一括ダウンロードに失敗しました: ' + (error instanceof Error ? error.message : '不明なエラー'));
+    } finally {
+      setBulkProcessing(false);
+      setBulkProgress({ current: 0, total: 0, action: '' });
+    }
+  };
+
+  // 一括再発行
+  const handleBulkReissue = async () => {
+    const selectedCerts = filteredCertificates.filter(c => selectedIds.has(c.id));
+    if (selectedCerts.length === 0) {
+      alert('証明書を選択してください。');
+      return;
+    }
+    if (!confirm(`${selectedCerts.length}件の証明書を一括再発行します。既存の証明書は削除され、新しい証明書番号で再発行されます。完了日付は視聴ログから再計算されます。よろしいですか？`)) return;
+
+    setBulkProcessing(true);
+    setBulkProgress({ current: 0, total: selectedCerts.length, action: '一括再発行' });
+
+    const settings = await fetchCertificateSettings();
+    const zip = new JSZip();
+    let successCount = 0;
+    let failCount = 0;
+
+    try {
+      for (let i = 0; i < selectedCerts.length; i++) {
+        setBulkProgress({ current: i + 1, total: selectedCerts.length, action: '一括再発行' });
+        const cert = selectedCerts[i];
+
+        try {
+          // 1. 完了日付を再計算
+          const newCompletionDate = await recalculateCompletionDate(cert.user_id, cert.course_id);
+
+          // 2. ユーザー・コース情報を取得
+          const { data: userProfile } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('id', cert.user_id)
+            .single();
+
+          const { data: courseData } = await supabase
+            .from('courses')
+            .select('*')
+            .eq('id', cert.course_id)
+            .single();
+
+          // 3. 既存証明書を削除
+          const { error: deleteError } = await supabase
+            .from('certificates')
+            .delete()
+            .eq('id', cert.id);
+
+          if (deleteError) throw deleteError;
+
+          // 4. 新しい証明書を作成
+          const newCertificateId = generateCertificateId();
+          const newUserName = userProfile?.display_name || userProfile?.email || 'ユーザー';
+
+          const { data: newCert, error: insertError } = await supabase
+            .from('certificates')
+            .insert({
+              id: newCertificateId,
+              user_id: cert.user_id,
+              course_id: cert.course_id,
+              user_name: newUserName,
+              course_title: courseData?.title || 'コース名',
+              completion_date: newCompletionDate.toISOString(),
+              pdf_url: null,
+              is_active: true,
+              created_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+
+          if (insertError) throw insertError;
+
+          // 5. PDFを生成してZIPに追加
+          const certData = await buildCertificateData({ ...newCert, manual_issue_date: null, user_profiles: userProfile, courses: courseData }, settings);
+          const { blob, fileName } = await generateCertificatePDFBlob(certData);
+          zip.file(fileName, blob);
+
+          successCount++;
+        } catch (err) {
+          console.error(`証明書 ${cert.id} の再発行に失敗:`, err);
+          failCount++;
+        }
+      }
+
+      // ZIPダウンロード
+      if (successCount > 0) {
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `certificates_reissued_${format(new Date(), 'yyyyMMdd_HHmmss')}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      await fetchCertificates();
+      setSelectedIds(new Set());
+
+      let message = `${successCount}件の証明書を再発行しました。`;
+      if (failCount > 0) message += ` ${failCount}件は失敗しました。`;
+      if (successCount > 0) message += ' PDFがダウンロードされます。';
+      alert(message);
+    } catch (error) {
+      console.error('一括再発行エラー:', error);
+      alert('一括再発行に失敗しました: ' + (error instanceof Error ? error.message : '不明なエラー'));
+      await fetchCertificates();
+    } finally {
+      setBulkProcessing(false);
+      setBulkProgress({ current: 0, total: 0, action: '' });
     }
   };
 
@@ -582,6 +789,62 @@ export default function CertificatesManagement() {
             </div>
           </div>
 
+          {/* 一括操作セクション */}
+          {selectedIds.size > 0 && (
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                  {selectedIds.size}件の証明書を選択中
+                </span>
+                <div className="flex space-x-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center text-blue-600 border-blue-300 hover:bg-blue-100 dark:text-blue-300 dark:border-blue-600 dark:hover:bg-blue-900/40"
+                    onClick={handleBulkDownload}
+                    disabled={bulkProcessing}
+                  >
+                    <ArrowDownTrayIcon className="h-4 w-4 mr-1" />
+                    一括PDF出力
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center text-orange-600 border-orange-300 hover:bg-orange-100 dark:text-orange-300 dark:border-orange-600 dark:hover:bg-orange-900/40"
+                    onClick={handleBulkReissue}
+                    disabled={bulkProcessing}
+                  >
+                    <ArrowPathIcon className="h-4 w-4 mr-1" />
+                    一括再発行
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-gray-500"
+                    onClick={() => setSelectedIds(new Set())}
+                    disabled={bulkProcessing}
+                  >
+                    選択解除
+                  </Button>
+                </div>
+              </div>
+              {bulkProcessing && (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between text-sm text-blue-700 dark:text-blue-300 mb-1">
+                    <span>{bulkProgress.action}中... ({bulkProgress.current}/{bulkProgress.total})</span>
+                    <span>{Math.round((bulkProgress.current / bulkProgress.total) * 100)}%</span>
+                  </div>
+                  <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2">
+                    <div
+                      className="bg-blue-600 dark:bg-blue-400 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* 証明書一覧 */}
           <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-sm dark:shadow-gray-900/20 border">
             <div className="p-6 border-b border-gray-200 dark:border-neutral-800">
@@ -593,6 +856,14 @@ export default function CertificatesManagement() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50 dark:bg-black">
                   <tr>
+                    <th className="px-4 py-3 text-left">
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
+                        checked={filteredCertificates.length > 0 && selectedIds.size === filteredCertificates.length}
+                        onChange={toggleSelectAll}
+                      />
+                    </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       証明書ID
                     </th>
@@ -615,7 +886,15 @@ export default function CertificatesManagement() {
                 </thead>
                 <tbody className="bg-white dark:bg-neutral-900 divide-y divide-gray-200 dark:divide-gray-700">
                   {filteredCertificates.map((certificate) => (
-                    <tr key={certificate.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <tr key={certificate.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800 ${selectedIds.has(certificate.id) ? 'bg-blue-50 dark:bg-blue-900/10' : ''}`}>
+                      <td className="px-4 py-4">
+                        <input
+                          type="checkbox"
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
+                          checked={selectedIds.has(certificate.id)}
+                          onChange={() => toggleSelect(certificate.id)}
+                        />
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-gray-100">
                         {certificate.id.substring(0, 8)}...
                       </td>

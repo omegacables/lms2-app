@@ -219,7 +219,8 @@ export async function generateCertificatePDF(certificateData: CertificateData) {
 
   // PDFをダウンロード
   const safeCourseName = (certificateData.courseName || 'certificate').replace(/[^a-zA-Z0-9]/g, '_');
-  const fileName = `certificate_${safeCourseName}_${Date.now()}.pdf`;
+  const safeUserName = (certificateData.userName || 'user').replace(/[^a-zA-Z0-9\u3000-\u9FFF\uF900-\uFAFF]/g, '_');
+  const fileName = `certificate_${safeCourseName}_${safeUserName}_${Date.now()}.pdf`;
   console.log('PDFをダウンロード:', fileName);
   doc.save(fileName);
 
@@ -231,4 +232,151 @@ export async function generateCertificatePDF(certificateData: CertificateData) {
     verificationCode,
     doc
   };
+}
+
+/**
+ * PDF Blobを生成して返す（ダウンロードはしない）。一括出力用。
+ */
+export async function generateCertificatePDFBlob(certificateData: CertificateData): Promise<{ blob: Blob; fileName: string }> {
+  const certificateNumber = certificateData.certificateId || generateCertificateId();
+  const verificationCode = Math.random().toString(36).substring(2, 18).toUpperCase();
+
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 2970;
+  canvas.height = 2100;
+  const ctx = canvas.getContext('2d')!;
+
+  // 背景
+  ctx.fillStyle = '#FFFEF5';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // 枠線
+  ctx.strokeStyle = '#c8b48c';
+  ctx.lineWidth = 12;
+  ctx.strokeRect(100, 100, canvas.width - 200, canvas.height - 200);
+  ctx.lineWidth = 4;
+  ctx.strokeRect(130, 130, canvas.width - 260, canvas.height - 260);
+
+  // タイトル
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 120px "Noto Sans JP", sans-serif';
+  ctx.fillStyle = '#1a1a1a';
+  ctx.fillText('修了証明書', canvas.width / 2, 500);
+
+  // 区切り線
+  ctx.strokeStyle = '#c8b48c';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(canvas.width / 2 - 400, 560);
+  ctx.lineTo(canvas.width / 2 + 400, 560);
+  ctx.stroke();
+
+  // 受講者名
+  ctx.font = 'bold 100px "Noto Sans JP", sans-serif';
+  ctx.fillStyle = '#1a1a1a';
+  const displayName = certificateData.userName || 'ユーザー名';
+  if (certificateData.company) {
+    ctx.font = '45px "Noto Sans JP", sans-serif';
+    ctx.fillStyle = '#505050';
+    ctx.fillText(certificateData.company, canvas.width / 2, 700);
+    ctx.font = 'bold 120px "Noto Sans JP", sans-serif';
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillText(displayName + ' 殿', canvas.width / 2, 850);
+  } else {
+    ctx.font = 'bold 120px "Noto Sans JP", sans-serif';
+    ctx.fillText(displayName + ' 殿', canvas.width / 2, 800);
+  }
+
+  // 本文
+  ctx.font = '50px "Noto Sans JP", sans-serif';
+  ctx.fillStyle = '#505050';
+  ctx.fillText('上記の者は、下記のコースを修了したことを証明いたします。', canvas.width / 2, 1100);
+
+  // コース名
+  ctx.font = 'bold 90px "Noto Sans JP", sans-serif';
+  ctx.fillStyle = '#1e5ab4';
+  ctx.fillText(certificateData.courseName || 'コース名', canvas.width / 2, 1300);
+
+  // 発行日
+  ctx.font = '45px "Noto Sans JP", sans-serif';
+  ctx.fillStyle = '#505050';
+  ctx.fillText(`発行日: ${certificateData.completionDate || new Date().toLocaleDateString('ja-JP')}`, canvas.width / 2, 1500);
+
+  // 証明書番号
+  ctx.font = '40px "Noto Sans JP", sans-serif';
+  ctx.fillStyle = '#787878';
+  ctx.textAlign = 'center';
+  ctx.fillText(`証明書番号: ${certificateNumber}`, canvas.width / 2, 1600);
+
+  // 検証コード
+  ctx.fillText(`検証コード: ${verificationCode}`, canvas.width / 2, 1680);
+
+  // 署名欄
+  ctx.textAlign = 'right';
+  ctx.font = 'bold 50px "Noto Sans JP", sans-serif';
+  ctx.fillStyle = '#323232';
+  if (certificateData.issuerCompanyName) {
+    ctx.fillText(certificateData.issuerCompanyName, 2700, 1750);
+  }
+  if (certificateData.signerTitle && certificateData.signerName) {
+    ctx.font = '45px "Noto Sans JP", sans-serif';
+    ctx.fillText(`${certificateData.signerTitle} ${certificateData.signerName}`, 2700, 1820);
+  } else if (certificateData.signerTitle) {
+    ctx.font = '45px "Noto Sans JP", sans-serif';
+    ctx.fillText(certificateData.signerTitle, 2700, 1820);
+  } else if (certificateData.signerName) {
+    ctx.font = '45px "Noto Sans JP", sans-serif';
+    ctx.fillText(certificateData.signerName, 2700, 1820);
+  }
+
+  // 署名欄の線
+  ctx.strokeStyle = '#969696';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(2300, 1870);
+  ctx.lineTo(2720, 1870);
+  ctx.stroke();
+
+  // 装飾的な要素
+  ctx.strokeStyle = '#c8b48c';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(200, 200); ctx.lineTo(300, 200); ctx.moveTo(200, 200); ctx.lineTo(200, 300); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(2670, 200); ctx.lineTo(2770, 200); ctx.moveTo(2770, 200); ctx.lineTo(2770, 300); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(200, 1850); ctx.lineTo(300, 1850); ctx.moveTo(200, 1750); ctx.lineTo(200, 1850); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(2670, 1850); ctx.lineTo(2770, 1850); ctx.moveTo(2770, 1750); ctx.lineTo(2770, 1850); ctx.stroke();
+
+  // 印鑑画像
+  if (certificateData.stampImageUrl) {
+    try {
+      const stampImg = new Image();
+      stampImg.crossOrigin = 'anonymous';
+      await new Promise<void>((resolve) => {
+        stampImg.onload = () => {
+          const stampSize = 180;
+          ctx.drawImage(stampImg, 2350, 1680, stampSize, stampSize);
+          resolve();
+        };
+        stampImg.onerror = () => resolve();
+        stampImg.src = certificateData.stampImageUrl!;
+      });
+    } catch {
+      // 印鑑画像読み込み失敗でも続行
+    }
+  }
+
+  const imgData = canvas.toDataURL('image/png');
+  doc.addImage(imgData, 'PNG', 0, 0, 297, 210);
+
+  const safeCourseName = (certificateData.courseName || 'certificate').replace(/[^a-zA-Z0-9]/g, '_');
+  const safeUserName = (certificateData.userName || 'user').replace(/[^a-zA-Z0-9\u3000-\u9FFF\uF900-\uFAFF]/g, '_');
+  const fileName = `certificate_${safeCourseName}_${safeUserName}.pdf`;
+
+  const blob = doc.output('blob');
+  return { blob, fileName };
 }
