@@ -21,7 +21,8 @@ import {
   PhotoIcon,
   DocumentIcon,
   XMarkIcon,
-  ArrowDownTrayIcon
+  ArrowDownTrayIcon,
+  TrashIcon
 } from '@heroicons/react/24/outline';
 
 interface SupportConversation {
@@ -414,6 +415,31 @@ export default function AdminSupportChat() {
     }
   };
 
+  const deleteConversation = async (conversationId: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!confirm('この会話を削除しますか？メッセージもすべて削除されます。')) return;
+
+    try {
+      // support_messagesはON DELETE CASCADEで自動削除される
+      const { error } = await supabase
+        .from('support_conversations')
+        .delete()
+        .eq('id', conversationId);
+
+      if (error) throw error;
+
+      if (selectedConversation?.id === conversationId) {
+        setSelectedConversation(null);
+        setMessages([]);
+      }
+
+      await fetchConversations();
+    } catch (error) {
+      console.error('会話削除エラー:', error);
+      alert('会話の削除に失敗しました。');
+    }
+  };
+
   // フィルタリング機能
   const filteredConversations = conversations.filter(conv => {
     const matchesSearch = conv.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -581,9 +607,18 @@ export default function AdminSupportChat() {
                             {conversation.lastMessage}
                           </p>
                         )}
-                        <div className="flex items-center space-x-2">
-                          {getStatusBadge(conversation.status)}
-                          {getPriorityBadge(conversation.priority)}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            {getStatusBadge(conversation.status)}
+                            {getPriorityBadge(conversation.priority)}
+                          </div>
+                          <button
+                            onClick={(e) => deleteConversation(conversation.id, e)}
+                            className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                            title="会話を削除"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -621,6 +656,13 @@ export default function AdminSupportChat() {
                           <option value="resolved">解決済み</option>
                           <option value="closed">終了</option>
                         </select>
+                        <button
+                          onClick={() => deleteConversation(selectedConversation.id)}
+                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                          title="この会話を削除"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
                       </div>
                     </div>
                   </div>
