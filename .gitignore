@@ -46,3 +46,6 @@ next-env.d.ts
 
 # MCP configuration (contains sensitive data)
 .mcp.json
+
+.vercel
+.env*.local

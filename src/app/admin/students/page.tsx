@@ -42,7 +42,6 @@ interface Student {
     totalAssigned: number;
     completed: number;
     inProgress: number;
-    totalWatchTime: number;
     completionRate: number;
   };
   assignedCourses?: number[]; // 割り当てられたコースIDのリスト
@@ -74,10 +73,12 @@ export default function StudentsManagePage() {
   const [importingCSV, setImportingCSV] = useState(false);
   const [groupByCompany, setGroupByCompany] = useState(true);
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
+  const [companyConsultantMap, setCompanyConsultantMap] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     fetchStudents();
     fetchCourses();
+    fetchCompanyConsultantMap();
   }, []);
 
   // 初期表示時に全ての会社を展開
@@ -139,15 +140,28 @@ export default function StudentsManagePage() {
 
             const assignedCourses = assignedCoursesData?.map(a => a.course_id) || [];
 
+            // コース完了数を course_completions テーブルから取得
+            const { data: completionsData } = await supabase
+              .from('course_completions')
+              .select('course_id')
+              .eq('user_id', student.id);
+
+            // 進行中コースを video_view_logs から取得（コース単位でユニーク）
             const { data: progressData } = await supabase
               .from('video_view_logs')
-              .select('*')
+              .select('course_id, status')
               .eq('user_id', student.id);
 
             const totalAssigned = assignedCourses.length;
-            const completed = progressData?.filter(p => p.status === 'completed').length || 0;
-            const inProgress = progressData?.filter(p => p.status === 'in_progress').length || 0;
-            const totalWatchTime = progressData?.reduce((sum, p) => sum + (p.total_watched_time || 0), 0) || 0;
+            const completedCourseIds = new Set(completionsData?.map(c => c.course_id) || []);
+            const completed = completedCourseIds.size;
+            // in_progressなコース数（completedを除く、コース単位でユニーク）
+            const inProgressCourseIds = new Set(
+              progressData
+                ?.filter(p => p.status === 'in_progress' && !completedCourseIds.has(p.course_id))
+                .map(p => p.course_id) || []
+            );
+            const inProgress = inProgressCourseIds.size;
             const completionRate = totalAssigned > 0 ? Math.round((completed / totalAssigned) * 100) : 0;
 
             return {
@@ -157,7 +171,6 @@ export default function StudentsManagePage() {
                 totalAssigned,
                 completed,
                 inProgress,
-                totalWatchTime,
                 completionRate
               }
             };
@@ -169,7 +182,6 @@ export default function StudentsManagePage() {
                 totalAssigned: 0,
                 completed: 0,
                 inProgress: 0,
-                totalWatchTime: 0,
                 completionRate: 0
               }
             };
@@ -201,6 +213,42 @@ export default function StudentsManagePage() {
       setCourses(coursesData || []);
     } catch (error) {
       console.error('コース取得エラー:', error);
+    }
+  };
+
+  const fetchCompanyConsultantMap = async () => {
+    try {
+      const { data: assignments } = await supabase
+        .from('labor_consultant_companies')
+        .select('company, labor_consultant_id');
+
+      if (!assignments || assignments.length === 0) return;
+
+      // 社労士事務所のIDリストを取得
+      const consultantIds = [...new Set(assignments.map(a => a.labor_consultant_id))];
+      const { data: consultants } = await supabase
+        .from('user_profiles')
+        .select('id, display_name')
+        .in('id', consultantIds);
+
+      const consultantNameMap: Record<string, string> = {};
+      consultants?.forEach(c => {
+        consultantNameMap[c.id] = c.display_name || '不明';
+      });
+
+      // 会社名 → 社労士事務所名リストのマップを作成
+      const map: Record<string, string[]> = {};
+      assignments.forEach(a => {
+        if (!map[a.company]) map[a.company] = [];
+        const name = consultantNameMap[a.labor_consultant_id];
+        if (name && !map[a.company].includes(name)) {
+          map[a.company].push(name);
+        }
+      });
+
+      setCompanyConsultantMap(map);
+    } catch (error) {
+      console.error('社労士事務所マッピング取得エラー:', error);
     }
   };
 
@@ -312,6 +360,26 @@ export default function StudentsManagePage() {
     } catch (error) {
       console.error('権限変更エラー:', error);
       alert('権限の変更に失敗しました。');
+    }
+  };
+
+  const handleToggleActive = async (studentId: string, currentActive: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ is_active: !currentActive })
+        .eq('id', studentId);
+
+      if (error) throw error;
+
+      setStudents(prevStudents =>
+        prevStudents.map(student =>
+          student.id === studentId ? { ...student, is_active: !currentActive } : student
+        )
+      );
+    } catch (error) {
+      console.error('ステータス変更エラー:', error);
+      alert('ステータスの変更に失敗しました。');
     }
   };
 
@@ -675,12 +743,6 @@ export default function StudentsManagePage() {
     }
   };
 
-  const formatTime = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    return hours > 0 ? `${hours}時間${minutes}分` : `${minutes}分`;
-  };
-
   const getStatusBadge = (status: string) => {
     const statusConfig = {
       'completed': { text: '完了', color: 'bg-green-100 text-green-800', icon: CheckCircleIconSolid },
@@ -713,6 +775,11 @@ export default function StudentsManagePage() {
 
     return matchesSearch && matchesFilter;
   }).sort((a, b) => {
+    // 非アクティブを最下部に
+    if (a.is_active !== b.is_active) {
+      return a.is_active ? -1 : 1;
+    }
+
     let compareValue = 0;
 
     switch (sortBy) {
@@ -731,7 +798,7 @@ export default function StudentsManagePage() {
   });
 
   // 会社名別にグループ化
-  const groupedStudents = groupByCompany
+  const groupedStudentsUnsorted = groupByCompany
     ? filteredStudents.reduce((groups, student) => {
         const company = student.company || '個人';
         if (!groups[company]) {
@@ -741,6 +808,15 @@ export default function StudentsManagePage() {
         return groups;
       }, {} as Record<string, Student[]>)
     : { '全て': filteredStudents };
+
+  // 非アクティブな会社（全員非アクティブ）を最下部に
+  const sortedCompanyEntries = Object.entries(groupedStudentsUnsorted).sort(([, aStudents], [, bStudents]) => {
+    const aAllInactive = aStudents.every(s => !s.is_active);
+    const bAllInactive = bStudents.every(s => !s.is_active);
+    if (aAllInactive !== bAllInactive) return aAllInactive ? 1 : -1;
+    return 0;
+  });
+  const groupedStudents = Object.fromEntries(sortedCompanyEntries);
 
   const toggleCompanyExpanded = (company: string) => {
     const newExpanded = new Set(expandedCompanies);
@@ -921,7 +997,7 @@ export default function StudentsManagePage() {
               ) : (
                 <div className="space-y-6">
                   {Object.entries(groupedStudents).map(([company, companyStudents]) => (
-                    <div key={company} className="space-y-4">
+                    <div key={company} className={`space-y-4 ${companyStudents.every(s => !s.is_active) ? 'opacity-60' : ''}`}>
                       {groupByCompany && (
                         <div className="flex items-center justify-between">
                           <button
@@ -937,17 +1013,25 @@ export default function StudentsManagePage() {
                             <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
                               ({companyStudents.length}名)
                             </span>
+                            {companyConsultantMap[company]?.map((consultantName) => (
+                              <span
+                                key={consultantName}
+                                className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800"
+                              >
+                                {consultantName}
+                              </span>
+                            ))}
+                            {companyStudents.every(s => !s.is_active) && (
+                              <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                非アクティブ
+                              </span>
+                            )}
                           </button>
                           <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
                             <span>
                               完了率: {Math.round(
                                 companyStudents.reduce((sum, s) => sum + s.courseStats.completionRate, 0) / companyStudents.length
                               )}%
-                            </span>
-                            <span>
-                              総視聴時間: {formatTime(
-                                companyStudents.reduce((sum, s) => sum + s.courseStats.totalWatchTime, 0)
-                              )}
                             </span>
                           </div>
                         </div>
@@ -962,13 +1046,17 @@ export default function StudentsManagePage() {
                               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                                 {student.display_name}
                               </h3>
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                student.is_active
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-red-100 text-red-800'
-                              }`}>
+                              <button
+                                onClick={() => handleToggleActive(student.id, student.is_active)}
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors ${
+                                  student.is_active
+                                    ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                                    : 'bg-red-100 text-red-800 hover:bg-red-200'
+                                }`}
+                                title={student.is_active ? 'クリックで非アクティブにする' : 'クリックでアクティブにする'}
+                              >
                                 {student.is_active ? 'アクティブ' : '非アクティブ'}
-                              </span>
+                              </button>
                               {student.role === 'admin' && (
                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                                   管理者
@@ -1023,7 +1111,7 @@ export default function StudentsManagePage() {
                             
                             {/* Learning Stats */}
                             <div className="bg-gray-50 dark:bg-black rounded-lg p-4">
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                                 <div className="text-center">
                                   <div className="text-2xl font-bold text-gray-900 dark:text-white">
                                     {student.courseStats.totalAssigned}
@@ -1042,12 +1130,6 @@ export default function StudentsManagePage() {
                                   </div>
                                   <div className="text-xs text-gray-500 dark:text-gray-400">受講中</div>
                                 </div>
-                                <div className="text-center">
-                                  <div className="text-2xl font-bold text-purple-600">
-                                    {formatTime(student.courseStats.totalWatchTime)}
-                                  </div>
-                                  <div className="text-xs text-gray-500 dark:text-gray-400">総視聴時間</div>
-                                </div>
                               </div>
                               <div className="mt-3">
                                 <div className="flex items-center justify-between text-sm mb-1">
@@ -1057,7 +1139,7 @@ export default function StudentsManagePage() {
                                 <div className="bg-gray-200 rounded-full h-2">
                                   <div 
                                     className="bg-green-50 dark:bg-green-900/200 rounded-full h-2 transition-all duration-300"
-                                    style={{ width: `${student.courseStats.completionRate}%` }}
+                                    style={{ width: `${Math.min(student.courseStats.completionRate, 100)}%` }}
                                   />
                                 </div>
                               </div>
