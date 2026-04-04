@@ -140,28 +140,50 @@ export default function StudentsManagePage() {
 
             const assignedCourses = assignedCoursesData?.map(a => a.course_id) || [];
 
-            // コース完了数を course_completions テーブルから取得
-            const { data: completionsData } = await supabase
-              .from('course_completions')
-              .select('course_id')
-              .eq('user_id', student.id);
+            // 割り当てコースごとの動画数を取得
+            const { data: videosData } = await supabase
+              .from('videos')
+              .select('id, course_id')
+              .in('course_id', assignedCourses.length > 0 ? assignedCourses : [-1])
+              .eq('status', 'active');
 
-            // 進行中コースを video_view_logs から取得（コース単位でユニーク）
+            const courseVideoCount: Record<number, number> = {};
+            videosData?.forEach(v => {
+              courseVideoCount[v.course_id] = (courseVideoCount[v.course_id] || 0) + 1;
+            });
+
+            // ユーザーの視聴ログを取得
             const { data: progressData } = await supabase
               .from('video_view_logs')
-              .select('course_id, status')
+              .select('course_id, video_id, status')
               .eq('user_id', student.id);
 
+            // コースごとの完了動画数を集計
+            const courseCompletedVideos: Record<number, Set<number>> = {};
+            const courseTouchedIds = new Set<number>();
+            progressData?.forEach(p => {
+              if (p.course_id) courseTouchedIds.add(p.course_id);
+              if (p.status === 'completed' && p.course_id) {
+                if (!courseCompletedVideos[p.course_id]) courseCompletedVideos[p.course_id] = new Set();
+                courseCompletedVideos[p.course_id].add(p.video_id);
+              }
+            });
+
+            // コース完了判定: 全動画completedならコース完了
             const totalAssigned = assignedCourses.length;
-            const completedCourseIds = new Set(completionsData?.map(c => c.course_id) || []);
-            const completed = completedCourseIds.size;
-            // in_progressなコース数（completedを除く、コース単位でユニーク）
-            const inProgressCourseIds = new Set(
-              progressData
-                ?.filter(p => p.status === 'in_progress' && !completedCourseIds.has(p.course_id))
-                .map(p => p.course_id) || []
-            );
-            const inProgress = inProgressCourseIds.size;
+            let completed = 0;
+            let inProgress = 0;
+
+            assignedCourses.forEach((courseId: number) => {
+              const totalVideos = courseVideoCount[courseId] || 0;
+              const completedVideos = courseCompletedVideos[courseId]?.size || 0;
+              if (totalVideos > 0 && completedVideos >= totalVideos) {
+                completed++;
+              } else if (courseTouchedIds.has(courseId)) {
+                inProgress++;
+              }
+            });
+
             const completionRate = totalAssigned > 0 ? Math.round((completed / totalAssigned) * 100) : 0;
 
             return {
