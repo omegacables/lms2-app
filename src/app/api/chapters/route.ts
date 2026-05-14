@@ -139,9 +139,9 @@ export async function POST(request: NextRequest) {
     }
 
     // 🛡 instructor または admin 権限を必須化（service role で RLS バイパス）
+    const { createAdminSupabaseClient } = await import('@/lib/database/supabase');
+    const adminClient = createAdminSupabaseClient();
     {
-      const { createAdminSupabaseClient } = await import('@/lib/database/supabase');
-      const adminClient = createAdminSupabaseClient();
       const { data: userProfile } = await adminClient
         .from('user_profiles')
         .select('role')
@@ -152,8 +152,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 現在の最大display_orderを取得
-    const { data: maxOrderData, error: maxOrderError } = await supabase
+    // 現在の最大display_orderを取得（admin client で RLS バイパス）
+    const { data: maxOrderData, error: maxOrderError } = await adminClient
       .from('chapters')
       .select('display_order')
       .eq('course_id', course_id)
@@ -161,6 +161,17 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     if (maxOrderError) {
+      // テーブルが存在しないなどの致命的エラーをわかりやすく返す
+      const msg = maxOrderError.message ?? '';
+      if (msg.includes('Could not find the table') || msg.includes('relation') || (maxOrderError as any).code === 'PGRST205') {
+        return NextResponse.json(
+          {
+            error: 'chapters テーブルが見つかりません。Supabase で database/create-chapters-table.sql を実行してください。',
+            details: msg,
+          },
+          { status: 500 }
+        );
+      }
       console.error('Error fetching max order:', maxOrderError);
     }
 
@@ -174,8 +185,8 @@ export async function POST(request: NextRequest) {
       display_order: nextOrder
     });
 
-    // チャプターを作成（descriptionカラムは存在しない可能性があるため除外）
-    const { data: chapter, error } = await supabase
+    // チャプターを作成（admin client で RLS バイパス）
+    const { data: chapter, error } = await adminClient
       .from('chapters')
       .insert({
         course_id: parseInt(course_id),
@@ -187,6 +198,16 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Error inserting chapter:', error);
+      const msg = error.message ?? '';
+      if (msg.includes('Could not find the table') || msg.includes('relation') || (error as any).code === 'PGRST205') {
+        return NextResponse.json(
+          {
+            error: 'chapters テーブルが見つかりません。Supabase で database/create-chapters-table.sql を実行してください。',
+            details: msg,
+          },
+          { status: 500 }
+        );
+      }
       throw error;
     }
 

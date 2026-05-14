@@ -132,7 +132,8 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
         alert('章を追加しました');
       } else {
         console.error('[SimpleChapterManager] Create error:', data);
-        alert(`エラー: ${data.error}`);
+        const detail = data?.details ? `\n詳細: ${data.details}` : '';
+        alert(`エラー: ${data?.error ?? '章の追加に失敗しました'}${detail}`);
       }
     } catch (error) {
       console.error('[SimpleChapterManager] Error creating chapter:', error);

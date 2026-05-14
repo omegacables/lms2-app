@@ -14,7 +14,7 @@ import {
   validateVideoFile,
   formatFileSize
 } from '@/utils/supabase-storage';
-import { VideoUploader } from '@/components/admin/VideoUploader';
+import { BulkVideoUploader } from '@/components/admin/BulkVideoUploader';
 import * as tus from 'tus-js-client';
 import {
   ArrowLeftIcon,
@@ -795,18 +795,21 @@ export default function CourseVideosPage() {
 
             {/* Add Video Modal */}
             {showAddModal && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                <div className="bg-white dark:bg-neutral-900 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-                  <div className="p-6 border-b border-gray-200 dark:border-neutral-800">
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center p-0 sm:p-4 z-50">
+                <div className="bg-white dark:bg-neutral-900 rounded-t-xl sm:rounded-lg max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+                  <div className="p-4 sm:p-6 border-b border-gray-200 dark:border-neutral-800">
                     <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                      動画をアップロード
+                      動画をアップロード（複数可）
                     </h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      ドラッグ＆ドロップでまとめて追加できます
+                    </p>
                   </div>
-                  <div className="p-6">
-                    <VideoUploader
-                      courseId={courseId}
+                  <div className="p-4 sm:p-6">
+                    <BulkVideoUploader
+                      courseId={parseInt(courseId)}
+                      initialOrderIndex={videos.length}
                       onSuccess={() => {
-                        setShowAddModal(false);
                         fetchVideos();
                       }}
                       onCancel={() => setShowAddModal(false)}

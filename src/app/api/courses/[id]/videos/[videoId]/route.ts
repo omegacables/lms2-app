@@ -179,65 +179,68 @@ export async function DELETE(
     const supabase = createServerSupabaseClient(cookieStore);
     const adminSupabase = createAdminSupabaseClient();
 
-    // 認証チェック（Authorizationヘッダーから）
+    // 認証チェック: Bearer ヘッダ優先、なければ cookie
     const authHeader = request.headers.get('authorization');
-    let user = null;
+    let user: { id: string } | null = null;
 
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.replace('Bearer ', '');
-      const { data: authData, error: authError } = await supabase.auth.getUser(token);
-      user = authData?.user;
-    } else {
-      // ヘッダーがない場合はクッキーから取得
-      const { data: authData, error: authError } = await supabase.auth.getUser();
-      user = authData?.user;
+      const { data: authData } = await supabase.auth.getUser(token);
+      if (authData?.user) user = authData.user;
+    }
+    if (!user) {
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user) user = authData.user;
     }
 
     if (!user) {
       return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
     }
 
-    // 講師または管理者権限チェック
-    const { data: userProfile, error: profileError } = await supabase
+    // 🛡 講師または管理者権限チェック（admin client で RLS バイパス）
+    const { data: userProfile, error: profileError } = await adminSupabase
       .from('user_profiles')
       .select('role')
       .eq('id', user.id)
       .single();
 
-    // デバッグ情報をログに出力
-    console.log('DELETE - User ID:', user.id);
-    console.log('DELETE - User Profile:', userProfile);
-    console.log('DELETE - Profile Error:', profileError);
-
     if (profileError || !userProfile) {
-      console.error('Profile not found for user:', user.id);
+      console.error('Profile not found for user:', user.id, profileError);
       return NextResponse.json({
         error: 'ユーザープロファイルが見つかりません',
-        debug: { userId: user.id }
+        details: profileError?.message,
       }, { status: 403 });
     }
 
     if (!['instructor', 'admin'].includes(userProfile.role)) {
-      console.error('Insufficient permissions. User role:', userProfile.role);
       return NextResponse.json({
         error: `権限が不足しています。現在のロール: ${userProfile.role}`,
-        debug: { userId: user.id, role: userProfile.role }
       }, { status: 403 });
     }
 
-    // 動画情報を取得
-    const { data: video, error: fetchError } = await supabase
+    // 動画情報を取得（admin client で RLS バイパス）
+    const courseIdNum = parseInt(courseId);
+    const videoIdNum = parseInt(videoId);
+
+    if (isNaN(courseIdNum) || isNaN(videoIdNum)) {
+      return NextResponse.json({ error: 'コースIDまたは動画IDが不正です' }, { status: 400 });
+    }
+
+    const { data: video, error: fetchError } = await adminSupabase
       .from('videos')
       .select('file_url, thumbnail_url')
-      .eq('id', videoId)
-      .eq('course_id', parseInt(courseId))
+      .eq('id', videoIdNum)
+      .eq('course_id', courseIdNum)
       .single();
 
     if (fetchError || !video) {
-      return NextResponse.json({ error: '動画が見つかりません' }, { status: 404 });
+      return NextResponse.json({
+        error: '動画が見つかりません',
+        details: fetchError?.message,
+      }, { status: 404 });
     }
 
-    // ストレージから動画ファイルを削除
+    // ストレージから動画ファイルを削除（失敗してもDB削除は続行）
     if (video.file_url) {
       const urlParts = video.file_url.split('/storage/v1/object/public/videos/');
       if (urlParts.length > 1) {
@@ -263,16 +266,19 @@ export async function DELETE(
       }
     }
 
-    // データベースから動画レコードを削除
-    const { error: deleteError } = await supabase
+    // データベースから動画レコードを削除（admin client で RLS バイパス）
+    // FK ON DELETE CASCADE で video_view_logs, chapter_videos も自動削除される
+    const { error: deleteError } = await adminSupabase
       .from('videos')
       .delete()
-      .eq('id', videoId)
-      .eq('course_id', parseInt(courseId));
+      .eq('id', videoIdNum)
+      .eq('course_id', courseIdNum);
 
     if (deleteError) {
       console.error('Error deleting video record:', deleteError);
-      return NextResponse.json({ error: '動画の削除に失敗しました' }, { status: 500 });
+      return NextResponse.json({
+        error: `動画の削除に失敗しました: ${deleteError.message}`,
+      }, { status: 500 });
     }
 
     return NextResponse.json({
@@ -280,6 +286,9 @@ export async function DELETE(
     });
   } catch (error) {
     console.error('Error in DELETE /api/courses/[id]/videos/[videoId]:', error);
-    return NextResponse.json({ error: 'サーバーエラーが発生しました' }, { status: 500 });
+    return NextResponse.json({
+      error: 'サーバーエラーが発生しました',
+      details: (error as Error).message,
+    }, { status: 500 });
   }
 }
