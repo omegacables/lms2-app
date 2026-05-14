@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { requireAdmin } from '@/lib/auth/requireAdmin';
 
 // Service Role Keyを使用して全証明書を取得
 function getSupabaseAdmin() {
@@ -21,6 +22,10 @@ function getSupabaseAdmin() {
 const supabaseAdmin = getSupabaseAdmin();
 
 export async function GET(request: NextRequest) {
+  // 🛡 管理者権限を必須化
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
   // supabaseAdminが利用できない場合はエラーを返す
   if (!supabaseAdmin) {
     return NextResponse.json({
@@ -109,6 +114,10 @@ export async function GET(request: NextRequest) {
 
 // 証明書を手動で作成
 export async function POST(request: NextRequest) {
+  // 🛡 管理者権限を必須化
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     const { user_id, course_id, user_name, course_title } = body;

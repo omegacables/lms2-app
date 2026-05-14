@@ -536,7 +536,7 @@ export default function AdminSupportChat() {
           </div>
 
           {/* チャット画面 */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[600px]">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:h-[600px]">
             {/* 会話一覧 */}
             <div className="lg:col-span-1 bg-white dark:bg-neutral-900 dark:bg-neutral-900 rounded-lg border flex flex-col">
               <div className="p-4 border-b border-gray-200 dark:border-neutral-800">

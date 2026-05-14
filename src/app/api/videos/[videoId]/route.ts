@@ -125,35 +125,28 @@ export async function PUT(
       return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
     }
 
-    // 講師または管理者権限チェック（開発環境では一時的に無効化）
-    // TODO: 本番環境では必ず有効にすること
-    /*
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
+    // 🛡 instructor または admin 権限を必須化（service role で RLS バイパス）
+    {
+      const { createAdminSupabaseClient } = await import('@/lib/database/supabase');
+      const adminClient = createAdminSupabaseClient();
+      const { data: userProfile, error: profileError } = await adminClient
+        .from('user_profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
 
-    console.log('PUT /api/videos/[videoId] - User ID:', user.id);
-    console.log('PUT /api/videos/[videoId] - User Profile:', userProfile);
-    console.log('PUT /api/videos/[videoId] - Profile Error:', profileError);
+      if (profileError || !userProfile) {
+        return NextResponse.json({
+          error: 'ユーザープロファイルが見つかりません',
+        }, { status: 403 });
+      }
 
-    if (profileError || !userProfile) {
-      console.error('Profile not found for user:', user.id);
-      return NextResponse.json({
-        error: 'ユーザープロファイルが見つかりません',
-        debug: { userId: user.id, profileError: profileError?.message }
-      }, { status: 403 });
+      if (!['instructor', 'admin'].includes(userProfile.role)) {
+        return NextResponse.json({
+          error: `権限が不足しています。現在のロール: ${userProfile.role}`,
+        }, { status: 403 });
+      }
     }
-
-    if (!['instructor', 'admin'].includes(userProfile.role)) {
-      console.error('Insufficient permissions. User role:', userProfile.role);
-      return NextResponse.json({
-        error: `権限が不足しています。現在のロール: ${userProfile.role}`,
-        debug: { userId: user.id, role: userProfile.role }
-      }, { status: 403 });
-    }
-    */
 
     const body = await request.json();
     const { title, description, order_index, status, file_url, file_size, mime_type, duration } = body;

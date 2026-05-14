@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { requireAdmin } from '@/lib/auth/requireAdmin';
 
 // Service Role Keyを使用
 const supabaseAdmin = createClient(
@@ -15,6 +16,9 @@ const supabaseAdmin = createClient(
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     console.log('証明書テーブルの状態をチェック中...');
 
     // 証明書テーブルから全データを取得（制限付き）
@@ -76,6 +80,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     console.log('証明書テーブルを修正中...');
 
     // 既存の証明書データを取得（バックアップ用）

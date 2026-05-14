@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { requireAdmin } from '@/lib/auth/requireAdmin';
 
 // Admin client for bypassing RLS
 function getSupabaseAdmin() {
@@ -23,6 +24,10 @@ function getSupabaseAdmin() {
 }
 
 export async function POST(request: NextRequest) {
+  // 🛡 管理者権限を必須化
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
   const supabaseAdmin = getSupabaseAdmin();
 
   if (!supabaseAdmin) {
@@ -80,8 +85,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET method for testing
+// GET method for checking
 export async function GET(request: NextRequest) {
+  // 🛡 管理者権限を必須化
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
   const supabaseAdmin = getSupabaseAdmin();
 
   if (!supabaseAdmin) {

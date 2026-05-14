@@ -128,16 +128,19 @@ export async function POST(
 
     console.log('User profile check:', { userProfile, profileError });
 
-    // 権限チェックを一時的に無効化
-    // TODO: 本番環境では必ず有効にすること
-    /*
+    // 🛡 instructor または admin 権限を必須化
     if (!userProfile || !['instructor', 'admin'].includes(userProfile.role)) {
-      console.log('Insufficient permissions:', { userRole: userProfile?.role });
-      return NextResponse.json({ error: '講師または管理者権限が必要です' }, { status: 403 });
+      // RLS が原因で見えていない可能性があるので service role で再確認
+      const adminClient = createAdminSupabaseClient();
+      const { data: adminProfile } = await adminClient
+        .from('user_profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+      if (!adminProfile || !['instructor', 'admin'].includes(adminProfile.role)) {
+        return NextResponse.json({ error: '講師または管理者権限が必要です' }, { status: 403 });
+      }
     }
-    */
-
-    console.log('Permission check bypassed for development');
 
     // FormDataの処理
     const formData = await request.formData();
@@ -338,19 +341,18 @@ export async function PATCH(
       return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
     }
 
-    // 権限チェックを一時的に無効化
-    // TODO: 本番環境では必ず有効にすること
-    /*
-    const { data: userProfile } = await supabase
-      .from('user_profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (!userProfile || !['instructor', 'admin'].includes(userProfile.role)) {
-      return NextResponse.json({ error: '講師または管理者権限が必要です' }, { status: 403 });
+    // 🛡 instructor または admin 権限を必須化（service role で RLS バイパス）
+    {
+      const adminClient = createAdminSupabaseClient();
+      const { data: userProfile } = await adminClient
+        .from('user_profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+      if (!userProfile || !['instructor', 'admin'].includes(userProfile.role)) {
+        return NextResponse.json({ error: '講師または管理者権限が必要です' }, { status: 403 });
+      }
     }
-    */
 
     const body = await request.json();
     const { videoUpdates } = body;

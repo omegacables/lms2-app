@@ -1,9 +1,14 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/database/supabase';
 import { adminSupabase } from '@/lib/database/adminSupabase';
+import { requireAdmin } from '@/lib/auth/requireAdmin';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
+    // 🛡 管理者権限を必須化
+    const auth = await requireAdmin(req);
+    if (!auth.ok) return auth.response;
+
     const body = await req.json();
     const { email, display_name, company, department, password, role, is_active } = body;
 
@@ -17,8 +22,6 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-
-    // 管理者権限の確認（実際のプロジェクトでは認証チェックを追加）
 
     // 既存の auth.users に同じメールアドレスがあるかを確認（孤児レコードのリカバリ用）
     const findExistingUserByEmail = async (targetEmail: string) => {

@@ -22,7 +22,9 @@ import {
   UserGroupIcon,
   TrashIcon,
   ChevronDownIcon,
-  ChevronUpIcon
+  ChevronUpIcon,
+  XMarkIcon,
+  PlusIcon
 } from '@heroicons/react/24/outline';
 import {
   CheckCircleIcon as CheckCircleIconSolid
@@ -74,6 +76,12 @@ export default function StudentsManagePage() {
   const [groupByCompany, setGroupByCompany] = useState(true);
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
   const [companyConsultantMap, setCompanyConsultantMap] = useState<Record<string, string[]>>({});
+
+  // 会社単位の一括コース割り当てモーダル
+  const [bulkAssignCompany, setBulkAssignCompany] = useState<string | null>(null);
+  const [bulkAssignCourseIds, setBulkAssignCourseIds] = useState<Set<number>>(new Set());
+  const [bulkAssignOnlyActive, setBulkAssignOnlyActive] = useState(true);
+  const [bulkAssignProcessing, setBulkAssignProcessing] = useState(false);
 
   useEffect(() => {
     fetchStudents();
@@ -355,6 +363,139 @@ export default function StudentsManagePage() {
         newSet.delete(savingKey);
         return newSet;
       });
+    }
+  };
+
+  // 会社単位の一括コース割り当て
+  const openBulkAssignModal = (company: string) => {
+    setBulkAssignCompany(company);
+    setBulkAssignCourseIds(new Set());
+    setBulkAssignOnlyActive(true);
+  };
+
+  const closeBulkAssignModal = () => {
+    if (bulkAssignProcessing) return;
+    setBulkAssignCompany(null);
+    setBulkAssignCourseIds(new Set());
+  };
+
+  const toggleBulkAssignCourse = (courseId: number) => {
+    setBulkAssignCourseIds(prev => {
+      const next = new Set(prev);
+      if (next.has(courseId)) next.delete(courseId);
+      else next.add(courseId);
+      return next;
+    });
+  };
+
+  const handleBulkAssign = async () => {
+    if (!bulkAssignCompany || bulkAssignCourseIds.size === 0) return;
+
+    const targetStudents = students.filter(s => {
+      const company = s.company || '個人';
+      if (company !== bulkAssignCompany) return false;
+      if (bulkAssignOnlyActive && !s.is_active) return false;
+      return true;
+    });
+
+    if (targetStudents.length === 0) {
+      alert('対象となる生徒がいません。');
+      return;
+    }
+
+    const courseIds = Array.from(bulkAssignCourseIds);
+    const totalPairs = targetStudents.length * courseIds.length;
+
+    if (!confirm(
+      `${bulkAssignCompany} の ${targetStudents.length}名 に ${courseIds.length}件 のコースを割り当てます。\n` +
+      `（既に割り当て済みの組み合わせはスキップされます）\n\nよろしいですか？`
+    )) {
+      return;
+    }
+
+    setBulkAssignProcessing(true);
+
+    try {
+      // 既存の割り当てを一括取得（重複避け）
+      const studentIds = targetStudents.map(s => s.id);
+      const { data: existing, error: fetchError } = await supabase
+        .from('user_courses')
+        .select('user_id, course_id')
+        .in('user_id', studentIds)
+        .in('course_id', courseIds);
+
+      if (fetchError) throw fetchError;
+
+      const existingKeys = new Set(
+        (existing ?? []).map(e => `${e.user_id}-${e.course_id}`)
+      );
+
+      // 新規追加分のみ
+      const rowsToInsert: { user_id: string; course_id: number; assigned_at: string }[] = [];
+      const nowIso = new Date().toISOString();
+      for (const student of targetStudents) {
+        for (const courseId of courseIds) {
+          if (!existingKeys.has(`${student.id}-${courseId}`)) {
+            rowsToInsert.push({
+              user_id: student.id,
+              course_id: courseId,
+              assigned_at: nowIso,
+            });
+          }
+        }
+      }
+
+      if (rowsToInsert.length === 0) {
+        alert(`全 ${totalPairs}件 既に割り当て済みでした。\n新規割り当てはありません。`);
+        closeBulkAssignModal();
+        return;
+      }
+
+      // チャンクに分けて挿入（大量データ対応）
+      const chunkSize = 500;
+      for (let i = 0; i < rowsToInsert.length; i += chunkSize) {
+        const chunk = rowsToInsert.slice(i, i + chunkSize);
+        const { error: insertError } = await supabase
+          .from('user_courses')
+          .insert(chunk);
+        if (insertError) throw insertError;
+      }
+
+      // ローカル state を更新
+      const studentIdsToCoursesAdded = new Map<string, Set<number>>();
+      for (const row of rowsToInsert) {
+        if (!studentIdsToCoursesAdded.has(row.user_id)) {
+          studentIdsToCoursesAdded.set(row.user_id, new Set());
+        }
+        studentIdsToCoursesAdded.get(row.user_id)!.add(row.course_id);
+      }
+      setStudents(prev => prev.map(s => {
+        const added = studentIdsToCoursesAdded.get(s.id);
+        if (!added) return s;
+        const current = new Set(s.assignedCourses || []);
+        added.forEach(id => current.add(id));
+        return {
+          ...s,
+          assignedCourses: Array.from(current),
+          courseStats: {
+            ...s.courseStats,
+            totalAssigned: current.size,
+          },
+        };
+      }));
+
+      const skipped = totalPairs - rowsToInsert.length;
+      alert(
+        `割り当てが完了しました。\n` +
+        `新規追加: ${rowsToInsert.length}件\n` +
+        (skipped > 0 ? `スキップ（既に割当済）: ${skipped}件` : '')
+      );
+      closeBulkAssignModal();
+    } catch (error) {
+      console.error('一括割り当てエラー:', error);
+      alert(`一括割り当てに失敗しました: ${(error as Error).message}`);
+    } finally {
+      setBulkAssignProcessing(false);
     }
   };
 
@@ -1049,12 +1190,25 @@ export default function StudentsManagePage() {
                               </span>
                             )}
                           </button>
-                          <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
-                            <span>
+                          <div className="flex items-center gap-2 sm:gap-4 text-sm text-gray-500 dark:text-gray-400">
+                            <span className="hidden sm:inline">
                               完了率: {Math.round(
                                 companyStudents.reduce((sum, s) => sum + s.courseStats.completionRate, 0) / companyStudents.length
                               )}%
                             </span>
+                            <Button
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openBulkAssignModal(company);
+                              }}
+                              className="flex items-center text-xs sm:text-sm whitespace-nowrap"
+                              title={`${company} の全員にコースを一括割り当て`}
+                            >
+                              <PlusIcon className="h-4 w-4 mr-1 flex-shrink-0" />
+                              <span className="hidden sm:inline">一括割り当て</span>
+                              <span className="sm:hidden">割当</span>
+                            </Button>
                           </div>
                         </div>
                       )}
@@ -1064,7 +1218,7 @@ export default function StudentsManagePage() {
                       <div key={student.id} className="border border-gray-200 dark:border-neutral-800 rounded-lg p-6">
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
-                            <div className="flex items-center space-x-3 mb-2">
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-2">
                               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                                 {student.display_name}
                               </h3>
@@ -1266,6 +1420,129 @@ export default function StudentsManagePage() {
             </div>
           </div>
         </div>
+
+        {/* 会社単位の一括コース割り当てモーダル */}
+        {bulkAssignCompany && (
+          <div
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4"
+            onClick={closeBulkAssignModal}
+          >
+            <div
+              className="bg-white dark:bg-neutral-900 w-full sm:max-w-lg sm:rounded-lg shadow-xl max-h-[90vh] sm:max-h-[85vh] flex flex-col rounded-t-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* ヘッダ */}
+              <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-neutral-800">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    一括コース割り当て
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                    {bulkAssignCompany}
+                  </p>
+                </div>
+                <button
+                  onClick={closeBulkAssignModal}
+                  disabled={bulkAssignProcessing}
+                  className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-neutral-800 disabled:opacity-50"
+                  aria-label="閉じる"
+                >
+                  <XMarkIcon className="h-6 w-6" />
+                </button>
+              </div>
+
+              {/* オプション */}
+              <div className="px-4 sm:px-6 py-3 border-b border-gray-200 dark:border-neutral-800">
+                <label className="flex items-center text-sm text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={bulkAssignOnlyActive}
+                    onChange={(e) => setBulkAssignOnlyActive(e.target.checked)}
+                    disabled={bulkAssignProcessing}
+                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                  />
+                  <span className="ml-2">アクティブな生徒のみ対象にする</span>
+                </label>
+                {(() => {
+                  const targetCount = students.filter(s => {
+                    const c = s.company || '個人';
+                    if (c !== bulkAssignCompany) return false;
+                    if (bulkAssignOnlyActive && !s.is_active) return false;
+                    return true;
+                  }).length;
+                  return (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                      対象人数: <span className="font-semibold text-gray-900 dark:text-white">{targetCount}名</span>
+                    </p>
+                  );
+                })()}
+              </div>
+
+              {/* コース一覧 */}
+              <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-3">
+                <p className="text-sm font-medium text-gray-900 dark:text-white mb-2">
+                  割り当てるコースを選択
+                </p>
+                {courses.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
+                    コースがありません
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {courses.map(course => (
+                      <label
+                        key={course.id}
+                        className={`flex items-center p-3 rounded-md border cursor-pointer transition-colors ${
+                          bulkAssignCourseIds.has(course.id)
+                            ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
+                            : 'border-gray-200 dark:border-neutral-800 hover:bg-gray-50 dark:hover:bg-neutral-800'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={bulkAssignCourseIds.has(course.id)}
+                          onChange={() => toggleBulkAssignCourse(course.id)}
+                          disabled={bulkAssignProcessing}
+                          className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                        />
+                        <div className="ml-3 flex-1 min-w-0">
+                          <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                            {course.title}
+                          </div>
+                          {course.category && (
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                              {course.category}
+                            </div>
+                          )}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* フッタ */}
+              <div className="flex items-center justify-end gap-2 px-4 sm:px-6 py-3 border-t border-gray-200 dark:border-neutral-800">
+                <Button
+                  variant="outline"
+                  onClick={closeBulkAssignModal}
+                  disabled={bulkAssignProcessing}
+                >
+                  キャンセル
+                </Button>
+                <Button
+                  onClick={handleBulkAssign}
+                  disabled={bulkAssignProcessing || bulkAssignCourseIds.size === 0}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                >
+                  {bulkAssignProcessing
+                    ? '処理中...'
+                    : `${bulkAssignCourseIds.size}件のコースを割り当て`}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </MainLayout>
     </AuthGuard>
   );

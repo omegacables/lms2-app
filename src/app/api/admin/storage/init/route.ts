@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminSupabaseClient } from '@/lib/database/supabase';
+import { requireAdmin } from '@/lib/auth/requireAdmin';
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     // 管理者権限のSupabaseクライアントを使用
     const supabase = createAdminSupabaseClient();
 
@@ -139,6 +143,9 @@ export async function POST(request: NextRequest) {
 // バケットの状態を確認
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const supabase = createAdminSupabaseClient();
 
     // すべてのバケットを取得
