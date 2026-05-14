@@ -82,7 +82,7 @@ export default function DashboardPage() {
 
       // ユーザーに割り当てられたコースIDを取得
       const { data: assignments, error: assignError } = await supabase
-        .from("user_course_assignments")
+        .from("user_courses")
         .select("course_id")
         .eq("user_id", user.id);
 

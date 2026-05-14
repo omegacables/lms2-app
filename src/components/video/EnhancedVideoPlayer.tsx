@@ -53,7 +53,11 @@ export function EnhancedVideoPlayer({
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const hideControlsTimer = useRef<NodeJS.Timeout | null>(null);
+
+  const playbackRateOptions = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
   // バッファリング状態の管理
   const [isBuffering, setIsBuffering] = useState(true);
@@ -61,6 +65,8 @@ export function EnhancedVideoPlayer({
   const [isReadyToPlay, setIsReadyToPlay] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('動画を読み込んでいます...');
   const [wasPlayingBeforeBlur, setWasPlayingBeforeBlur] = useState(false);
+  // 復帰判定は ref で行う（state は描画用、ref は handler 内の即時参照用）
+  const wasPlayingBeforeBlurRef = useRef<boolean>(false);
   const bufferCheckInterval = useRef<NodeJS.Timeout | null>(null);
   const autoResumeTimeout = useRef<NodeJS.Timeout | null>(null);
   const savedPositionBeforeBlur = useRef<number>(0);
@@ -347,15 +353,75 @@ export function EnhancedVideoPlayer({
 
   // フルスクリーン切り替え
   const toggleFullscreen = async () => {
-    if (!containerRef.current) return;
+    const container = containerRef.current;
+    const video = videoRef.current;
+    if (!container && !video) return;
+
+    const doc = document as Document & {
+      webkitFullscreenElement?: Element;
+      webkitExitFullscreen?: () => Promise<void>;
+      mozFullScreenElement?: Element;
+      mozCancelFullScreen?: () => Promise<void>;
+      msFullscreenElement?: Element;
+      msExitFullscreen?: () => Promise<void>;
+    };
+
+    const isInFullscreen = !!(
+      doc.fullscreenElement ||
+      doc.webkitFullscreenElement ||
+      doc.mozFullScreenElement ||
+      doc.msFullscreenElement
+    );
 
     try {
-      if (!document.fullscreenElement) {
-        await containerRef.current.requestFullscreen();
+      if (isInFullscreen) {
+        if (doc.exitFullscreen) {
+          await doc.exitFullscreen();
+        } else if (doc.webkitExitFullscreen) {
+          await doc.webkitExitFullscreen();
+        } else if (doc.mozCancelFullScreen) {
+          await doc.mozCancelFullScreen();
+        } else if (doc.msExitFullscreen) {
+          await doc.msExitFullscreen();
+        }
+        setIsFullscreen(false);
+        return;
+      }
+
+      const target = container as HTMLElement & {
+        webkitRequestFullscreen?: () => Promise<void>;
+        mozRequestFullScreen?: () => Promise<void>;
+        msRequestFullscreen?: () => Promise<void>;
+      };
+      const videoEl = video as HTMLVideoElement & {
+        webkitEnterFullscreen?: () => void;
+        webkitRequestFullscreen?: () => Promise<void>;
+      };
+
+      if (target?.requestFullscreen) {
+        await target.requestFullscreen();
+        setIsFullscreen(true);
+      } else if (target?.webkitRequestFullscreen) {
+        await target.webkitRequestFullscreen();
+        setIsFullscreen(true);
+      } else if (target?.mozRequestFullScreen) {
+        await target.mozRequestFullScreen();
+        setIsFullscreen(true);
+      } else if (target?.msRequestFullscreen) {
+        await target.msRequestFullscreen();
+        setIsFullscreen(true);
+      } else if (videoEl?.webkitEnterFullscreen) {
+        // iOS Safari は <video> 要素のみ全画面表示可能
+        videoEl.webkitEnterFullscreen();
+        setIsFullscreen(true);
+      } else if (videoEl?.requestFullscreen) {
+        await videoEl.requestFullscreen();
+        setIsFullscreen(true);
+      } else if (videoEl?.webkitRequestFullscreen) {
+        await videoEl.webkitRequestFullscreen();
         setIsFullscreen(true);
       } else {
-        await document.exitFullscreen();
-        setIsFullscreen(false);
+        alert('お使いのブラウザは全画面表示に対応していません。');
       }
     } catch (err) {
       console.error('Fullscreen error:', err);
@@ -365,14 +431,56 @@ export function EnhancedVideoPlayer({
   // フルスクリーン変更の監視
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      const doc = document as Document & {
+        webkitFullscreenElement?: Element;
+        mozFullScreenElement?: Element;
+        msFullscreenElement?: Element;
+      };
+      setIsFullscreen(!!(
+        doc.fullscreenElement ||
+        doc.webkitFullscreenElement ||
+        doc.mozFullScreenElement ||
+        doc.msFullscreenElement
+      ));
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
+    // iOS Safari は video 要素の webkitbeginfullscreen / webkitendfullscreen を使う
+    const videoEl = videoRef.current;
+    const handleWebkitBegin = () => setIsFullscreen(true);
+    const handleWebkitEnd = () => setIsFullscreen(false);
+    videoEl?.addEventListener('webkitbeginfullscreen', handleWebkitBegin);
+    videoEl?.addEventListener('webkitendfullscreen', handleWebkitEnd);
+
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+      videoEl?.removeEventListener('webkitbeginfullscreen', handleWebkitBegin);
+      videoEl?.removeEventListener('webkitendfullscreen', handleWebkitEnd);
     };
   }, []);
+
+  // 再生速度の変更
+  const handlePlaybackRateChange = (rate: number) => {
+    if (videoRef.current) {
+      videoRef.current.playbackRate = rate;
+      setPlaybackRate(rate);
+      setShowSpeedMenu(false);
+    }
+  };
+
+  // メタデータ読み込み後、保存された再生速度を適用
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.playbackRate = playbackRate;
+    }
+  }, [playbackRate, duration]);
 
   // コントロールの自動非表示
   const hideControlsAfterDelay = () => {
@@ -499,83 +607,112 @@ export function EnhancedVideoPlayer({
       }
     };
 
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        // ページが非表示になる時（別のアプリを開いた時など）
-        if (videoRef.current && duration > 0 && currentTime > 0) {
-          // 現在の再生状態と位置を保存
-          setWasPlayingBeforeBlur(!videoRef.current.paused);
-          savedPositionBeforeBlur.current = videoRef.current.currentTime;
-          console.log('[VideoPlayer] バックグラウンドへ移行:', {
-            isPlaying: !videoRef.current.paused ? '再生中' : '一時停止中',
-            position: savedPositionBeforeBlur.current.toFixed(2)
-          });
+    // 復帰時に再生を試みる共通処理（リトライ付き）
+    const attemptResume = (label: string) => {
+      const video = videoRef.current;
+      if (!video) return;
 
-          // 進捗を保存（1秒未満の場合はスキップされる）
+      // 位置がリセットされていたら復元
+      if (savedPositionBeforeBlur.current > 1) {
+        const savedPos = savedPositionBeforeBlur.current;
+        const currentPos = video.currentTime;
+        if (Math.abs(currentPos - savedPos) > 5 || currentPos < 1) {
+          video.currentTime = savedPos;
+          setCurrentTime(savedPos);
+          console.log(`[VideoPlayer] (${label}) 位置を復元: ${savedPos.toFixed(2)}秒 (前: ${currentPos.toFixed(2)}秒)`);
+        }
+      }
+
+      // 復帰前が再生中だった場合のみ再開
+      if (!wasPlayingBeforeBlurRef.current) return;
+      if (!video.paused) return; // 既に再生中なら何もしない
+
+      const tryPlay = (attempt: number) => {
+        const v = videoRef.current;
+        if (!v || !v.paused) return;
+        console.log(`[VideoPlayer] (${label}) 自動再開を試行 #${attempt}`);
+        v.play()
+          .then(() => {
+            console.log(`[VideoPlayer] (${label}) 自動再開成功`);
+            setIsPlaying(true);
+          })
+          .catch(err => {
+            console.warn(`[VideoPlayer] (${label}) 自動再開失敗 #${attempt}:`, err?.name ?? err);
+            // autoplay policy で弾かれた場合は数回リトライ
+            if (attempt < 3) {
+              setTimeout(() => tryPlay(attempt + 1), 600);
+            }
+          });
+      };
+      // ブラウザの準備を待ってから実行
+      setTimeout(() => tryPlay(1), 300);
+    };
+
+    const handleVisibilityChange = () => {
+      const video = videoRef.current;
+      if (!video) return;
+
+      if (document.hidden) {
+        // ページが非表示になる時
+        if (duration > 0 && currentTime > 0) {
+          const isPlayingNow = !video.paused;
+          wasPlayingBeforeBlurRef.current = isPlayingNow;
+          setWasPlayingBeforeBlur(isPlayingNow);
+          savedPositionBeforeBlur.current = video.currentTime;
+          console.log('[VideoPlayer] バックグラウンドへ移行:', {
+            isPlaying: isPlayingNow ? '再生中' : '一時停止中',
+            position: savedPositionBeforeBlur.current.toFixed(2),
+          });
           saveProgress();
-          if (onBeforeUnload) {
-            onBeforeUnload();
-          }
+          if (onBeforeUnload) onBeforeUnload();
         }
       } else {
-        // ページが再表示される時（アプリに戻った時など）
+        // フォアグラウンド復帰
         console.log('[VideoPlayer] フォアグラウンドへ復帰');
+        attemptResume('visibilitychange');
+      }
+    };
 
-        if (videoRef.current) {
-          // 保存した位置を復元（0にリセットされるのを防ぐ）
-          if (savedPositionBeforeBlur.current > 1) {
-            const savedPos = savedPositionBeforeBlur.current;
-            const currentPos = videoRef.current.currentTime;
+    // window focus でも再開を試みる（visibilitychange が発火しない一部ブラウザ向け）
+    const handleWindowFocus = () => {
+      if (!document.hidden) {
+        attemptResume('focus');
+      }
+    };
 
-            // 位置が大幅に変わっている場合のみ復元（0にリセットされた場合など）
-            if (Math.abs(currentPos - savedPos) > 5 || currentPos < 1) {
-              videoRef.current.currentTime = savedPos;
-              setCurrentTime(savedPos);
-              console.log('[VideoPlayer] 位置を復元:', savedPos.toFixed(2), '秒 (以前の位置:', currentPos.toFixed(2), '秒)');
-            }
-          }
-
-          // 以前再生中だった場合は再生を再開
-          if (wasPlayingBeforeBlur) {
-            setTimeout(() => {
-              if (videoRef.current && videoRef.current.paused) {
-                console.log('[VideoPlayer] 再生を自動的に再開します');
-                videoRef.current.play().catch(err => {
-                  console.error('[VideoPlayer] 再生再開失敗:', err);
-                });
-              }
-            }, 300); // 300ms後に再開（ブラウザの準備を待つ）
-          }
-        }
+    // bfcache から戻った場合の保険
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        console.log('[VideoPlayer] bfcache から復帰');
+        attemptResume('pageshow');
       }
     };
 
     const handlePageHide = () => {
-      // ページが完全にアンロードされる前に保存
       if (videoRef.current && duration > 0 && currentTime > 0) {
         saveProgress();
-        if (onBeforeUnload) {
-          onBeforeUnload();
-        }
+        if (onBeforeUnload) onBeforeUnload();
       }
     };
 
     // 各種イベントリスナーを登録
     window.addEventListener('beforeunload', handleBeforeUnload);
-    window.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('pageshow', handlePageShow);
     window.addEventListener('pagehide', handlePageHide);
 
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      window.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('pageshow', handlePageShow);
       window.removeEventListener('pagehide', handlePageHide);
 
       // コンポーネントのアンマウント時に保存
       if (videoRef.current && duration > 0 && currentTime > 0) {
         saveProgress();
-        if (onBeforeUnload) {
-          onBeforeUnload();
-        }
+        if (onBeforeUnload) onBeforeUnload();
       }
     };
   }, [isPlaying, duration, currentTime, onBeforeUnload]);
@@ -595,6 +732,22 @@ export function EnhancedVideoPlayer({
       setViewingSession(crypto.randomUUID());
     }
   }, [isCompleted, showWarning]);
+
+  // スペースキーで再生/停止（input/textarea/button 等にフォーカス中は無効）
+  const togglePlayRef = useRef<() => void>(() => {});
+  togglePlayRef.current = togglePlay;
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' && e.key !== ' ') return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || target?.isContentEditable) return;
+      e.preventDefault();
+      togglePlayRef.current();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // 定期的なバッファチェック（再生中のみ）
   useEffect(() => {
@@ -710,6 +863,7 @@ export function EnhancedVideoPlayer({
         ref={videoRef}
         src={videoUrl}
         className={`w-full h-full ${!showControls && isPlaying ? 'cursor-none' : ''}`}
+        onClick={togglePlay}
         onLoadedMetadata={handleLoadedMetadata}
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleEnded}
@@ -874,11 +1028,39 @@ export function EnhancedVideoPlayer({
               進捗: {Math.floor(progress)}%
             </span>
 
+            {/* 再生速度ボタン */}
+            <div className="relative">
+              <button
+                onClick={() => setShowSpeedMenu((v) => !v)}
+                className="px-2 py-1 hover:bg-white/20 rounded transition-colors text-xs sm:text-sm font-semibold min-w-[2.5rem]"
+                title="再生速度"
+                aria-label="再生速度"
+              >
+                {playbackRate}x
+              </button>
+              {showSpeedMenu && (
+                <div className="absolute bottom-full right-0 mb-2 bg-black/90 rounded-lg overflow-hidden shadow-lg min-w-[5rem] z-20">
+                  {playbackRateOptions.map((rate) => (
+                    <button
+                      key={rate}
+                      onClick={() => handlePlaybackRateChange(rate)}
+                      className={`block w-full text-left px-3 py-2 text-xs sm:text-sm hover:bg-white/20 transition-colors ${
+                        rate === playbackRate ? 'text-blue-400 font-semibold' : 'text-white'
+                      }`}
+                    >
+                      {rate}x{rate === 1 ? ' (標準)' : ''}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* フルスクリーンボタン */}
             <button
               onClick={toggleFullscreen}
               className="p-1 hover:bg-white/20 rounded transition-colors"
               title={isFullscreen ? "全画面を終了" : "全画面表示"}
+              aria-label={isFullscreen ? "全画面を終了" : "全画面表示"}
             >
               {isFullscreen ? (
                 <ArrowsPointingInIcon className="h-5 w-5 sm:h-6 sm:w-6" />

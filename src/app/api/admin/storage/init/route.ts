@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     const buckets = [
       {
         name: 'videos',
-        public: false,
+        public: true, // 公開バケット - getPublicUrl() で再生可能にするため
         fileSizeLimit: 3221225472, // 3GB
         allowedMimeTypes: ['video/*']
       },
@@ -45,20 +45,39 @@ export async function POST(request: NextRequest) {
     for (const bucket of buckets) {
       try {
         // まず既存のバケットを確認
-        const { data: existingBucket, error: checkError } = await supabase.storage
+        const { data: existingBucket } = await supabase.storage
           .getBucket(bucket.name);
 
         if (existingBucket) {
-          results.push({
-            bucket: bucket.name,
-            status: 'exists',
-            message: 'Bucket already exists'
-          });
+          // 既存バケットの設定を最新に更新（fileSizeLimit等）
+          const { error: updateError } = await supabase.storage
+            .updateBucket(bucket.name, {
+              public: bucket.public,
+              fileSizeLimit: bucket.fileSizeLimit,
+              allowedMimeTypes: bucket.allowedMimeTypes,
+            });
+
+          if (updateError) {
+            results.push({
+              bucket: bucket.name,
+              status: 'error',
+              message: `更新失敗: ${updateError.message}`,
+              currentLimit: existingBucket.file_size_limit,
+            });
+          } else {
+            results.push({
+              bucket: bucket.name,
+              status: 'updated',
+              message: `設定を更新しました (file_size_limit: ${bucket.fileSizeLimit} bytes)`,
+              previousLimit: existingBucket.file_size_limit,
+              newLimit: bucket.fileSizeLimit,
+            });
+          }
           continue;
         }
 
         // バケットが存在しない場合は作成
-        const { data, error } = await supabase.storage
+        const { error } = await supabase.storage
           .createBucket(bucket.name, {
             public: bucket.public,
             fileSizeLimit: bucket.fileSizeLimit,

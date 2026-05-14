@@ -52,9 +52,9 @@ export default function MyCoursesPage() {
     try {
       setLoading(true);
 
-      // Get user's assigned course IDs from user_course_assignments table
+      // Get user's assigned course IDs from user_courses table
       const { data: assignments, error: assignError } = await supabase
-        .from('user_course_assignments')
+        .from('user_courses')
         .select('course_id')
         .eq('user_id', user?.id);
 

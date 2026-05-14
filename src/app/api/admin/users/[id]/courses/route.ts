@@ -12,7 +12,7 @@ export async function GET(
 
     // ユーザーに割り当てられたコースを取得
     const { data: assignedCourses, error } = await supabase
-      .from('user_course_assignments')
+      .from('user_courses')
       .select('*')
       .eq('user_id', userId)
       .order('assigned_at', { ascending: false });
@@ -127,7 +127,7 @@ export async function POST(
 
     // 既に割り当てられているコースを確認
     const { data: existingAssignments } = await supabase
-      .from('user_course_assignments')
+      .from('user_courses')
       .select('course_id')
       .eq('user_id', userId)
       .in('course_id', courseIds);
@@ -152,7 +152,7 @@ export async function POST(
     }));
 
     const { data, error } = await supabase
-      .from('user_course_assignments')
+      .from('user_courses')
       .insert(assignments)
       .select();
 
@@ -201,7 +201,7 @@ export async function DELETE(
 
     // コース割り当てを削除
     const { error } = await supabase
-      .from('user_course_assignments')
+      .from('user_courses')
       .delete()
       .eq('user_id', userId)
       .eq('course_id', courseId);

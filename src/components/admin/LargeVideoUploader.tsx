@@ -194,24 +194,18 @@ export function LargeVideoUploader({
       // サーバーサイドで処理するか、クライアントで再結合する必要があります
       // ここでは、メタデータをデータベースに保存します
 
+      // 基本スキーマに収まるカラムのみ使用（チャンク情報は description に記録）
       const { data, error } = await supabase
         .from('videos')
         .insert({
           course_id: courseId,
           title: fileName,
-          description: `Large file upload (${formatFileSize(totalSize)})`,
-          url: `chunks/${sessionId}`, // チャンクの場所を保存
+          description: `Large file upload (${formatFileSize(totalSize)}) - chunks at chunks/${sessionId} (${totalChunks} chunks)`,
+          file_url: `chunks/${sessionId}`,
           duration: 0,
+          file_size: totalSize,
           order_index: 999,
-          status: 'processing', // 処理中ステータス
-          metadata: {
-            type: 'chunked',
-            sessionId,
-            totalChunks,
-            totalSize,
-            chunkSize: CHUNK_SIZE,
-            uploadedAt: new Date().toISOString()
-          }
+          status: 'inactive', // チャンク結合前は非公開
         })
         .select()
         .single();

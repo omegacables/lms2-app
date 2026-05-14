@@ -182,23 +182,17 @@ export function VideoUploader({ courseId, onSuccess, onError }: VideoUploaderPro
 
       console.log('公開URL:', publicUrl);
 
-      // データベースに動画情報を保存
+      // データベースに動画情報を保存（基本スキーマのカラムのみ）
       const videoData = {
         course_id: courseId,
         title: videoTitle.trim(),
         description: videoDescription.trim() || null,
         file_url: publicUrl,
-        file_path: filePath,
         file_size: file.size,
         mime_type: file.type,
-        duration: duration, // 取得した動画の長さを保存
+        duration: duration,
         order_index: orderIndex,
         status: 'active' as const,
-        metadata: {
-          originalName: file.name,
-          uploadedAt: new Date().toISOString(),
-          uploadedBy: session.user.id
-        }
       };
 
       console.log('データベースに保存する動画データ:', videoData);

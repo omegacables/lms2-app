@@ -189,11 +189,11 @@ export function MainLayout({ children }: MainLayoutProps) {
 
     try {
       if (isAdmin) {
-        // 管理者の場合：生徒からの未読メッセージ数
+        // 管理者の場合：自分以外（生徒）からの未読メッセージ数
         const { count } = await supabase
           .from('support_messages')
           .select('*', { count: 'exact', head: true })
-          .eq('sender_type', 'student')
+          .neq('sender_id', user.id)
           .eq('is_read', false);
 
         setUnreadMessages(count || 0);
@@ -227,11 +227,11 @@ export function MainLayout({ children }: MainLayoutProps) {
             if (conversations && conversations.length > 0) {
               const conversationIds = conversations.map(conv => conv.id);
 
-              // 生徒からの未読メッセージ数を取得
+              // 生徒からの未読メッセージ数を取得（社労士以外の sender = 生徒）
               const { count } = await supabase
                 .from('support_messages')
                 .select('*', { count: 'exact', head: true })
-                .eq('sender_type', 'student')
+                .neq('sender_id', user.id)
                 .eq('is_read', false)
                 .in('conversation_id', conversationIds);
 
@@ -255,11 +255,11 @@ export function MainLayout({ children }: MainLayoutProps) {
         if (conversations && conversations.length > 0) {
           const conversationIds = conversations.map(conv => conv.id);
 
-          // 管理者からの未読メッセージ数を取得
+          // 管理者からの未読メッセージ数を取得（自分以外の sender = 管理者）
           const { count } = await supabase
             .from('support_messages')
             .select('*', { count: 'exact', head: true })
-            .eq('sender_type', 'admin')
+            .neq('sender_id', user.id)
             .eq('is_read', false)
             .in('conversation_id', conversationIds);
 

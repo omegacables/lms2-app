@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AuthGuard } from '@/components/auth/AuthGuard';
+import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { supabase } from '@/lib/database/supabase';
@@ -202,11 +203,13 @@ export default function CourseDetailPage() {
   if (loading) {
     return (
       <AuthGuard>
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex justify-center items-center min-h-64">
-            <LoadingSpinner size="lg" />
+        <MainLayout>
+          <div className="container mx-auto px-4 py-8">
+            <div className="flex justify-center items-center min-h-64">
+              <LoadingSpinner size="lg" />
+            </div>
           </div>
-        </div>
+        </MainLayout>
       </AuthGuard>
     );
   }
@@ -214,25 +217,28 @@ export default function CourseDetailPage() {
   if (error || !course) {
     return (
       <AuthGuard>
-        <div className="container mx-auto px-4 py-8">
-          <div className="text-center py-12">
-            <p className="text-destructive mb-4">
-              {error || 'コースが見つかりませんでした'}
-            </p>
-            <Link href="/my-courses">
-              <Button variant="outline">
-                マイコースに戻る
-              </Button>
-            </Link>
+        <MainLayout>
+          <div className="container mx-auto px-4 py-8">
+            <div className="text-center py-12">
+              <p className="text-destructive mb-4">
+                {error || 'コースが見つかりませんでした'}
+              </p>
+              <Link href="/my-courses">
+                <Button variant="outline">
+                  マイコースに戻る
+                </Button>
+              </Link>
+            </div>
           </div>
-        </div>
+        </MainLayout>
       </AuthGuard>
     );
   }
 
   return (
     <AuthGuard>
-      <div className="container mx-auto px-4 py-8">
+      <MainLayout>
+        <div className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
           {/* パンくずリスト */}
           <nav className="mb-6">
@@ -655,6 +661,7 @@ export default function CourseDetailPage() {
           </div>
         </div>
       </div>
+      </MainLayout>
     </AuthGuard>
   );
 }

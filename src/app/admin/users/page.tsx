@@ -110,7 +110,7 @@ export default function AdminUsersPage() {
           try {
             // 割り当てられたコースを取得
             const { data: assignedCoursesData } = await supabase
-              .from('user_course_assignments')
+              .from('user_courses')
               .select('course_id')
               .eq('user_id', user.id);
 

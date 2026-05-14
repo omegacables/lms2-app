@@ -4,9 +4,10 @@ import { cookies } from 'next/headers';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: courseId } = await params;
     const cookieStore = await cookies();
     const supabase = createServerSupabaseClient(cookieStore);
 
@@ -31,7 +32,7 @@ export async function GET(
           status
         )
       `)
-      .eq('id', params.id)
+      .eq('id', courseId)
       .single();
 
     if (courseError || !course) {
@@ -111,9 +112,10 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: courseId } = await params;
     const cookieStore = await cookies();
     const supabase = createServerSupabaseClient(cookieStore);
 
@@ -162,7 +164,7 @@ export async function PUT(
         status,
         updated_at: new Date().toISOString()
       })
-      .eq('id', params.id)
+      .eq('id', courseId)
       .select()
       .single();
 
@@ -183,48 +185,107 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: courseId } = await params;
+
+    if (!courseId) {
+      return NextResponse.json({ error: 'コースIDが指定されていません' }, { status: 400 });
+    }
+
+    // 認証: まず Authorization ヘッダーのトークン、なければ cookie
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
     const cookieStore = await cookies();
     const supabase = createServerSupabaseClient(cookieStore);
 
-    // 認証チェック
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    let user = null;
+    if (token) {
+      const { data, error } = await supabase.auth.getUser(token);
+      if (!error) user = data.user;
+    }
+    if (!user) {
+      const { data } = await supabase.auth.getUser();
+      user = data.user;
+    }
+
+    if (!user) {
       return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
     }
 
-    // 管理者権限チェック
-    const { data: userProfile } = await supabase
+    // 管理者権限チェック（RLS を回避するため admin クライアントで照会）
+    const adminSupabase = createAdminSupabaseClient();
+    const { data: userProfile, error: profileError } = await adminSupabase
       .from('user_profiles')
       .select('role')
       .eq('id', user.id)
       .single();
 
-    if (!userProfile || userProfile.role !== 'admin') {
-      return NextResponse.json({ error: '管理者権限が必要です' }, { status: 403 });
+    if (profileError) {
+      console.error('Profile lookup error:', profileError);
     }
 
-    // コースを論理削除（ステータスを inactive に変更）
-    const { data, error } = await supabase
+    if (!userProfile || userProfile.role !== 'admin') {
+      return NextResponse.json(
+        { error: `管理者権限が必要です (現在の権限: ${userProfile?.role ?? '未取得'})` },
+        { status: 403 }
+      );
+    }
+    // 関連動画ファイルを Storage から削除するために URL を取得
+    const { data: relatedVideos } = await adminSupabase
+      .from('videos')
+      .select('id, file_url')
+      .eq('course_id', courseId);
+
+    // Storage から動画ファイル本体を削除（失敗してもDB削除は続行）
+    if (relatedVideos && relatedVideos.length > 0) {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+      const publicPrefix = `${supabaseUrl}/storage/v1/object/public/videos/`;
+      const signedPrefix = `${supabaseUrl}/storage/v1/object/sign/videos/`;
+
+      const paths = relatedVideos
+        .map((v: { file_url: string | null }) => {
+          if (!v.file_url) return null;
+          if (v.file_url.startsWith(publicPrefix)) return v.file_url.slice(publicPrefix.length);
+          if (v.file_url.startsWith(signedPrefix)) return v.file_url.slice(signedPrefix.length).split('?')[0];
+          return null;
+        })
+        .filter((p): p is string => !!p);
+
+      if (paths.length > 0) {
+        const { error: storageError } = await adminSupabase.storage.from('videos').remove(paths);
+        if (storageError) {
+          console.warn('Storage cleanup warning:', storageError.message);
+        }
+      }
+    }
+
+    // コースを物理削除（ON DELETE CASCADE で videos / user_courses / video_view_logs 等も自動削除）
+    const { data, error } = await adminSupabase
       .from('courses')
-      .update({
-        status: 'inactive',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', params.id)
+      .delete()
+      .eq('id', courseId)
       .select()
       .single();
 
     if (error) {
       console.error('Error deleting course:', error);
-      return NextResponse.json({ error: 'コースの削除に失敗しました' }, { status: 500 });
+      return NextResponse.json(
+        { error: `コースの削除に失敗しました: ${error.message}` },
+        { status: 500 }
+      );
+    }
+
+    if (!data) {
+      return NextResponse.json({ error: '対象のコースが見つかりません' }, { status: 404 });
     }
 
     return NextResponse.json({
       message: 'コースが削除されました',
-      course: data
+      course: data,
+      deletedVideoCount: relatedVideos?.length ?? 0,
     });
   } catch (error) {
     console.error('Error in DELETE /api/courses/[id]:', error);

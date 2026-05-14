@@ -116,7 +116,7 @@ export default function AttendanceStatusPage() {
       } else {
         // 生徒: 自分の進捗のみ取得
         const { data: enrolledCourses } = await supabase
-          .from('course_enrollments')
+          .from('user_courses')
           .select(`
             *,
             courses:course_id (*)

@@ -97,12 +97,12 @@ export default function AdminDashboard() {
       setLoading(true);
       
       // 統計データを並列で取得
-      // 未読メッセージを取得 (生徒からの未読メッセージのみ)
+      // 未読メッセージを取得 (自分=管理者以外の sender = 生徒からの未読)
       const { count: unreadCount } = await supabase
         .from('support_messages')
         .select('*', { count: 'exact', head: true })
         .eq('is_read', false)
-        .eq('sender_type', 'student');
+        .neq('sender_id', user?.id ?? '');
 
       const [
         usersResult,

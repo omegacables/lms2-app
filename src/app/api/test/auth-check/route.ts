@@ -27,7 +27,7 @@ export async function GET() {
 
     // ユーザープロファイルを取得
     const { data: profile } = await supabase
-      .from('users')
+      .from('user_profiles')
       .select('role')
       .eq('id', session.user.id)
       .single();

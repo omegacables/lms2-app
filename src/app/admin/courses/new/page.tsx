@@ -10,7 +10,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { supabase } from '@/lib/database/supabase';
-import { 
+import * as tus from 'tus-js-client';
+import {
   ArrowLeftIcon,
   CloudArrowUpIcon,
   XMarkIcon,
@@ -138,89 +139,114 @@ export default function CreateCoursePage() {
     ));
   };
 
-  const uploadVideo = async (videoFile: VideoFile, courseId: number) => {
+  const uploadVideo = async (videoFile: VideoFile, courseId: number, orderIndex: number) => {
     try {
       console.log('Starting upload for:', videoFile.file.name, 'Size:', videoFile.file.size);
-      
-      setVideos(prev => prev.map(v => 
-        v.id === videoFile.id ? { ...v, uploadProgress: 10 } : v
+
+      setVideos(prev => prev.map(v =>
+        v.id === videoFile.id ? { ...v, uploadProgress: 1 } : v
       ));
 
-      // Check if user is authenticated first
+      // 認証セッション取得
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         throw new Error('認証が必要です。再度ログインしてください。');
       }
 
-      // Upload using API endpoint with XMLHttpRequest for progress tracking
-      return new Promise((resolve, reject) => {
-        const formData = new FormData();
-        formData.append('video', videoFile.file);
-        formData.append('title', videoFile.title);
-        formData.append('description', videoFile.description || '');
-        formData.append('duration', String(videoFile.duration || 0));
-        formData.append('order_index', '0');
+      // ファイル名を安全な形式に変換
+      const timestamp = Date.now();
+      const safeFileName = videoFile.file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const filePath = `course_${courseId}/${timestamp}_${safeFileName}`;
 
-        const xhr = new XMLHttpRequest();
+      const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
-        // Progress tracking
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            const percentComplete = (e.loaded / e.total) * 100;
-            setVideos(prev => prev.map(v => 
-              v.id === videoFile.id 
-                ? { ...v, uploadProgress: Math.round(percentComplete) }
-                : v
+      // TUSプロトコルで Supabase Storage に直接アップロード（Next.js APIをバイパス）
+      await new Promise<void>((resolve, reject) => {
+        const upload = new tus.Upload(videoFile.file, {
+          endpoint: `${projectUrl}/storage/v1/upload/resumable`,
+          retryDelays: [0, 3000, 5000, 10000, 20000],
+          headers: {
+            authorization: `Bearer ${session.access_token}`,
+            'x-upsert': 'false',
+          },
+          uploadDataDuringCreation: true,
+          removeFingerprintOnSuccess: true,
+          metadata: {
+            bucketName: 'videos',
+            objectName: filePath,
+            contentType: videoFile.file.type,
+            cacheControl: '3600',
+          },
+          chunkSize: 6 * 1024 * 1024, // 6MB chunks (Supabase 推奨)
+          onError: (err) => {
+            console.error('TUS upload error:', err);
+            reject(err);
+          },
+          onProgress: (bytesUploaded, bytesTotal) => {
+            const percentage = Math.floor((bytesUploaded / bytesTotal) * 95);
+            setVideos(prev => prev.map(v =>
+              v.id === videoFile.id ? { ...v, uploadProgress: percentage } : v
             ));
+          },
+          onSuccess: () => {
+            console.log('TUS upload successful:', filePath);
+            resolve();
+          },
+        });
+
+        upload.findPreviousUploads().then((previousUploads) => {
+          if (previousUploads.length) {
+            upload.resumeFromPreviousUpload(previousUploads[0]);
           }
+          upload.start();
         });
-
-        // Handle completion
-        xhr.addEventListener('load', () => {
-          if (xhr.status === 200) {
-            const response = JSON.parse(xhr.responseText);
-            console.log('Upload successful:', response);
-            
-            setVideos(prev => prev.map(v => 
-              v.id === videoFile.id 
-                ? { ...v, uploaded: true, uploadProgress: 100 }
-                : v
-            ));
-
-            resolve({
-              filename: response.video?.file_url || '',
-              url: response.video?.file_url || '',
-              title: videoFile.title,
-              description: videoFile.description,
-              duration: videoFile.duration || 0,
-              videoId: response.video?.id
-            });
-          } else {
-            const error = xhr.responseText ? JSON.parse(xhr.responseText) : { error: 'アップロードに失敗しました' };
-            reject(new Error(error.error || 'アップロードに失敗しました'));
-          }
-        });
-
-        // Handle errors
-        xhr.addEventListener('error', () => {
-          reject(new Error('ネットワークエラーが発生しました'));
-        });
-
-        xhr.addEventListener('timeout', () => {
-          reject(new Error('アップロードがタイムアウトしました'));
-        });
-
-        // Configure and send
-        xhr.open('POST', `/api/courses/${courseId}/videos`);
-        xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
-        xhr.timeout = 300000; // 5分のタイムアウト
-        xhr.send(formData);
       });
 
+      // 公開URLを取得
+      const { data: { publicUrl } } = supabase.storage
+        .from('videos')
+        .getPublicUrl(filePath);
+
+      // データベースに動画情報を保存（基本スキーマのカラムのみ）
+      const { data: insertedVideo, error: dbError } = await supabase
+        .from('videos')
+        .insert({
+          course_id: courseId,
+          title: videoFile.title,
+          description: videoFile.description || null,
+          file_url: publicUrl,
+          file_size: videoFile.file.size,
+          mime_type: videoFile.file.type,
+          duration: videoFile.duration || 0,
+          order_index: orderIndex,
+          status: 'active',
+        })
+        .select()
+        .single();
+
+      if (dbError) {
+        console.error('Database error:', dbError);
+        // 失敗時はアップロード済みファイルをクリーンアップ
+        await supabase.storage.from('videos').remove([filePath]);
+        throw new Error(`動画情報の保存に失敗しました: ${dbError.message}`);
+      }
+
+      setVideos(prev => prev.map(v =>
+        v.id === videoFile.id ? { ...v, uploaded: true, uploadProgress: 100 } : v
+      ));
+
+      return {
+        filename: publicUrl,
+        url: publicUrl,
+        title: videoFile.title,
+        description: videoFile.description,
+        duration: videoFile.duration || 0,
+        videoId: insertedVideo?.id,
+      };
     } catch (error) {
       console.error('Video upload error:', error);
-      setVideos(prev => prev.map(v => 
-        v.id === videoFile.id 
+      setVideos(prev => prev.map(v =>
+        v.id === videoFile.id
           ? { ...v, error: (error as Error).message, uploadProgress: 0 }
           : v
       ));
@@ -271,12 +297,10 @@ export default function CreateCoursePage() {
         throw courseError;
       }
 
-      // Upload videos - API endpoint will handle database insertion
+      // Upload videos directly to Supabase Storage (bypasses Next.js API)
       const videoPromises = videos.map(async (video, index) => {
-        const uploadResult = await uploadVideo(video, courseData.id);
+        const uploadResult = await uploadVideo(video, courseData.id, index);
         if (!uploadResult) return null;
-        
-        // API endpoint already creates the video record, just return the result
         return uploadResult;
       });
 

@@ -151,7 +151,7 @@ export default function StudentDetailPage() {
     try {
       // まず割り当てられたコースを取得
       const { data: assignedCourses, error: assignError } = await supabase
-        .from('user_course_assignments')
+        .from('user_courses')
         .select('course_id')
         .eq('user_id', studentId);
 

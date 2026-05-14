@@ -5,6 +5,7 @@ import { checkAndGenerateCertificate } from '@/lib/certificate/autoGenerateCerti
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AuthGuard } from '@/components/auth/AuthGuard';
+import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { supabase } from '@/lib/database/supabase';
@@ -60,9 +61,54 @@ export default function VideoPlayerPage() {
   const [hasCompletedBefore, setHasCompletedBefore] = useState(false);
   const [lastPosition, setLastPosition] = useState<number>(0);
 
+  const [playbackUrl, setPlaybackUrl] = useState<string>('');
+
   const sessionId = useRef<string>(crypto.randomUUID());
   const progressUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingUpdateRef = useRef<{ position: number; videoDuration: number; progressPercent: number } | null>(null);
+
+  // file_url から Storage 内のパスを抽出（public / sign / 直接パス いずれも対応）
+  const extractStoragePath = (url: string | null | undefined): string | null => {
+    if (!url) return null;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+    const publicPrefix = `${supabaseUrl}/storage/v1/object/public/videos/`;
+    const signedPrefix = `${supabaseUrl}/storage/v1/object/sign/videos/`;
+    if (url.startsWith(publicPrefix)) return url.slice(publicPrefix.length);
+    if (url.startsWith(signedPrefix)) return url.slice(signedPrefix.length).split('?')[0];
+    if (!url.startsWith('http')) return url; // 既にパスのみ
+    return null;
+  };
+
+  // video.file_url から、bucket が public/private いずれでも再生できる URL を取得
+  useEffect(() => {
+    if (!video?.file_url) {
+      setPlaybackUrl('');
+      return;
+    }
+    const path = extractStoragePath(video.file_url);
+    if (!path) {
+      // Supabase 外の URL（外部リンク等）。そのまま使う
+      setPlaybackUrl(video.file_url);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      // 署名付き URL を作る（bucket が private でも再生可能）。失敗時は public URL にフォールバック
+      const { data, error } = await supabase.storage
+        .from('videos')
+        .createSignedUrl(path, 60 * 60 * 24); // 24時間
+      if (cancelled) return;
+      if (!error && data?.signedUrl) {
+        setPlaybackUrl(data.signedUrl);
+      } else {
+        const { data: pub } = supabase.storage.from('videos').getPublicUrl(path);
+        setPlaybackUrl(pub?.publicUrl ?? video.file_url);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [video?.file_url]);
 
   // タイムスタンプを取得する関数（日本時間・タイムゾーン付きISO 8601形式）
   const getJSTTimestamp = () => {
@@ -843,9 +889,11 @@ export default function VideoPlayerPage() {
   if (loading) {
     return (
       <AuthGuard>
-        <div className="flex justify-center items-center min-h-screen">
-          <LoadingSpinner size="lg" />
-        </div>
+        <MainLayout>
+          <div className="flex justify-center items-center min-h-screen">
+            <LoadingSpinner size="lg" />
+          </div>
+        </MainLayout>
       </AuthGuard>
     );
   }
@@ -853,18 +901,20 @@ export default function VideoPlayerPage() {
   if (error || !video || !course) {
     return (
       <AuthGuard>
-        <div className="container mx-auto px-4 py-8">
-          <div className="text-center py-12">
-            <p className="text-destructive mb-4">
-              {error || '動画が見つかりませんでした'}
-            </p>
-            <Link href={`/courses/${courseId}`}>
-              <Button variant="outline">
-                コースに戻る
-              </Button>
-            </Link>
+        <MainLayout>
+          <div className="container mx-auto px-4 py-8">
+            <div className="text-center py-12">
+              <p className="text-destructive mb-4">
+                {error || '動画が見つかりませんでした'}
+              </p>
+              <Link href={`/courses/${courseId}`}>
+                <Button variant="outline">
+                  コースに戻る
+                </Button>
+              </Link>
+            </div>
           </div>
-        </div>
+        </MainLayout>
       </AuthGuard>
     );
   }
@@ -875,12 +925,13 @@ export default function VideoPlayerPage() {
 
   return (
     <AuthGuard>
+      <MainLayout>
       <div className="min-h-screen bg-black">
         {/* ビデオプレイヤー */}
         <div className="relative bg-black">
           <div className="aspect-video max-h-[70vh]">
             <EnhancedVideoPlayer
-              videoUrl={video.file_url}
+              videoUrl={playbackUrl || video.file_url}
               videoId={videoId}
               title={video.title}
               currentPosition={lastPosition}
@@ -1202,6 +1253,7 @@ export default function VideoPlayerPage() {
           </div>
         </div>
       </div>
+      </MainLayout>
     </AuthGuard>
   );
 }

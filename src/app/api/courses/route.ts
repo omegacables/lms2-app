@@ -134,7 +134,7 @@ export async function GET(request: NextRequest) {
     let enrollmentStats = new Map();
     if (isAdmin && courseIds.length > 0) {
       const { data: enrollments } = await queryClient
-        .from('course_enrollments')
+        .from('user_courses')
         .select('course_id')
         .in('course_id', courseIds);
 

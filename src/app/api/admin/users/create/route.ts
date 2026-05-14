@@ -20,27 +20,86 @@ export async function POST(req: Request) {
 
     // 管理者権限の確認（実際のプロジェクトでは認証チェックを追加）
 
+    // 既存の auth.users に同じメールアドレスがあるかを確認（孤児レコードのリカバリ用）
+    const findExistingUserByEmail = async (targetEmail: string) => {
+      // listUsers はページング対応。1000件まで確認すれば実運用上ほぼ十分。
+      let page = 1;
+      const perPage = 200;
+      const maxPages = 5;
+      while (page <= maxPages) {
+        const { data, error } = await adminSupabase.auth.admin.listUsers({ page, perPage });
+        if (error || !data) break;
+        const found = data.users.find(u => u.email?.toLowerCase() === targetEmail.toLowerCase());
+        if (found) return found;
+        if (data.users.length < perPage) break;
+        page++;
+      }
+      return null;
+    };
+
     // 新規ユーザーの作成
-    const { data: authData, error: authError } = await adminSupabase.auth.admin.createUser({
+    let authData: { user: { id: string; email?: string | null } } = { user: { id: '', email: null } };
+    const { data: createdAuth, error: authError } = await adminSupabase.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
     });
 
     if (authError) {
-      console.error('[User Create] Auth creation error:', {
-        email,
-        error: authError.message,
-        code: authError.status,
-        details: authError
-      });
-      return NextResponse.json(
-        { error: `ユーザー作成エラー: ${authError.message}` },
-        { status: 400 }
-      );
-    }
+      const alreadyRegistered = authError.message?.toLowerCase().includes('already');
 
-    if (!authData.user) {
+      if (alreadyRegistered) {
+        // auth.users には居るが user_profiles が無いケース（孤児）を救出
+        const existing = await findExistingUserByEmail(email);
+        if (!existing) {
+          return NextResponse.json(
+            { error: 'このメールアドレスは既に登録されています。別のメールアドレスをご利用ください。' },
+            { status: 409 }
+          );
+        }
+
+        const { data: existingProfile } = await adminSupabase
+          .from('user_profiles')
+          .select('id')
+          .eq('id', existing.id)
+          .maybeSingle();
+
+        if (existingProfile) {
+          return NextResponse.json(
+            { error: 'このメールアドレスは既に登録されています。別のメールアドレスをご利用ください。' },
+            { status: 409 }
+          );
+        }
+
+        // 孤児 auth ユーザーをリカバリ: パスワードを今回の値に更新し、プロフィールを作る
+        console.log('[User Create] Recovering orphan auth user:', { email, id: existing.id });
+        const { error: updateError } = await adminSupabase.auth.admin.updateUserById(existing.id, {
+          password,
+          email_confirm: true,
+        });
+        if (updateError) {
+          console.error('[User Create] Failed to update orphan auth user:', updateError);
+          return NextResponse.json(
+            { error: `既存の認証情報の更新に失敗しました: ${updateError.message}` },
+            { status: 500 }
+          );
+        }
+        authData = { user: { id: existing.id, email: existing.email } };
+      } else {
+        console.error('[User Create] Auth creation error:', {
+          email,
+          error: authError.message,
+          code: authError.status,
+          details: authError,
+        });
+        return NextResponse.json(
+          { error: `ユーザー作成エラー: ${authError.message}` },
+          { status: 400 }
+        );
+      }
+    } else if (createdAuth?.user) {
+      authData = { user: { id: createdAuth.user.id, email: createdAuth.user.email } };
+    } else {
       return NextResponse.json(
         { error: 'ユーザー作成に失敗しました' },
         { status: 400 }
@@ -62,12 +121,11 @@ export async function POST(req: Request) {
       password: '***hidden***'
     });
 
-    // adminSupabaseを使用してRLSポリシーをバイパス
-    // トリガーで既に作成されたプロフィールを更新
+    // adminSupabase を使用して RLS をバイパス
+    // 通常はトリガーで自動作成されるが、孤児リカバリ時にはレコードが無い可能性があるため upsert
     const { data: profileData, error: profileError } = await adminSupabase
       .from('user_profiles')
-      .update(profilePayload)
-      .eq('id', authData.user.id)
+      .upsert({ id: authData.user.id, ...profilePayload }, { onConflict: 'id' })
       .select()
       .single();
 
@@ -80,7 +138,7 @@ export async function POST(req: Request) {
         hint: profileError.hint,
         payload: profilePayload
       });
-      // Authユーザーを削除（ロールバック）
+      // Auth ユーザーを削除（ロールバック）
       await adminSupabase.auth.admin.deleteUser(authData.user.id);
       return NextResponse.json(
         { error: `プロフィール作成エラー: ${profileError.message}` },

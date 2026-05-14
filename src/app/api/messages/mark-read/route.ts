@@ -57,12 +57,12 @@ export async function POST(request: NextRequest) {
       }, { status: 403 });
     }
 
-    // 管理者からの未読メッセージを取得
+    // 管理者からの未読メッセージを取得（自分以外が送信した未読 = 相手から来たもの）
     const { data: unreadMessages } = await supabase
       .from('support_messages')
       .select('id')
       .eq('conversation_id', conversationId)
-      .eq('sender_type', 'admin')
+      .neq('sender_id', userId)
       .eq('is_read', false);
 
     if (!unreadMessages || unreadMessages.length === 0) {
@@ -82,7 +82,6 @@ export async function POST(request: NextRequest) {
       .from('support_messages')
       .update({
         is_read: true,
-        read_at: new Date().toISOString()
       })
       .in('id', messageIds)
       .select();

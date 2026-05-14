@@ -153,12 +153,13 @@ export default function CoursesPage() {
       }
 
       alert('コースを削除しました');
-      // キャッシュをクリア
+      // ローカル状態から該当コースを除外（論理削除されたコースは管理画面でも非表示にする）
+      setCourses(prev => prev.filter(c => c.id !== courseId));
+      // キャッシュをクリアして次回フェッチ時に整合性を保つ
       courseCache.clear();
-      await fetchCourses();
     } catch (error) {
       console.error('コース削除エラー:', error);
-      alert('コースの削除に失敗しました。');
+      alert(`コースの削除に失敗しました: ${(error as Error).message}`);
     }
   };
 

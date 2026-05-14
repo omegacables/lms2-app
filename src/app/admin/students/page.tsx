@@ -134,7 +134,7 @@ export default function StudentsManagePage() {
           try {
             // 割り当てられたコースを取得
             const { data: assignedCoursesData } = await supabase
-              .from('user_course_assignments')
+              .from('user_courses')
               .select('course_id')
               .eq('user_id', student.id);
 
@@ -292,7 +292,7 @@ export default function StudentsManagePage() {
       if (isAssigned) {
         // コースを割り当て解除
         const { error } = await supabase
-          .from('user_course_assignments')
+          .from('user_courses')
           .delete()
           .eq('user_id', studentId)
           .eq('course_id', courseId);
@@ -301,7 +301,7 @@ export default function StudentsManagePage() {
       } else {
         // コースを割り当て
         const { error } = await supabase
-          .from('user_course_assignments')
+          .from('user_courses')
           .insert({
             user_id: studentId,
             course_id: courseId,

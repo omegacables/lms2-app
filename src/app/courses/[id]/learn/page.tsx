@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { AuthGuard } from '@/components/auth/AuthGuard';
+import { MainLayout } from '@/components/layout/MainLayout';
 import VideoPlayerMobile from '@/components/video/VideoPlayerMobile';
 import { CourseCertificate } from '@/components/certificate/CourseCertificate';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
@@ -42,6 +43,7 @@ export default function CourseLearnPage() {
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
   const [viewLogs, setViewLogs] = useState<VideoViewLog[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [playbackUrl, setPlaybackUrl] = useState<string>('');
 
   // UI状態
   const [loading, setLoading] = useState(true);
@@ -63,6 +65,45 @@ export default function CourseLearnPage() {
       fetchCourseData();
     }
   }, [courseId, user]);
+
+  // 現在の動画の再生URL（bucket private/public いずれでも再生可能なように署名付きURLを使用）
+  useEffect(() => {
+    const currentVideo = videos[currentVideoIndex];
+    const fileUrl = currentVideo?.file_url;
+    if (!fileUrl) {
+      setPlaybackUrl('');
+      return;
+    }
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+    const publicPrefix = `${supabaseUrl}/storage/v1/object/public/videos/`;
+    const signedPrefix = `${supabaseUrl}/storage/v1/object/sign/videos/`;
+    let path: string | null = null;
+    if (fileUrl.startsWith(publicPrefix)) path = fileUrl.slice(publicPrefix.length);
+    else if (fileUrl.startsWith(signedPrefix)) path = fileUrl.slice(signedPrefix.length).split('?')[0];
+    else if (!fileUrl.startsWith('http')) path = fileUrl;
+
+    if (!path) {
+      setPlaybackUrl(fileUrl);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.storage
+        .from('videos')
+        .createSignedUrl(path!, 60 * 60 * 24);
+      if (cancelled) return;
+      if (!error && data?.signedUrl) {
+        setPlaybackUrl(data.signedUrl);
+      } else {
+        const { data: pub } = supabase.storage.from('videos').getPublicUrl(path!);
+        setPlaybackUrl(pub?.publicUrl ?? fileUrl);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [videos, currentVideoIndex]);
 
   // ページ離脱時のログ保存（ポップアップなし）
   useEffect(() => {
@@ -419,9 +460,11 @@ export default function CourseLearnPage() {
   if (loading) {
     return (
       <AuthGuard>
-        <div className="flex justify-center items-center min-h-screen">
-          <LoadingSpinner size="lg" />
-        </div>
+        <MainLayout>
+          <div className="flex justify-center items-center min-h-screen">
+            <LoadingSpinner size="lg" />
+          </div>
+        </MainLayout>
       </AuthGuard>
     );
   }
@@ -429,14 +472,16 @@ export default function CourseLearnPage() {
   if (error || !course || videos.length === 0) {
     return (
       <AuthGuard>
-        <div className="container mx-auto px-4 py-8">
-          <div className="text-center">
-            <p className="text-red-600 mb-4">{error || 'コースが見つかりません'}</p>
-            <Button onClick={() => router.push('/courses')}>
-              コース一覧に戻る
-            </Button>
+        <MainLayout>
+          <div className="container mx-auto px-4 py-8">
+            <div className="text-center">
+              <p className="text-red-600 mb-4">{error || 'コースが見つかりません'}</p>
+              <Button onClick={() => router.push('/courses')}>
+                コース一覧に戻る
+              </Button>
+            </div>
           </div>
-        </div>
+        </MainLayout>
       </AuthGuard>
     );
   }
@@ -455,6 +500,7 @@ export default function CourseLearnPage() {
 
   return (
     <AuthGuard>
+      <MainLayout>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         {/* ヘッダー */}
         <div className="bg-white dark:bg-gray-800 shadow-sm">
@@ -516,7 +562,7 @@ export default function CourseLearnPage() {
                   <div className="p-0 sm:p-4">
                     <VideoPlayerMobile
                       videoId={currentVideo.id.toString()}
-                      videoUrl={currentVideo.video_url || undefined}
+                      videoUrl={playbackUrl || undefined}
                       title={currentVideo.title}
                       currentPosition={currentVideoLog?.current_position || 0}
                       isCompleted={(currentVideoLog?.progress_percent || 0) >= COMPLETION_THRESHOLD}
@@ -626,6 +672,7 @@ export default function CourseLearnPage() {
           </div>
         </div>
       </div>
+      </MainLayout>
     </AuthGuard>
   );
 }

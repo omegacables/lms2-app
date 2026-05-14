@@ -35,7 +35,7 @@ export async function fetchCoursesOptimized() {
 
     // 一括で受講者数を取得
     const { data: enrollments, error: enrollmentsError } = await adminSupabase
-      .from('course_enrollments')
+      .from('user_courses')
       .select('course_id')
       .in('course_id', courseIds);
 
@@ -128,7 +128,7 @@ export async function fetchUserProgressOptimized(userId: string) {
   try {
     // 一度のクエリで必要なデータを取得
     const { data, error } = await supabase
-      .from('course_enrollments')
+      .from('user_courses')
       .select(`
         *,
         courses:course_id (
