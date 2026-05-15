@@ -148,24 +148,35 @@ export default function EditVideoPage() {
     try {
       console.log('[動画更新] 更新データ:', videoForm);
 
-      const { data, error } = await supabase
-        .from('videos')
-        .update({
+      // 認証セッションを取得（API は Bearer 認証 + admin/instructor 権限チェック）
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('認証セッションが見つかりません。再ログインしてください。');
+      }
+
+      const response = await fetch(`/api/videos/${videoId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
           title: videoForm.title,
           description: videoForm.description,
           status: videoForm.status,
           duration: videoForm.duration,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId)
-        .select();
+        }),
+      });
 
-      if (error) {
-        console.error('[動画更新] エラー詳細:', error);
-        throw error;
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        console.error('[動画更新] API エラー:', result);
+        const detail = result?.details ? `\n詳細: ${result.details}` : '';
+        throw new Error(`${result?.error ?? '動画の更新に失敗しました'}${detail}`);
       }
 
-      console.log('[動画更新] 更新成功:', data);
+      console.log('[動画更新] 更新成功:', result);
 
       // データを再取得して表示を更新
       await fetchVideo();

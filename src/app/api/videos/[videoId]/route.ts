@@ -126,9 +126,9 @@ export async function PUT(
     }
 
     // 🛡 instructor または admin 権限を必須化（service role で RLS バイパス）
+    const { createAdminSupabaseClient } = await import('@/lib/database/supabase');
+    const adminClient = createAdminSupabaseClient();
     {
-      const { createAdminSupabaseClient } = await import('@/lib/database/supabase');
-      const adminClient = createAdminSupabaseClient();
       const { data: userProfile, error: profileError } = await adminClient
         .from('user_profiles')
         .select('role')
@@ -152,7 +152,7 @@ export async function PUT(
     const { title, description, order_index, status, file_url, file_size, mime_type, duration } = body;
 
     // 更新データの作成
-    const updateData: any = {};
+    const updateData: any = { updated_at: new Date().toISOString() };
 
     if (title !== undefined) updateData.title = title;
     if (description !== undefined) updateData.description = description;
@@ -167,11 +167,17 @@ export async function PUT(
     console.log('PUT /api/videos/[videoId] - Update Data:', updateData);
     console.log('PUT /api/videos/[videoId] - Video ID:', videoId);
 
-    // 動画情報を更新
-    const { data: updatedVideo, error: updateError } = await supabase
+    // ID を数値変換
+    const videoIdNum = parseInt(videoId);
+    if (isNaN(videoIdNum)) {
+      return NextResponse.json({ error: '動画IDが不正です' }, { status: 400 });
+    }
+
+    // 動画情報を更新（admin client で RLS バイパス）
+    const { data: updatedVideo, error: updateError } = await adminClient
       .from('videos')
       .update(updateData)
-      .eq('id', videoId)
+      .eq('id', videoIdNum)
       .select()
       .single();
 
