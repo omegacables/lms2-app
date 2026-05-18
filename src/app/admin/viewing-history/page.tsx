@@ -89,12 +89,15 @@ export default function ViewingHistoryPage() {
   const fetchViewingHistory = async () => {
     try {
       setLoading(true);
-      
+
       const url = new URL('/api/admin/viewing-history', window.location.origin);
       if (selectedUser) url.searchParams.set('userId', selectedUser);
       if (selectedCourse) url.searchParams.set('courseId', selectedCourse);
 
-      const response = await fetch(url.toString());
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch(url.toString(), {
+        headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
+      });
       const result = await response.json();
 
       if (response.ok) {
@@ -119,8 +122,10 @@ export default function ViewingHistoryPage() {
       url.searchParams.set('userId', userId);
       url.searchParams.set('videoId', videoId.toString());
 
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch(url.toString(), {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
       });
 
       if (response.ok) {
@@ -161,10 +166,14 @@ export default function ViewingHistoryPage() {
       });
 
       // Reset for each user
+      const { data: { session } } = await supabase.auth.getSession();
+      const authHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session?.access_token) authHeaders['Authorization'] = `Bearer ${session.access_token}`;
+
       for (const [userId, videoIds] of recordsByUser) {
         const response = await fetch('/api/admin/viewing-history', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders,
           body: JSON.stringify({ userId, videoIds })
         });
 
@@ -192,10 +201,14 @@ export default function ViewingHistoryPage() {
     }
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch('/api/admin/viewing-history', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({
           userId,
           courseId: selectedCourse || undefined
         })

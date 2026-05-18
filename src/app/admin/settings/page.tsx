@@ -406,31 +406,6 @@ export default function AdminSettingsPage() {
                   <div className="space-y-6">
                     <h2 className="text-xl font-semibold text-gray-900 dark:text-white">一般設定</h2>
 
-                    {/* ユーザーロール修正ボタン */}
-                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 rounded-lg p-4">
-                      <div className="flex">
-                        <ExclamationTriangleIcon className="h-5 w-5 text-yellow-400 mt-0.5" />
-                        <div className="ml-3 flex-1">
-                          <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-                            ユーザーロール修正
-                          </h3>
-                          <p className="mt-1 text-sm text-yellow-700 dark:text-yellow-300">
-                            ユーザーのロールが未設定の場合、ここから修正できます。現在のユーザーは自動的に管理者権限に設定されます。
-                          </p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="mt-3"
-                            onClick={fixUserRoles}
-                            loading={fixingRoles}
-                          >
-                            <ShieldCheckIcon className="h-4 w-4 mr-2" />
-                            ユーザーロールを修正
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                    
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <Input
                         label="サイト名"

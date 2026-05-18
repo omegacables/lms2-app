@@ -5,6 +5,7 @@ import { AuthGuard } from '@/components/auth/AuthGuard';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { supabase } from '@/lib/database/supabase';
 import {
   CloudArrowUpIcon,
   CheckCircleIcon,
@@ -30,8 +31,10 @@ export default function StorageSetupPage() {
     setError(null);
     
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch('/api/admin/storage/init', {
-        method: 'GET'
+        method: 'GET',
+        headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
       });
 
       const data = await response.json();
@@ -55,10 +58,12 @@ export default function StorageSetupPage() {
     setResults([]);
     
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch('/api/admin/storage/init', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
         }
       });
 

@@ -69,11 +69,18 @@ export default function NewUserPage() {
     setLoading(true);
 
     try {
+      // 認証セッションを取得（API は Bearer 認証 + admin チェック）
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('認証セッションが見つかりません。再ログインしてください。');
+      }
+
       // 管理者専用APIエンドポイントを使用（メール認証不要）
       const response = await fetch('/api/admin/users/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           email: formData.email,
@@ -86,10 +93,11 @@ export default function NewUserPage() {
         }),
       });
 
-      const result = await response.json();
+      const result = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(result.error || 'ユーザー作成に失敗しました');
+        const detail = result?.details ? `\n詳細: ${result.details}` : '';
+        throw new Error(`${result?.error ?? 'ユーザー作成に失敗しました'}${detail}`);
       }
 
       // Log the action
