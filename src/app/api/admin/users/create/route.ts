@@ -41,11 +41,17 @@ export async function POST(req: NextRequest) {
     };
 
     // 新規ユーザーの作成
+    // ⚠ display_name / role を user_metadata に渡すと、handle_new_user トリガーが
+    //   このメタデータを使って user_profiles を作成する（後段の UPDATE と二重にならない）
     let authData: { user: { id: string; email?: string | null } } = { user: { id: '', email: null } };
     const { data: createdAuth, error: authError } = await adminSupabase.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
+      user_metadata: {
+        display_name: display_name || email.split('@')[0],
+        role: role || 'student',
+      },
     });
 
     if (authError) {
@@ -109,7 +115,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // プロフィールの更新（トリガーで既に作成されているため）
+    // プロフィールの設定値
     const profilePayload = {
       display_name: display_name || email.split('@')[0],
       company: company || null,
@@ -118,19 +124,41 @@ export async function POST(req: NextRequest) {
       is_active: is_active !== undefined ? is_active : true,
     };
 
-    console.log('[User Create] Updating profile with:', {
+    console.log('[User Create] Setting profile:', {
       id: authData.user.id,
       ...profilePayload,
-      password: '***hidden***'
     });
 
-    // adminSupabase を使用して RLS をバイパス
-    // 通常はトリガーで自動作成されるが、孤児リカバリ時にはレコードが無い可能性があるため upsert
-    const { data: profileData, error: profileError } = await adminSupabase
+    // 既存プロフィール（handle_new_user トリガーが作ったもの）を確認
+    const { data: existingProfile } = await adminSupabase
       .from('user_profiles')
-      .upsert({ id: authData.user.id, ...profilePayload }, { onConflict: 'id' })
-      .select()
-      .single();
+      .select('id')
+      .eq('id', authData.user.id)
+      .maybeSingle();
+
+    let profileData: any = null;
+    let profileError: any = null;
+
+    if (existingProfile) {
+      // トリガーが作成済み → UPDATE で必要な列だけ上書き
+      const result = await adminSupabase
+        .from('user_profiles')
+        .update(profilePayload)
+        .eq('id', authData.user.id)
+        .select()
+        .single();
+      profileData = result.data;
+      profileError = result.error;
+    } else {
+      // トリガーが走っていない（孤児リカバリ or トリガー未設定）→ INSERT
+      const result = await adminSupabase
+        .from('user_profiles')
+        .insert({ id: authData.user.id, ...profilePayload })
+        .select()
+        .single();
+      profileData = result.data;
+      profileError = result.error;
+    }
 
     if (profileError) {
       console.error('[User Create] Profile creation error:', {
@@ -139,12 +167,20 @@ export async function POST(req: NextRequest) {
         code: profileError.code,
         details: profileError.details,
         hint: profileError.hint,
-        payload: profilePayload
+        payload: profilePayload,
+        existingProfile: !!existingProfile,
       });
-      // Auth ユーザーを削除（ロールバック）
-      await adminSupabase.auth.admin.deleteUser(authData.user.id);
+      // Auth ユーザーを削除（ロールバック）。新規作成時のみロールバックする
+      // （孤児リカバリ時は元から auth.users があったので消さない）
+      if (createdAuth?.user) {
+        await adminSupabase.auth.admin.deleteUser(authData.user.id);
+      }
       return NextResponse.json(
-        { error: `プロフィール作成エラー: ${profileError.message}` },
+        {
+          error: `プロフィール作成エラー: ${profileError.message}`,
+          details: profileError.details ?? profileError.hint ?? null,
+          code: profileError.code ?? null,
+        },
         { status: 400 }
       );
     }
