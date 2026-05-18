@@ -1,37 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/database/supabase';
-import { cookies } from 'next/headers';
+import { createAdminSupabaseClient } from '@/lib/database/supabase';
+import { requireAdmin } from '@/lib/auth/requireAdmin';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerSupabaseClient(cookieStore);
+    const { id: targetId } = await params;
+    if (!targetId) return NextResponse.json({ error: 'IDが指定されていません' }, { status: 400 });
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
 
-    // 認証チェック
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
-    }
-
-    // 管理者権限チェック
-    const { data: userProfile } = await supabase
-      .from('user_profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (!userProfile || userProfile.role !== 'admin') {
-      return NextResponse.json({ error: '管理者権限が必要です' }, { status: 403 });
-    }
+    const adminSupabase = createAdminSupabaseClient();
 
     // ユーザー詳細を取得
-    const { data: targetUser, error } = await supabase
+    const { data: targetUser, error } = await adminSupabase
       .from('user_profiles')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', targetId)
       .single();
 
     if (error || !targetUser) {
@@ -39,7 +26,7 @@ export async function GET(
     }
 
     // ユーザーの学習統計を取得
-    const { data: learningData } = await supabase
+    const { data: learningData } = await adminSupabase
       .from('video_view_logs')
       .select(`
         status,
@@ -49,10 +36,10 @@ export async function GET(
         course_id,
         completed_at
       `)
-      .eq('user_id', params.id);
+      .eq('user_id', targetId);
 
     // コース割り当て情報を取得
-    const { data: courseAssignments } = await supabase
+    const { data: courseAssignments } = await adminSupabase
       .from('user_courses')
       .select(`
         *,
@@ -63,13 +50,13 @@ export async function GET(
           difficulty_level
         )
       `)
-      .eq('user_id', params.id);
+      .eq('user_id', targetId);
 
     // 証明書情報を取得
-    const { data: certificates } = await supabase
+    const { data: certificates } = await adminSupabase
       .from('certificates')
       .select('*')
-      .eq('user_id', params.id)
+      .eq('user_id', targetId)
       .eq('is_active', true);
 
     // 学習統計を計算
@@ -78,7 +65,7 @@ export async function GET(
       completed_videos: learningData?.filter(l => l.status === 'completed').length || 0,
       in_progress_videos: learningData?.filter(l => l.status === 'in_progress').length || 0,
       total_watch_time: learningData?.reduce((sum, l) => sum + (l.total_watched_time || 0), 0) || 0,
-      average_progress: learningData?.length > 0 
+      average_progress: learningData && learningData.length > 0
         ? Math.round(learningData.reduce((sum, l) => sum + l.progress_percent, 0) / learningData.length)
         : 0
     };
@@ -97,34 +84,21 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerSupabaseClient(cookieStore);
+    const { id: targetId } = await params;
+    if (!targetId) return NextResponse.json({ error: 'IDが指定されていません' }, { status: 400 });
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
 
-    // 認証チェック
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
-    }
-
-    // 管理者権限チェック
-    const { data: userProfile } = await supabase
-      .from('user_profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (!userProfile || userProfile.role !== 'admin') {
-      return NextResponse.json({ error: '管理者権限が必要です' }, { status: 403 });
-    }
+    const adminSupabase = createAdminSupabaseClient();
 
     const body = await request.json();
     const { display_name, company, department, role, is_active } = body;
 
     // ユーザープロフィールを更新
-    const { data: updatedUser, error } = await supabase
+    const { data: updatedUser, error } = await adminSupabase
       .from('user_profiles')
       .update({
         display_name,
@@ -134,7 +108,7 @@ export async function PUT(
         is_active,
         updated_at: new Date().toISOString()
       })
-      .eq('id', params.id)
+      .eq('id', targetId)
       .select()
       .single();
 
@@ -155,43 +129,29 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerSupabaseClient(cookieStore);
+    const { id: targetId } = await params;
+    if (!targetId) return NextResponse.json({ error: 'IDが指定されていません' }, { status: 400 });
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const adminSupabase = createAdminSupabaseClient();
 
-    // 認証チェック
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
-    }
-
-    // 管理者権限チェック
-    const { data: userProfile } = await supabase
-      .from('user_profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (!userProfile || userProfile.role !== 'admin') {
-      return NextResponse.json({ error: '管理者権限が必要です' }, { status: 403 });
-    }
-
     // 自分自身は削除できない
-    if (params.id === user.id) {
+    if (targetId === auth.user.id) {
       return NextResponse.json({ error: '自分自身を削除することはできません' }, { status: 400 });
     }
 
     // ユーザーを論理削除（非アクティブ化）
-    const { data: updatedUser, error: profileError } = await supabase
+    const { data: updatedUser, error: profileError } = await adminSupabase
       .from('user_profiles')
       .update({
         is_active: false,
         updated_at: new Date().toISOString()
       })
-      .eq('id', params.id)
+      .eq('id', targetId)
       .select()
       .single();
 

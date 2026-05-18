@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { requireAdmin } from '@/lib/auth/requireAdmin';
 
 // Supabaseクライアントの作成
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -7,11 +8,25 @@ const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const targetUserId = params.id;
-    
+    // Next.js 16: params は Promise
+    const { id: targetUserId } = await params;
+
+    if (!targetUserId) {
+      return NextResponse.json({ error: 'ユーザーIDが指定されていません' }, { status: 400 });
+    }
+
+    // 🛡 管理者権限を必須化（Bearer または cookie 両対応）
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
+    // 自分自身は削除できない
+    if (targetUserId === auth.user.id) {
+      return NextResponse.json({ error: '自分自身は削除できません' }, { status: 400 });
+    }
+
     // Service Role Keyを使用してSupabase Adminクライアントを作成
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
       auth: {
@@ -19,37 +34,6 @@ export async function DELETE(
         persistSession: false,
       },
     });
-
-    // リクエストを送信したユーザーの権限を確認
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
-    }
-
-    const token = authHeader.replace('Bearer ', '');
-    
-    // トークンから現在のユーザーを取得
-    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
-    
-    if (userError || !user) {
-      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
-    }
-
-    // 管理者権限を確認
-    const { data: currentUser, error: profileError } = await supabaseAdmin
-      .from('user_profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (profileError || !currentUser || currentUser.role !== 'admin') {
-      return NextResponse.json({ error: '管理者権限が必要です' }, { status: 403 });
-    }
-
-    // 自分自身は削除できない
-    if (targetUserId === user.id) {
-      return NextResponse.json({ error: '自分自身は削除できません' }, { status: 400 });
-    }
 
     console.log(`Starting deletion process for user: ${targetUserId}`);
 
