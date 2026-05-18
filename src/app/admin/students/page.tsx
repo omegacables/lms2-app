@@ -83,6 +83,11 @@ export default function StudentsManagePage() {
   const [bulkAssignOnlyActive, setBulkAssignOnlyActive] = useState(true);
   const [bulkAssignProcessing, setBulkAssignProcessing] = useState(false);
 
+  // 会社削除モーダル
+  const [deleteCompanyName, setDeleteCompanyName] = useState<string | null>(null);
+  const [deleteCompanyInput, setDeleteCompanyInput] = useState('');
+  const [deleteCompanyProcessing, setDeleteCompanyProcessing] = useState(false);
+
   useEffect(() => {
     fetchStudents();
     fetchCourses();
@@ -496,6 +501,64 @@ export default function StudentsManagePage() {
       alert(`一括割り当てに失敗しました: ${(error as Error).message}`);
     } finally {
       setBulkAssignProcessing(false);
+    }
+  };
+
+  // 会社削除モーダル開閉
+  const openDeleteCompanyModal = (company: string) => {
+    setDeleteCompanyName(company);
+    setDeleteCompanyInput('');
+  };
+  const closeDeleteCompanyModal = () => {
+    if (deleteCompanyProcessing) return;
+    setDeleteCompanyName(null);
+    setDeleteCompanyInput('');
+  };
+
+  // 会社単位の一括削除（メンバー全員 + 社労士マッピング）
+  const handleDeleteCompany = async () => {
+    if (!deleteCompanyName) return;
+
+    setDeleteCompanyProcessing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('認証セッションが見つかりません');
+
+      const response = await fetch('/api/admin/companies/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ company: deleteCompanyName }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(result.error || '会社削除に失敗しました');
+      }
+
+      // ローカル state から該当会社のユーザーを除外（自分以外）
+      setStudents(prev => prev.filter(s => {
+        const c = s.company || '個人';
+        if (c !== deleteCompanyName) return true;
+        if (s.id === user?.id) return true; // 自分は残る
+        return false;
+      }));
+
+      const failures = result.failures?.length ?? 0;
+      alert(
+        `${deleteCompanyName} を削除しました。\n` +
+        `削除完了: ${result.deletedUsers}名` +
+        (failures > 0 ? `\n失敗: ${failures}名（Supabase ダッシュボードでご確認ください）` : '')
+      );
+      closeDeleteCompanyModal();
+    } catch (error) {
+      console.error('[会社削除] エラー:', error);
+      alert(`会社削除に失敗しました: ${(error as Error).message}`);
+    } finally {
+      setDeleteCompanyProcessing(false);
     }
   };
 
@@ -1209,6 +1272,21 @@ export default function StudentsManagePage() {
                               <span className="hidden sm:inline">一括割り当て</span>
                               <span className="sm:hidden">割当</span>
                             </Button>
+                            {company !== '個人' && (
+                              <Button
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openDeleteCompanyModal(company);
+                                }}
+                                className="flex items-center text-xs sm:text-sm whitespace-nowrap text-red-600 hover:bg-red-50 border-red-300"
+                                title={`${company} の全メンバーを削除`}
+                              >
+                                <TrashIcon className="h-4 w-4 mr-1 flex-shrink-0" />
+                                <span className="hidden sm:inline">会社を削除</span>
+                                <span className="sm:hidden">削除</span>
+                              </Button>
+                            )}
                           </div>
                         </div>
                       )}
@@ -1420,6 +1498,100 @@ export default function StudentsManagePage() {
             </div>
           </div>
         </div>
+
+        {/* 会社単位の削除モーダル（メンバー全員削除） */}
+        {deleteCompanyName && (() => {
+          const targetMembers = students.filter(s => {
+            const c = s.company || '個人';
+            return c === deleteCompanyName;
+          });
+          const selfIncluded = targetMembers.some(s => s.id === user?.id);
+          const targetCount = targetMembers.filter(s => s.id !== user?.id).length;
+          const isConfirmed = deleteCompanyInput.trim() === deleteCompanyName;
+
+          return (
+            <div
+              className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4"
+              onClick={closeDeleteCompanyModal}
+            >
+              <div
+                className="bg-white dark:bg-neutral-900 w-full sm:max-w-md sm:rounded-lg shadow-xl rounded-t-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-neutral-800">
+                  <div className="flex items-center gap-2">
+                    <ExclamationTriangleIcon className="h-5 w-5 text-red-600" />
+                    <h3 className="text-lg font-semibold text-red-700 dark:text-red-400">
+                      会社を削除
+                    </h3>
+                  </div>
+                  <button
+                    onClick={closeDeleteCompanyModal}
+                    disabled={deleteCompanyProcessing}
+                    className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-neutral-800 disabled:opacity-50"
+                    aria-label="閉じる"
+                  >
+                    <XMarkIcon className="h-6 w-6" />
+                  </button>
+                </div>
+
+                <div className="px-4 sm:px-6 py-4 space-y-3">
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                    <span className="font-semibold text-red-600">{deleteCompanyName}</span> の
+                    <span className="font-bold mx-1">{targetCount}名</span>
+                    と、所属する全ての学習データ・視聴ログ・修了証を削除します。
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    社労士の担当会社マッピングからもこの会社が削除されます。
+                  </p>
+                  {selfIncluded && (
+                    <p className="text-xs text-orange-600 bg-orange-50 dark:bg-orange-900/20 p-2 rounded">
+                      ※ ログイン中のあなた自身は削除されません（保護）
+                    </p>
+                  )}
+                  <p className="text-xs text-red-700 bg-red-50 dark:bg-red-900/20 p-2 rounded font-semibold">
+                    ⚠ この操作は取り消せません。
+                  </p>
+
+                  <div className="pt-2">
+                    <label className="block text-xs text-gray-700 dark:text-gray-300 mb-1">
+                      確認のため、会社名を入力してください:
+                    </label>
+                    <input
+                      type="text"
+                      value={deleteCompanyInput}
+                      onChange={(e) => setDeleteCompanyInput(e.target.value)}
+                      disabled={deleteCompanyProcessing}
+                      placeholder={deleteCompanyName}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-neutral-700 rounded-md bg-white dark:bg-neutral-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 px-4 sm:px-6 py-3 border-t border-gray-200 dark:border-neutral-800">
+                  <Button
+                    variant="outline"
+                    onClick={closeDeleteCompanyModal}
+                    disabled={deleteCompanyProcessing}
+                  >
+                    キャンセル
+                  </Button>
+                  <Button
+                    onClick={handleDeleteCompany}
+                    disabled={!isConfirmed || deleteCompanyProcessing || targetCount === 0}
+                    className="bg-red-600 hover:bg-red-700 text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  >
+                    {deleteCompanyProcessing
+                      ? '削除中...'
+                      : targetCount === 0
+                      ? '削除対象なし'
+                      : `${targetCount}名を削除`}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* 会社単位の一括コース割り当てモーダル */}
         {bulkAssignCompany && (
