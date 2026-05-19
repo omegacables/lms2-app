@@ -77,10 +77,31 @@ export async function GET(request: NextRequest) {
     const studentIds = students.map(s => s.id);
 
     // 4. 全員の user_courses を一括取得
-    const { data: assignmentsData } = await adminClient
+    const { data: assignmentsData, error: assignmentsError } = await adminClient
       .from('user_courses')
       .select('user_id, course_id')
       .in('user_id', studentIds);
+
+    if (assignmentsError) {
+      console.error('[Labor Consultant Students] user_courses query error:', assignmentsError);
+      return NextResponse.json(
+        {
+          error: 'コース割り当ての取得に失敗しました',
+          details: assignmentsError.message,
+          code: assignmentsError.code,
+          hint: assignmentsError.hint,
+        },
+        { status: 500 }
+      );
+    }
+
+    console.log('[Labor Consultant Students] Stats:', {
+      consultant_id: auth.user.id,
+      assignedCompanies: companies,
+      studentCount: students.length,
+      studentIdsSample: studentIds.slice(0, 3),
+      assignmentRowsFound: assignmentsData?.length ?? 0,
+    });
 
     const assignmentsByUser = new Map<string, number[]>();
     (assignmentsData ?? []).forEach(a => {
@@ -234,6 +255,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       assignedCompanies: companies,
       students: studentProgress,
+      _debug: {
+        consultantId: auth.user.id,
+        companiesCount: companies.length,
+        studentsCount: students.length,
+        assignmentRowsTotal: assignmentsData?.length ?? 0,
+        coursesFound: courseById.size,
+        videosFound: videoCountByCourse.size,
+        viewLogsCount: viewLogs.length,
+        usersInListUsers: emailById.size,
+      },
     });
   } catch (error) {
     console.error('[Labor Consultant Students] unexpected error:', error);
