@@ -140,6 +140,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 7. 視聴ログを一括取得（全担当生徒 × 全動画）
+    //    Supabase はデフォルトで1リクエスト1000行までしか返さないため、ページネーション
     const allVideoIds = Array.from(
       new Set(Array.from(videoIdsByCourse.values()).flat())
     );
@@ -152,12 +153,27 @@ export async function GET(request: NextRequest) {
     };
     let viewLogs: ViewLogRow[] = [];
     if (allVideoIds.length > 0) {
-      const { data: viewLogsData } = await adminClient
-        .from('video_view_logs')
-        .select('user_id, video_id, progress_percent, status')
-        .in('user_id', studentIds)
-        .in('video_id', allVideoIds);
-      viewLogs = viewLogsData ?? [];
+      const pageSize = 1000;
+      let offset = 0;
+      const maxIterations = 100; // 念のため上限（100万行まで）
+      for (let i = 0; i < maxIterations; i++) {
+        const { data: pageData, error: pageError } = await adminClient
+          .from('video_view_logs')
+          .select('user_id, video_id, progress_percent, status')
+          .in('user_id', studentIds)
+          .in('video_id', allVideoIds)
+          .range(offset, offset + pageSize - 1);
+
+        if (pageError) {
+          console.error('[Labor Consultant Students] view_logs page error:', pageError);
+          break;
+        }
+        if (!pageData || pageData.length === 0) break;
+
+        viewLogs = viewLogs.concat(pageData);
+        if (pageData.length < pageSize) break;
+        offset += pageSize;
+      }
     }
 
     // user_id + video_id → 最新の completed フラグ
@@ -255,6 +271,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       assignedCompanies: companies,
       students: studentProgress,
+      _debug: {
+        consultantId: auth.user.id,
+        companiesCount: companies.length,
+        studentsCount: students.length,
+        assignmentRowsTotal: assignmentsData?.length ?? 0,
+        coursesFound: courseById.size,
+        videosFound: videoCountByCourse.size,
+        viewLogsCount: viewLogs.length, // 1000 で頭打ちにならなければ修正 OK
+        usersInListUsers: emailById.size,
+      },
     });
   } catch (error) {
     console.error('[Labor Consultant Students] unexpected error:', error);
