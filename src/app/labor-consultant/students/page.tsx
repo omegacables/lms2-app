@@ -62,163 +62,28 @@ export default function LaborConsultantStudentsPage() {
     try {
       setLoading(true);
 
-      // 担当会社を取得
-      const { data: companiesData } = await supabase
-        .from('labor_consultant_companies')
-        .select('company')
-        .eq('labor_consultant_id', user.id);
-
-      const companies = companiesData?.map(c => c.company) || [];
-      setAssignedCompanies(companies);
-
-      if (companies.length === 0) {
-        setLoading(false);
+      // サーバー側で RLS バイパスして担当生徒 + 進捗を取得
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.error('認証セッションが見つかりません');
         return;
       }
 
-      // 担当会社の生徒を取得
-      const { data: studentsData, error: studentsError } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .in('company', companies)
-        .eq('is_active', true)
-        .order('display_name', { ascending: true });
+      const response = await fetch('/api/labor-consultant/students', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
 
-      if (studentsError) throw studentsError;
+      const result = await response.json().catch(() => ({}));
 
-      // 各生徒の進捗を計算
-      const studentProgressData = await Promise.all(
-        (studentsData || []).map(async (student) => {
-          // 生徒に割り当てられたコースを取得
-          const { data: assignmentsData } = await supabase
-            .from('user_courses')
-            .select('course_id')
-            .eq('user_id', student.id);
+      if (!response.ok) {
+        console.error('生徒の進捗取得エラー:', result);
+        return;
+      }
 
-          const assignedCourseIds = assignmentsData?.map(a => a.course_id) || [];
-
-          if (assignedCourseIds.length === 0) {
-            return {
-              id: student.id,
-              display_name: student.display_name,
-              email: student.email,
-              company: student.company || '未設定',
-              department: student.department || '未設定',
-              assignedCourses: [],
-              totalCourses: 0,
-              completedCourses: 0,
-              inProgressCourses: 0,
-              notStartedCourses: 0,
-              overallProgress: 0
-            };
-          }
-
-          // 各コースの進捗を取得
-          const courseProgressList: CourseProgress[] = await Promise.all(
-            assignedCourseIds.map(async (courseId) => {
-              try {
-                // コース情報を取得
-                const { data: courseData, error: courseError } = await supabase
-                  .from('courses')
-                  .select('id, title')
-                  .eq('id', courseId)
-                  .single();
-
-                if (courseError || !courseData) {
-                  console.error(`コース取得エラー (ID: ${courseId}):`, courseError);
-                  return null;
-                }
-
-                // コースの動画一覧を取得（非公開動画も含む）
-                const { data: videosData, error: videosError } = await supabase
-                  .from('videos')
-                  .select('id')
-                  .eq('course_id', courseId);
-
-                if (videosError) {
-                  console.error(`動画一覧取得エラー (コースID: ${courseId}):`, videosError);
-                  return null;
-                }
-
-                const totalVideos = videosData?.length || 0;
-
-                if (totalVideos === 0 || !videosData) {
-                  return {
-                    courseId,
-                    courseTitle: courseData.title,
-                    totalVideos: 0,
-                    completedVideos: 0,
-                    progress: 0,
-                    status: 'not_started' as const
-                  };
-                }
-
-                const videoIds = videosData.map(v => v.id);
-
-                // 生徒の視聴ログを取得
-                const { data: logsData, error: logsError } = await supabase
-                  .from('video_view_logs')
-                  .select('video_id, status, progress_percent')
-                  .eq('user_id', student.id)
-                  .in('video_id', videoIds);
-
-                if (logsError) {
-                  console.error(`視聴ログ取得エラー:`, logsError);
-                }
-
-                const completedVideos = logsData?.filter(log => log.status === 'completed').length || 0;
-                const watchedVideos = logsData?.filter(log => (log.progress_percent || 0) > 0).length || 0;
-                const progress = totalVideos > 0 ? (completedVideos / totalVideos) * 100 : 0;
-
-                let status: 'completed' | 'in_progress' | 'not_started' = 'not_started';
-                if (completedVideos === totalVideos && totalVideos > 0) {
-                  status = 'completed';
-                } else if (watchedVideos > 0) {
-                  status = 'in_progress';
-                }
-
-                return {
-                  courseId,
-                  courseTitle: courseData.title,
-                  totalVideos,
-                  completedVideos,
-                  progress,
-                  status
-                };
-              } catch (error) {
-                console.error(`コース ${courseId} の処理エラー:`, error);
-                return null;
-              }
-            })
-          );
-
-          const validCourses = courseProgressList.filter(c => c !== null) as CourseProgress[];
-
-          const completedCourses = validCourses.filter(c => c.status === 'completed').length;
-          const inProgressCourses = validCourses.filter(c => c.status === 'in_progress').length;
-          const notStartedCourses = validCourses.filter(c => c.status === 'not_started').length;
-
-          const overallProgress = validCourses.length > 0
-            ? validCourses.reduce((sum, c) => sum + c.progress, 0) / validCourses.length
-            : 0;
-
-          return {
-            id: student.id,
-            display_name: student.display_name,
-            email: student.email,
-            company: student.company || '未設定',
-            department: student.department || '未設定',
-            assignedCourses: validCourses,
-            totalCourses: validCourses.length,
-            completedCourses,
-            inProgressCourses,
-            notStartedCourses,
-            overallProgress
-          };
-        })
-      );
-
-      setStudents(studentProgressData);
+      setAssignedCompanies(result.assignedCompanies ?? []);
+      setStudents(result.students ?? []);
     } catch (error) {
       console.error('生徒の進捗取得エラー:', error);
     } finally {
