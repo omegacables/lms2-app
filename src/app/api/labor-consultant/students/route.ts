@@ -255,16 +255,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       assignedCompanies: companies,
       students: studentProgress,
-      _debug: {
-        consultantId: auth.user.id,
-        companiesCount: companies.length,
-        studentsCount: students.length,
-        assignmentRowsTotal: assignmentsData?.length ?? 0,
-        coursesFound: courseById.size,
-        videosFound: videoCountByCourse.size,
-        viewLogsCount: viewLogs.length,
-        usersInListUsers: emailById.size,
-      },
     });
   } catch (error) {
     console.error('[Labor Consultant Students] unexpected error:', error);

@@ -24,7 +24,8 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   XMarkIcon,
-  PlusIcon
+  PlusIcon,
+  PencilIcon
 } from '@heroicons/react/24/outline';
 import {
   CheckCircleIcon as CheckCircleIconSolid
@@ -87,6 +88,11 @@ export default function StudentsManagePage() {
   const [deleteCompanyName, setDeleteCompanyName] = useState<string | null>(null);
   const [deleteCompanyInput, setDeleteCompanyInput] = useState('');
   const [deleteCompanyProcessing, setDeleteCompanyProcessing] = useState(false);
+
+  // 会社名リネーム / 統合モーダル
+  const [renameCompanyFrom, setRenameCompanyFrom] = useState<string | null>(null);
+  const [renameCompanyTo, setRenameCompanyTo] = useState('');
+  const [renameCompanyProcessing, setRenameCompanyProcessing] = useState(false);
 
   useEffect(() => {
     fetchStudents();
@@ -559,6 +565,72 @@ export default function StudentsManagePage() {
       alert(`会社削除に失敗しました: ${(error as Error).message}`);
     } finally {
       setDeleteCompanyProcessing(false);
+    }
+  };
+
+  // 会社名リネーム / 統合
+  const openRenameCompanyModal = (company: string) => {
+    setRenameCompanyFrom(company);
+    setRenameCompanyTo(company.trim());
+  };
+  const closeRenameCompanyModal = () => {
+    if (renameCompanyProcessing) return;
+    setRenameCompanyFrom(null);
+    setRenameCompanyTo('');
+  };
+
+  const handleRenameCompany = async () => {
+    if (!renameCompanyFrom) return;
+    const newName = renameCompanyTo.trim();
+    if (!newName) {
+      alert('新しい会社名を入力してください');
+      return;
+    }
+    if (newName === renameCompanyFrom) {
+      alert('変更元と変更先が同じです');
+      return;
+    }
+
+    setRenameCompanyProcessing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('認証セッションが見つかりません');
+
+      const response = await fetch('/api/admin/companies/rename', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ from: renameCompanyFrom, to: newName }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error || '会社名の変更に失敗しました');
+      }
+
+      // ローカル state を更新（該当ユーザーの company を新名に書き換え）
+      setStudents(prev => prev.map(s => {
+        if ((s.company || '') === renameCompanyFrom) {
+          return { ...s, company: newName };
+        }
+        return s;
+      }));
+
+      alert(
+        `「${renameCompanyFrom}」→「${newName}」に変更しました。\n` +
+        `更新人数: ${result.updatedProfiles}名` +
+        (result.laborConsultantMappingsMerged > 0
+          ? `\n社労士マッピング統合: ${result.laborConsultantMappingsMerged}件`
+          : '')
+      );
+      closeRenameCompanyModal();
+    } catch (error) {
+      console.error('[会社名変更] エラー:', error);
+      alert(`会社名の変更に失敗しました: ${(error as Error).message}`);
+    } finally {
+      setRenameCompanyProcessing(false);
     }
   };
 
@@ -1277,6 +1349,21 @@ export default function StudentsManagePage() {
                                 variant="outline"
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  openRenameCompanyModal(company);
+                                }}
+                                className="flex items-center text-xs sm:text-sm whitespace-nowrap"
+                                title={`${company} の名前を変更/統合`}
+                              >
+                                <PencilIcon className="h-4 w-4 mr-1 flex-shrink-0" />
+                                <span className="hidden sm:inline">名前変更</span>
+                                <span className="sm:hidden">改名</span>
+                              </Button>
+                            )}
+                            {company !== '個人' && (
+                              <Button
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   openDeleteCompanyModal(company);
                                 }}
                                 className="flex items-center text-xs sm:text-sm whitespace-nowrap text-red-600 hover:bg-red-50 border-red-300"
@@ -1498,6 +1585,110 @@ export default function StudentsManagePage() {
             </div>
           </div>
         </div>
+
+        {/* 会社名リネーム / 統合モーダル */}
+        {renameCompanyFrom && (() => {
+          const allCompanies = Array.from(
+            new Set(students.map(s => s.company || '個人').filter(c => c !== '個人'))
+          ).sort();
+          const suggestions = allCompanies.filter(
+            c => c !== renameCompanyFrom && c.replace(/\s/g, '') === renameCompanyFrom.replace(/\s/g, '')
+          );
+          const newName = renameCompanyTo.trim();
+          const willMerge = allCompanies.includes(newName);
+
+          return (
+            <div
+              className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4"
+              onClick={closeRenameCompanyModal}
+            >
+              <div
+                className="bg-white dark:bg-neutral-900 w-full sm:max-w-md sm:rounded-lg shadow-xl rounded-t-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-neutral-800">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    会社名を変更 / 統合
+                  </h3>
+                  <button
+                    onClick={closeRenameCompanyModal}
+                    disabled={renameCompanyProcessing}
+                    className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-neutral-800 disabled:opacity-50"
+                    aria-label="閉じる"
+                  >
+                    <XMarkIcon className="h-6 w-6" />
+                  </button>
+                </div>
+
+                <div className="px-4 sm:px-6 py-4 space-y-3">
+                  <div>
+                    <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">変更元</label>
+                    <div className="px-3 py-2 text-sm bg-gray-100 dark:bg-neutral-800 rounded text-gray-900 dark:text-white">
+                      {renameCompanyFrom}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+                      新しい会社名
+                    </label>
+                    <input
+                      type="text"
+                      value={renameCompanyTo}
+                      onChange={(e) => setRenameCompanyTo(e.target.value)}
+                      disabled={renameCompanyProcessing}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-neutral-700 rounded-md bg-white dark:bg-neutral-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                  </div>
+
+                  {suggestions.length > 0 && (
+                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded p-2">
+                      <p className="text-xs font-semibold text-yellow-800 dark:text-yellow-200 mb-1">
+                        💡 似た会社が見つかりました（統合候補）
+                      </p>
+                      <div className="space-y-1">
+                        {suggestions.map(s => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => setRenameCompanyTo(s)}
+                            disabled={renameCompanyProcessing}
+                            className="block w-full text-left text-xs px-2 py-1 bg-white dark:bg-neutral-800 rounded hover:bg-yellow-100 dark:hover:bg-yellow-900/30"
+                          >
+                            「{s}」に統合
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {willMerge && newName !== renameCompanyFrom && (
+                    <p className="text-xs text-blue-700 bg-blue-50 dark:bg-blue-900/20 p-2 rounded">
+                      🔗 既存の「{newName}」と統合されます（ユーザーがマージされます）。
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-end gap-2 px-4 sm:px-6 py-3 border-t border-gray-200 dark:border-neutral-800">
+                  <Button variant="outline" onClick={closeRenameCompanyModal} disabled={renameCompanyProcessing}>
+                    キャンセル
+                  </Button>
+                  <Button
+                    onClick={handleRenameCompany}
+                    disabled={renameCompanyProcessing || !newName || newName === renameCompanyFrom}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                  >
+                    {renameCompanyProcessing
+                      ? '処理中...'
+                      : willMerge
+                      ? '統合する'
+                      : '変更する'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* 会社単位の削除モーダル（メンバー全員削除） */}
         {deleteCompanyName && (() => {
