@@ -204,6 +204,64 @@ export default function CourseVideosPage() {
     }
   };
 
+  // プレビュー: 保存済み URL から path を抽出し、24時間有効な署名付きURLで開く
+  const handlePreviewVideo = async (video: Video) => {
+    if (!video.file_url) {
+      alert('動画URLが設定されていません');
+      return;
+    }
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+    const publicPrefix = `${supabaseUrl}/storage/v1/object/public/videos/`;
+    const signedPrefix = `${supabaseUrl}/storage/v1/object/sign/videos/`;
+
+    let path: string | null = null;
+    if (video.file_url.startsWith(publicPrefix)) {
+      path = video.file_url.slice(publicPrefix.length);
+    } else if (video.file_url.startsWith(signedPrefix)) {
+      path = video.file_url.slice(signedPrefix.length).split('?')[0];
+    } else if (!video.file_url.startsWith('http')) {
+      path = video.file_url; // 既にパスのみ
+    }
+
+    if (!path) {
+      // 外部URLや形式不明 → そのまま開く
+      window.open(video.file_url, '_blank');
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.storage
+        .from('videos')
+        .createSignedUrl(path, 60 * 60 * 24);
+
+      if (error || !data?.signedUrl) {
+        // bucket not found / object not found などのケース
+        const msg = error?.message ?? 'プレビューURLの生成に失敗しました';
+        if (msg.toLowerCase().includes('bucket')) {
+          alert(
+            'プレビューに失敗しました: videos バケットが見つかりません。\n' +
+            '管理画面の「ストレージ設定」から初期化するか、Supabase ダッシュボードを確認してください。'
+          );
+        } else if (msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('object')) {
+          alert(
+            'プレビューに失敗しました: 動画ファイルが見つかりません。\n' +
+            'パス: ' + path + '\n' +
+            'Supabase Storage から削除されている可能性があります。'
+          );
+        } else {
+          alert(`プレビューに失敗しました: ${msg}`);
+        }
+        return;
+      }
+
+      window.open(data.signedUrl, '_blank');
+    } catch (err) {
+      console.error('[Preview] Error:', err);
+      alert(`プレビューに失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
   const handleEditVideo = (video: Video) => {
     setEditingVideo(video.id);
     setEditForm({
@@ -695,9 +753,9 @@ export default function CourseVideosPage() {
                           <td className="px-6 py-4 text-right text-sm font-medium">
                             <div className="flex justify-end space-x-2">
                               <button
-                                onClick={() => window.open(video.file_url, '_blank')}
+                                onClick={() => handlePreviewVideo(video)}
                                 className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                                title="視聴"
+                                title="プレビュー"
                               >
                                 <EyeIcon className="h-5 w-5" />
                               </button>
