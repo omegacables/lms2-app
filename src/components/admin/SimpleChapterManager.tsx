@@ -33,6 +33,8 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
   const [loading, setLoading] = useState(false);
   const [newChapterTitle, setNewChapterTitle] = useState('');
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
+  const [selectedVideoIds, setSelectedVideoIds] = useState<Set<number>>(new Set());
+  const [addingVideos, setAddingVideos] = useState(false);
   const [draggedChapter, setDraggedChapter] = useState<Chapter | null>(null);
   const [draggedVideo, setDraggedVideo] = useState<Video | null>(null);
 
@@ -228,6 +230,57 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
       console.error('[SimpleChapterManager] Error adding video:', error);
       alert('動画の追加に失敗しました');
     }
+  };
+
+  const addVideosToChapter = async (chapterId: number, videoIds: number[]) => {
+    if (videoIds.length === 0) return;
+
+    try {
+      setAddingVideos(true);
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const results = await Promise.all(
+        videoIds.map(videoId =>
+          fetch(`/api/chapters/${chapterId}/videos`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': token ? `Bearer ${token}` : '',
+            },
+            body: JSON.stringify({ video_id: videoId })
+          }).then(async (res) => ({ ok: res.ok, videoId, data: await res.json().catch(() => null) }))
+        )
+      );
+
+      const failed = results.filter(r => !r.ok);
+      await fetchChapters();
+
+      if (failed.length === 0) {
+        alert(`${videoIds.length}件の動画を章に追加しました`);
+      } else {
+        const successCount = videoIds.length - failed.length;
+        const firstError = failed[0]?.data?.error || '不明なエラー';
+        alert(`${successCount}件追加、${failed.length}件失敗\nエラー: ${firstError}`);
+      }
+    } catch (error) {
+      console.error('[SimpleChapterManager] Error bulk adding videos:', error);
+      alert('動画の追加に失敗しました');
+    } finally {
+      setAddingVideos(false);
+    }
+  };
+
+  const toggleVideoSelection = (videoId: number) => {
+    setSelectedVideoIds(prev => {
+      const next = new Set(prev);
+      if (next.has(videoId)) {
+        next.delete(videoId);
+      } else {
+        next.add(videoId);
+      }
+      return next;
+    });
   };
 
   const removeVideoFromChapter = async (chapterId: number, videoId: number) => {
@@ -433,34 +486,77 @@ export default function SimpleChapterManager({ courseId, courseTitle }: SimpleCh
                 {/* 動画を追加 */}
                 {selectedChapter?.id === chapter.id ? (
                   <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/30 rounded">
-                    <div className="text-sm font-medium mb-1 text-gray-900 dark:text-white">動画を追加:</div>
-                    <div className="space-y-1">
-                      {getUnassignedVideos().map(video => (
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-sm font-medium text-gray-900 dark:text-white">
+                        動画を追加 (複数選択可):
+                      </div>
+                      {getUnassignedVideos().length > 0 && (
                         <button
-                          key={video.id}
                           onClick={() => {
-                            addVideoToChapter(chapter.id, video.id);
-                            setSelectedChapter(null);
+                            const all = getUnassignedVideos().map(v => v.id);
+                            const allSelected = all.every(id => selectedVideoIds.has(id));
+                            setSelectedVideoIds(allSelected ? new Set() : new Set(all));
                           }}
-                          className="block w-full text-left text-sm p-1 hover:bg-blue-100 dark:hover:bg-blue-800 rounded text-gray-900 dark:text-gray-100"
+                          className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
                         >
-                          {video.title}
+                          {getUnassignedVideos().every(v => selectedVideoIds.has(v.id))
+                            ? 'すべて解除'
+                            : 'すべて選択'}
                         </button>
+                      )}
+                    </div>
+                    <div className="space-y-1 max-h-64 overflow-y-auto">
+                      {getUnassignedVideos().map(video => (
+                        <label
+                          key={video.id}
+                          className="flex items-center gap-2 w-full text-left text-sm p-1 hover:bg-blue-100 dark:hover:bg-blue-800 rounded text-gray-900 dark:text-gray-100 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedVideoIds.has(video.id)}
+                            onChange={() => toggleVideoSelection(video.id)}
+                            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                            disabled={addingVideos}
+                          />
+                          <span className="flex-1">{video.title}</span>
+                        </label>
                       ))}
                       {getUnassignedVideos().length === 0 && (
                         <p className="text-xs text-gray-500 dark:text-gray-400">割り当て可能な動画がありません</p>
                       )}
                     </div>
-                    <button
-                      onClick={() => setSelectedChapter(null)}
-                      className="mt-2 text-xs text-gray-600 dark:text-gray-400"
-                    >
-                      キャンセル
-                    </button>
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        onClick={async () => {
+                          await addVideosToChapter(chapter.id, Array.from(selectedVideoIds));
+                          setSelectedVideoIds(new Set());
+                          setSelectedChapter(null);
+                        }}
+                        disabled={addingVideos || selectedVideoIds.size === 0}
+                        className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {addingVideos
+                          ? '追加中...'
+                          : `選択した${selectedVideoIds.size}件を追加`}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedChapter(null);
+                          setSelectedVideoIds(new Set());
+                        }}
+                        disabled={addingVideos}
+                        className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                      >
+                        キャンセル
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <button
-                    onClick={() => setSelectedChapter(chapter)}
+                    onClick={() => {
+                      setSelectedChapter(chapter);
+                      setSelectedVideoIds(new Set());
+                    }}
                     className="mt-2 text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
                   >
                     + 動画を追加
