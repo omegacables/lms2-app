@@ -25,7 +25,8 @@ import {
   ChevronUpIcon,
   XMarkIcon,
   PlusIcon,
-  PencilIcon
+  PencilIcon,
+  EnvelopeIcon
 } from '@heroicons/react/24/outline';
 import {
   CheckCircleIcon as CheckCircleIconSolid
@@ -93,6 +94,16 @@ export default function StudentsManagePage() {
   const [renameCompanyFrom, setRenameCompanyFrom] = useState<string | null>(null);
   const [renameCompanyTo, setRenameCompanyTo] = useState('');
   const [renameCompanyProcessing, setRenameCompanyProcessing] = useState(false);
+
+  // ログイン情報メール作成モーダル
+  const [emailModalCompany, setEmailModalCompany] = useState<string | null>(null);
+  const [emailTrainingStart, setEmailTrainingStart] = useState<string>('');
+  const [emailSubject, setEmailSubject] = useState<string>('');
+  const [emailBody, setEmailBody] = useState<string>('');
+  const [emailOnlyActive, setEmailOnlyActive] = useState(true);
+  const [emailBodyEdited, setEmailBodyEdited] = useState(false);
+  const [emailLoginUrl, setEmailLoginUrl] = useState<string>('https://www.stus-lms.com/');
+  const [emailSenderCompany, setEmailSenderCompany] = useState<string>('株式会社○○');
 
   useEffect(() => {
     fetchStudents();
@@ -631,6 +642,205 @@ export default function StudentsManagePage() {
       alert(`会社名の変更に失敗しました: ${(error as Error).message}`);
     } finally {
       setRenameCompanyProcessing(false);
+    }
+  };
+
+  // ===== ログイン情報メール（会社単位） =====
+  const formatReiwaDate = (iso: string): string => {
+    if (!iso) return '令和X年XX月X日(X)';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '令和X年XX月X日(X)';
+    const reiwaYear = d.getFullYear() - 2018;
+    const month = d.getMonth() + 1;
+    const day = d.getDate();
+    const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+    return `令和${reiwaYear}年${month}月${day}日(${weekdays[d.getDay()]})`;
+  };
+
+  const addMonthsIso = (iso: string, months: number): string => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    d.setMonth(d.getMonth() + months);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const getEmailTargetStudents = (company: string): Student[] => {
+    return students.filter(s => {
+      const c = s.company || '個人';
+      if (c !== company) return false;
+      if (emailOnlyActive && !s.is_active) return false;
+      return true;
+    });
+  };
+
+  const buildLoginEmail = (
+    company: string,
+    members: Student[],
+    startIso: string,
+    senderCompany: string,
+    loginUrl: string
+  ): { subject: string; body: string } => {
+    const startStr = formatReiwaDate(startIso);
+    const endStr = startIso ? formatReiwaDate(addMonthsIso(startIso, 6)) : '令和X年XX月X日(X)';
+
+    const honorifics = members
+      .map(s => `${s.display_name || s.email}様`)
+      .join('\n');
+
+    const accounts = members
+      .map(s =>
+        `■ ${s.display_name || s.email}様\n` +
+        `・メールアドレス【${s.email}】\n` +
+        `・初回パスワード【 XXXXXX 】`
+      )
+      .join('\n\n');
+
+    const subject = '【生成AI研修】eラーニングシステム ログイン情報のご案内';
+
+    const body =
+`${company}
+${honorifics}
+
+お世話になります。
+研修会社の${senderCompany}でございます。
+
+生成AI研修についての受講方法のご案内でございます。
+アカウントの発行をいたしましたので、eラーニングシステムへのログインが可能です。
+
+研修ページのログイン方法につきましては下記のサイトにアクセスしていただき、メールアドレスとパスワードでログインしていただけます。
+【研修期間】${startStr} ～ ${endStr}
+【ログイン情報】
+eラーニングシステム
+${loginUrl}
+
+ログイン用のアカウント情報は以下になります。
+
+${accounts}
+
+
+【視聴方法】
+①メールアドレスとパスワードでeラーニングシステムにログインします。
+
+②ログインできましたらダッシュボードの割り当てられたコース またはマイコースに表示されているコース一覧からコースを選択してください。
+ベーシックコース→アドバンスコース→プロフェッショナルコースの順でご覧ください。
+
+③視聴中は視聴時間のログを取得しています。
+※視聴時間は必ず就業時間内にお願いいたします。
+※初回視聴はスキップができません。
+※スマホ視聴の場合、Wi-Fiや回線により途切れる可能性があります。通信環境を再度ご確認の上、視聴してください。
+
+
+以上がご案内になりますが、トラブルやご不明点がございましたらご返信いただくか、システム内のサポートチャットにてご連絡ください。
+
+今後とも何卒よろしくお願い致します。`;
+
+    return { subject, body };
+  };
+
+  const regenerateEmailBody = (overrides?: {
+    startIso?: string;
+    onlyActive?: boolean;
+    senderCompany?: string;
+    loginUrl?: string;
+  }) => {
+    if (!emailModalCompany) return;
+    const startIso = overrides?.startIso ?? emailTrainingStart;
+    const onlyActive = overrides?.onlyActive ?? emailOnlyActive;
+    const senderCompany = overrides?.senderCompany ?? emailSenderCompany;
+    const loginUrl = overrides?.loginUrl ?? emailLoginUrl;
+
+    const members = students.filter(s => {
+      const c = s.company || '個人';
+      if (c !== emailModalCompany) return false;
+      if (onlyActive && !s.is_active) return false;
+      return true;
+    });
+
+    const { subject, body } = buildLoginEmail(
+      emailModalCompany,
+      members,
+      startIso,
+      senderCompany,
+      loginUrl
+    );
+    setEmailSubject(subject);
+    setEmailBody(body);
+    setEmailBodyEdited(false);
+  };
+
+  const openLoginEmailModal = (company: string) => {
+    const today = new Date().toISOString().slice(0, 10);
+    setEmailModalCompany(company);
+    setEmailTrainingStart(today);
+    setEmailOnlyActive(true);
+
+    const members = students.filter(s => {
+      const c = s.company || '個人';
+      if (c !== company) return false;
+      if (!s.is_active) return false;
+      return true;
+    });
+    const { subject, body } = buildLoginEmail(
+      company,
+      members,
+      today,
+      emailSenderCompany,
+      emailLoginUrl
+    );
+    setEmailSubject(subject);
+    setEmailBody(body);
+    setEmailBodyEdited(false);
+  };
+
+  const closeLoginEmailModal = () => {
+    setEmailModalCompany(null);
+    setEmailBodyEdited(false);
+  };
+
+  const openMailerForLoginEmail = () => {
+    if (!emailModalCompany) return;
+    const members = getEmailTargetStudents(emailModalCompany);
+    if (members.length === 0) {
+      alert('対象の生徒がいません');
+      return;
+    }
+    const to = members.map(s => s.email).filter(Boolean).join(',');
+    const url =
+      `mailto:${encodeURIComponent(to)}` +
+      `?subject=${encodeURIComponent(emailSubject)}` +
+      `&body=${encodeURIComponent(emailBody)}`;
+
+    // mailto は URL 長制限（Outlookで約2000バイト等）があるため、長すぎる場合は警告
+    if (url.length > 2000) {
+      const ok = confirm(
+        'メール本文が長いため、メーラーによっては末尾が切れる可能性があります。\n' +
+        'その場合は「本文をコピー」してメーラーに貼り付けてください。\n\n' +
+        'このままメーラーを開きますか？'
+      );
+      if (!ok) return;
+    }
+    window.location.href = url;
+  };
+
+  const copyLoginEmailBody = async () => {
+    try {
+      await navigator.clipboard.writeText(emailBody);
+      alert('本文をクリップボードにコピーしました');
+    } catch {
+      alert('コピーに失敗しました');
+    }
+  };
+
+  const copyLoginEmailRecipients = async () => {
+    if (!emailModalCompany) return;
+    const members = getEmailTargetStudents(emailModalCompany);
+    const to = members.map(s => s.email).filter(Boolean).join(', ');
+    try {
+      await navigator.clipboard.writeText(to);
+      alert(`${members.length}件の宛先をコピーしました`);
+    } catch {
+      alert('コピーに失敗しました');
     }
   };
 
@@ -1344,6 +1554,19 @@ export default function StudentsManagePage() {
                               <span className="hidden sm:inline">一括割り当て</span>
                               <span className="sm:hidden">割当</span>
                             </Button>
+                            <Button
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openLoginEmailModal(company);
+                              }}
+                              className="flex items-center text-xs sm:text-sm whitespace-nowrap"
+                              title={`${company} の全員にログイン情報メールを作成`}
+                            >
+                              <EnvelopeIcon className="h-4 w-4 mr-1 flex-shrink-0" />
+                              <span className="hidden sm:inline">メール作成</span>
+                              <span className="sm:hidden">メール</span>
+                            </Button>
                             {company !== '個人' && (
                               <Button
                                 variant="outline"
@@ -1902,6 +2125,169 @@ export default function StudentsManagePage() {
                     ? '処理中...'
                     : `${bulkAssignCourseIds.size}件のコースを割り当て`}
                 </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ログイン情報メール作成モーダル（会社単位） */}
+        {emailModalCompany && (
+          <div
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4"
+            onClick={closeLoginEmailModal}
+          >
+            <div
+              className="bg-white dark:bg-neutral-900 w-full sm:max-w-2xl sm:rounded-lg shadow-xl max-h-[95vh] sm:max-h-[90vh] flex flex-col rounded-t-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* ヘッダ */}
+              <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-neutral-800">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    ログイン情報メール作成
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                    {emailModalCompany} ・ 対象 {getEmailTargetStudents(emailModalCompany).length}名
+                  </p>
+                </div>
+                <button
+                  onClick={closeLoginEmailModal}
+                  className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-neutral-800"
+                  aria-label="閉じる"
+                >
+                  <XMarkIcon className="h-6 w-6" />
+                </button>
+              </div>
+
+              {/* 設定 */}
+              <div className="px-4 sm:px-6 py-3 border-b border-gray-200 dark:border-neutral-800 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      研修開始日
+                    </label>
+                    <input
+                      type="date"
+                      value={emailTrainingStart}
+                      onChange={(e) => {
+                        setEmailTrainingStart(e.target.value);
+                        if (!emailBodyEdited) regenerateEmailBody({ startIso: e.target.value });
+                      }}
+                      className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-gray-900 dark:text-white"
+                    />
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      終了日（自動）: {emailTrainingStart ? formatReiwaDate(addMonthsIso(emailTrainingStart, 6)) : '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      研修会社名（差出人）
+                    </label>
+                    <input
+                      type="text"
+                      value={emailSenderCompany}
+                      onChange={(e) => {
+                        setEmailSenderCompany(e.target.value);
+                        if (!emailBodyEdited) regenerateEmailBody({ senderCompany: e.target.value });
+                      }}
+                      placeholder="株式会社○○"
+                      className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    ログインURL
+                  </label>
+                  <input
+                    type="url"
+                    value={emailLoginUrl}
+                    onChange={(e) => {
+                      setEmailLoginUrl(e.target.value);
+                      if (!emailBodyEdited) regenerateEmailBody({ loginUrl: e.target.value });
+                    }}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-gray-900 dark:text-white"
+                  />
+                </div>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <label className="flex items-center text-sm text-gray-700 dark:text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={emailOnlyActive}
+                      onChange={(e) => {
+                        setEmailOnlyActive(e.target.checked);
+                        if (!emailBodyEdited) regenerateEmailBody({ onlyActive: e.target.checked });
+                      }}
+                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                    />
+                    <span className="ml-2">アクティブな生徒のみ対象</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => regenerateEmailBody()}
+                    className="text-xs text-indigo-600 hover:text-indigo-800 dark:text-indigo-400"
+                    title="テンプレートを再生成して編集内容を破棄"
+                  >
+                    本文を再生成
+                  </button>
+                </div>
+              </div>
+
+              {/* プレビュー / 編集 */}
+              <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-3 space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    件名
+                  </label>
+                  <input
+                    type="text"
+                    value={emailSubject}
+                    onChange={(e) => setEmailSubject(e.target.value)}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-gray-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    本文（編集可）
+                  </label>
+                  <textarea
+                    value={emailBody}
+                    onChange={(e) => {
+                      setEmailBody(e.target.value);
+                      setEmailBodyEdited(true);
+                    }}
+                    rows={18}
+                    className="w-full px-3 py-2 text-sm font-mono border border-gray-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-gray-900 dark:text-white whitespace-pre"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    ※ パスワード欄は「XXXXXX」のままです。送信前にメーラー上で書き換えてください。
+                  </p>
+                </div>
+              </div>
+
+              {/* フッタ */}
+              <div className="flex items-center justify-between gap-2 px-4 sm:px-6 py-3 border-t border-gray-200 dark:border-neutral-800 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" onClick={copyLoginEmailRecipients}>
+                    宛先をコピー
+                  </Button>
+                  <Button variant="outline" onClick={copyLoginEmailBody}>
+                    本文をコピー
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" onClick={closeLoginEmailModal}>
+                    閉じる
+                  </Button>
+                  <Button
+                    onClick={openMailerForLoginEmail}
+                    disabled={getEmailTargetStudents(emailModalCompany).length === 0}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                  >
+                    <EnvelopeIcon className="h-4 w-4 mr-1" />
+                    メーラーを開く
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
