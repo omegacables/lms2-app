@@ -275,7 +275,7 @@ export default function CourseDetailPage() {
                   <img
                     src={course.thumbnail_url}
                     alt={course.title}
-                    className="w-full h-48 object-cover rounded-lg"
+                    className="w-full aspect-video object-cover rounded-lg bg-gray-100 dark:bg-neutral-800"
                   />
                 </div>
               )}

@@ -358,7 +358,7 @@ export default function CoursesPage() {
                     className="bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-lg transition-shadow overflow-hidden"
                   >
                     {/* サムネイル */}
-                    <div className="relative h-48 bg-gradient-to-br from-blue-500 to-purple-600">
+                    <div className="relative aspect-video bg-gradient-to-br from-blue-500 to-purple-600">
                       {course.thumbnail_url ? (
                         <img
                           src={course.thumbnail_url}

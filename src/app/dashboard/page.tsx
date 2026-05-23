@@ -483,7 +483,7 @@ export default function DashboardPage() {
                         >
                           <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 overflow-hidden hover:shadow-lg dark:hover:shadow-gray-900/50 transition-shadow cursor-pointer">
                             {course.thumbnail_url ? (
-                              <div className="h-48 relative">
+                              <div className="aspect-video relative bg-gray-100 dark:bg-neutral-800">
                                 <img
                                   src={course.thumbnail_url}
                                   alt={course.title || "コース画像"}
@@ -491,7 +491,7 @@ export default function DashboardPage() {
                                 />
                               </div>
                             ) : (
-                              <div className="h-48 bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 flex items-center justify-center">
+                              <div className="aspect-video bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 flex items-center justify-center">
                                 <BookOpenIcon className="h-16 w-16 text-blue-400 dark:text-blue-500" />
                               </div>
                             )}

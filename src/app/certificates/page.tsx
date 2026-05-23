@@ -404,10 +404,10 @@ export default function CertificatesPage() {
                     <img
                       src={certificate.courses.thumbnail_url}
                       alt={certificate.course_title}
-                      className="w-full h-48 object-cover"
+                      className="w-full aspect-video object-cover bg-gray-100 dark:bg-neutral-800"
                     />
                   ) : (
-                    <div className="w-full h-48 bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                    <div className="w-full aspect-video bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
                       <AcademicCapIcon className="h-24 w-24 text-white opacity-50" />
                     </div>
                   )}
