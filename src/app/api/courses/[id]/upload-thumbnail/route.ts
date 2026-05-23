@@ -96,18 +96,19 @@ export async function POST(
       return NextResponse.json({ error: 'ファイルサイズは5MB以下にしてください' }, { status: 400 });
     }
 
-    // ファイル名生成
+    // ファイル名生成（既存の thumbnail ルートと同じ命名規則に揃える）
     const fileExt = file.name.split('.').pop();
     const fileName = `course-${courseId}-${Date.now()}.${fileExt}`;
-    
+    const storagePath = `course-thumbnails/${fileName}`;
+
     // ArrayBufferに変換
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Supabase Storageにアップロード（Admin clientを使用）
+    // Supabase Storageにアップロード（既存の `thumbnails` バケットを使用）
     const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-      .from('course-thumbnails')
-      .upload(fileName, buffer, {
+      .from('thumbnails')
+      .upload(storagePath, buffer, {
         contentType: file.type,
         cacheControl: '3600',
         upsert: true
@@ -120,15 +121,15 @@ export async function POST(
 
     // 公開URLを取得
     const { data: urlData } = supabaseAdmin.storage
-      .from('course-thumbnails')
-      .getPublicUrl(fileName);
+      .from('thumbnails')
+      .getPublicUrl(storagePath);
 
     // コースのサムネイルURLを更新（Admin clientを使用）
     const { error: updateError } = await supabaseAdmin
       .from('courses')
       .update({
         thumbnail_url: urlData.publicUrl,
-        thumbnail_file_path: fileName,
+        thumbnail_file_path: storagePath,
         updated_at: new Date().toISOString()
       })
       .eq('id', courseId);
@@ -136,14 +137,14 @@ export async function POST(
     if (updateError) {
       console.error('Course update error:', updateError);
       // アップロードしたファイルを削除
-      await supabaseAdmin.storage.from('course-thumbnails').remove([fileName]);
+      await supabaseAdmin.storage.from('thumbnails').remove([storagePath]);
       return NextResponse.json({ error: 'コース情報の更新に失敗しました' }, { status: 500 });
     }
 
     return NextResponse.json({
       success: true,
       url: urlData.publicUrl,
-      filePath: fileName
+      filePath: storagePath
     });
 
   } catch (error) {
