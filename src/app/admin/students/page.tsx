@@ -688,15 +688,11 @@ export default function StudentsManagePage() {
       .map(s => `${s.display_name || s.email}様`)
       .join('\n');
 
-    const accounts = members
-      .map(s =>
-        `■ ${s.display_name || s.email}様\n` +
-        `・メールアドレス【${s.email}】\n` +
-        `・初回パスワード【 XXXXXX 】`
-      )
-      .join('\n\n');
+    const accounts =
+      `・メールアドレス【事前にいただいたメールアドレス】\n` +
+      `・初回パスワード【 XXXXXX 】`;
 
-    const subject = '【生成AI研修】eラーニングシステム ログイン情報のご案内';
+    const subject = '【生成AI研修】 開講のお知らせ';
 
     const body =
 `${company}
