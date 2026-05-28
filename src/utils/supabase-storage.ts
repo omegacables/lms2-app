@@ -228,6 +228,44 @@ export function validateVideoFile(file: File): { valid: boolean; error?: string 
   return { valid: true };
 }
 
+// MP4/MOV内に HEVC(H.265) や Dolby Vision など、ブラウザで再生できないコーデックが
+// 含まれていないかを検査する。stsd ボックス内のサンプル記述 FourCC をスキャンする。
+// 戻り値: 非対応コーデック名（'hvc1' / 'hev1' / 'dvh1' / 'dvhe'）または null
+export async function detectUnsupportedVideoCodec(file: File): Promise<string | null> {
+  // moov ボックスは通常ファイル先頭付近（streaming optimized）か末尾にあるため、両端をスキャン
+  const scanLimit = Math.min(file.size, 16 * 1024 * 1024); // 各端 16MB まで
+  const unsupportedFourCCs = ['hvc1', 'hev1', 'dvh1', 'dvhe'];
+
+  const findFourCC = (bytes: Uint8Array): string | null => {
+    for (const fourcc of unsupportedFourCCs) {
+      const a = fourcc.charCodeAt(0);
+      const b = fourcc.charCodeAt(1);
+      const c = fourcc.charCodeAt(2);
+      const d = fourcc.charCodeAt(3);
+      for (let i = 0; i <= bytes.length - 4; i++) {
+        if (bytes[i] === a && bytes[i + 1] === b && bytes[i + 2] === c && bytes[i + 3] === d) {
+          return fourcc;
+        }
+      }
+    }
+    return null;
+  };
+
+  // 先頭
+  const headBuf = await file.slice(0, scanLimit).arrayBuffer();
+  const headHit = findFourCC(new Uint8Array(headBuf));
+  if (headHit) return headHit;
+
+  // 末尾（moov が末尾にある場合）
+  if (file.size > scanLimit) {
+    const tailBuf = await file.slice(file.size - scanLimit).arrayBuffer();
+    const tailHit = findFourCC(new Uint8Array(tailBuf));
+    if (tailHit) return tailHit;
+  }
+
+  return null;
+}
+
 // サムネイルファイルの検証
 export function validateThumbnailFile(file: File): { valid: boolean; error?: string } {
   const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];

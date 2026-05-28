@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { supabase } from '@/lib/database/supabase';
+import { detectUnsupportedVideoCodec } from '@/utils/supabase-storage';
 import { Button } from '@/components/ui/Button';
 import * as tus from 'tus-js-client';
 import {
@@ -73,6 +74,7 @@ export function BulkVideoUploader({
   const addFiles = useCallback(async (fileList: FileList | File[]) => {
     const files = Array.from(fileList);
     const newItems: QueueItem[] = [];
+    const hevcRejected: string[] = [];
 
     for (const file of files) {
       // ファイル形式チェック
@@ -86,6 +88,13 @@ export function BulkVideoUploader({
         continue;
       }
 
+      // HEVC/Dolby Vision を検出して拒否（ブラウザで再生できないため）
+      const unsupportedCodec = await detectUnsupportedVideoCodec(file);
+      if (unsupportedCodec) {
+        hevcRejected.push(`${file.name} (${unsupportedCodec.toUpperCase()})`);
+        continue;
+      }
+
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       newItems.push({
         id,
@@ -96,6 +105,16 @@ export function BulkVideoUploader({
         progress: 0,
         status: 'pending',
       });
+    }
+
+    if (hevcRejected.length > 0) {
+      alert(
+        `以下のファイルは HEVC (H.265) / Dolby Vision でエンコードされており、` +
+        `ブラウザで再生できないためスキップしました:\n\n` +
+        hevcRejected.join('\n') +
+        `\n\nH.264 (AVC) に再エンコードしてからアップロードしてください。\n` +
+        `例: ffmpeg -i input.mp4 -c:v libx264 -c:a aac output.mp4`
+      );
     }
 
     setQueue(prev => [...prev, ...newItems]);

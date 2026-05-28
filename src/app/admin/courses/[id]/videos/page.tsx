@@ -12,6 +12,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { supabase } from '@/lib/database/supabase';
 import {
   validateVideoFile,
+  detectUnsupportedVideoCodec,
   formatFileSize
 } from '@/utils/supabase-storage';
 import { BulkVideoUploader } from '@/components/admin/BulkVideoUploader';
@@ -333,6 +334,18 @@ export default function CourseVideosPage() {
       return;
     }
 
+    // ブラウザで再生できないコーデック（HEVC/Dolby Vision）を事前検出
+    const unsupportedCodec = await detectUnsupportedVideoCodec(replaceFile);
+    if (unsupportedCodec) {
+      alert(
+        `この動画は ${unsupportedCodec.toUpperCase()}（HEVC/H.265 系）でエンコードされており、` +
+        `Chrome や Firefox などのブラウザで再生できません。\n\n` +
+        `H.264 (AVC) に再エンコードしてからアップロードしてください。\n` +
+        `例: ffmpeg -i input.mp4 -c:v libx264 -c:a aac output.mp4`
+      );
+      return;
+    }
+
     setUploading(true);
     setUploadProgress(0);
 
@@ -417,7 +430,6 @@ export default function CourseVideosPage() {
         .from('videos')
         .update({
           file_url: publicUrl,
-          file_path: filePath,
           file_size: replaceFile.size,
           mime_type: replaceFile.type,
           updated_at: new Date().toISOString()
