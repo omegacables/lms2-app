@@ -82,6 +82,11 @@ export default function VideoPlayerPage() {
   // Progress tracking
   const lastUpdateRef = useRef<number>(0);
   const watchTimeRef = useRef<number>(0);
+  // 早送り制御用：これまでに視聴した最大位置（未完了の間はこれより先へ進めない）
+  const maxWatchedTimeRef = useRef<number>(0);
+
+  // 完了済みかどうか（完了後に早送りをアンロック）
+  const isVideoCompleted = videoProgress.status === 'completed';
 
   useEffect(() => {
     if (videoId) {
@@ -101,6 +106,7 @@ export default function VideoPlayerPage() {
     // Load last position when video is ready
     if (videoRef.current && videoProgress.last_position > 0) {
       videoRef.current.currentTime = videoProgress.last_position;
+      maxWatchedTimeRef.current = Math.max(maxWatchedTimeRef.current, videoProgress.last_position);
     }
   }, [videoProgress.last_position, video]);
 
@@ -269,8 +275,22 @@ export default function VideoPlayerPage() {
 
   const handleTimeUpdate = () => {
     if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
-      
+      const time = videoRef.current.currentTime;
+
+      // 未完了の間は未視聴部分への早送りを阻止
+      if (!isVideoCompleted && time > maxWatchedTimeRef.current + 2) {
+        videoRef.current.currentTime = maxWatchedTimeRef.current;
+        setCurrentTime(maxWatchedTimeRef.current);
+        return;
+      }
+
+      // 視聴済みの最大位置を更新
+      if (!isVideoCompleted && time > maxWatchedTimeRef.current) {
+        maxWatchedTimeRef.current = time;
+      }
+
+      setCurrentTime(time);
+
       // Update progress every 10 seconds while playing
       if (playing && Date.now() - lastUpdateRef.current > 10000) {
         const sessionTime = (Date.now() - lastUpdateRef.current) / 1000;
@@ -289,6 +309,12 @@ export default function VideoPlayerPage() {
 
   const handleSeek = (time: number) => {
     if (videoRef.current) {
+      // 未完了の間は未視聴部分への早送りは不可。視聴済み範囲内と巻き戻しは可
+      if (!isVideoCompleted && time > maxWatchedTimeRef.current) {
+        videoRef.current.currentTime = maxWatchedTimeRef.current;
+        setCurrentTime(maxWatchedTimeRef.current);
+        return;
+      }
       videoRef.current.currentTime = time;
       setCurrentTime(time);
     }
@@ -302,6 +328,10 @@ export default function VideoPlayerPage() {
   };
 
   const handlePlaybackRateChange = (rate: number) => {
+    // 未完了の間は等速より速い再生＝早送りは不可
+    if (!isVideoCompleted && rate > 1) {
+      return;
+    }
     if (videoRef.current) {
       videoRef.current.playbackRate = rate;
       setPlaybackRate(rate);
@@ -451,9 +481,9 @@ export default function VideoPlayerPage() {
                           <option value={0.5}>0.5x</option>
                           <option value={0.75}>0.75x</option>
                           <option value={1}>1x</option>
-                          <option value={1.25}>1.25x</option>
-                          <option value={1.5}>1.5x</option>
-                          <option value={2}>2x</option>
+                          <option value={1.25} disabled={!isVideoCompleted}>1.25x{!isVideoCompleted ? ' 🔒' : ''}</option>
+                          <option value={1.5} disabled={!isVideoCompleted}>1.5x{!isVideoCompleted ? ' 🔒' : ''}</option>
+                          <option value={2} disabled={!isVideoCompleted}>2x{!isVideoCompleted ? ' 🔒' : ''}</option>
                         </select>
                         
                         <button onClick={toggleFullscreen}

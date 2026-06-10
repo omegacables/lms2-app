@@ -59,6 +59,9 @@ export function EnhancedVideoPlayer({
 
   const playbackRateOptions = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
+  // 未完了の間は早送り（未視聴部分へのシーク・倍速再生）をロック
+  const skipLocked = !isCompleted && enableSkipPrevention;
+
   // バッファリング状態の管理
   const [isBuffering, setIsBuffering] = useState(true);
   const [bufferProgress, setBufferProgress] = useState(0);
@@ -312,9 +315,18 @@ export function EnhancedVideoPlayer({
   const handleTimeUpdate = () => {
     if (videoRef.current) {
       const current = videoRef.current.currentTime;
+
+      // 未完了の間は未視聴部分への早送りを阻止（ネイティブコントロール等の迂回対策）
+      const allowedMax = Math.max(maxWatchedTime, currentPosition);
+      if (skipLocked && current > allowedMax + 2) {
+        videoRef.current.currentTime = allowedMax;
+        setCurrentTime(allowedMax);
+        return;
+      }
+
       setCurrentTime(current);
 
-      // 最大視聴時間を更新（スキップ防止はシークバーで制御）
+      // 最大視聴時間を更新
       setMaxWatchedTime(prev => Math.max(prev, current));
 
       const progressPercent = duration > 0 ? (current / duration) * 100 : 0;
@@ -466,8 +478,11 @@ export function EnhancedVideoPlayer({
     };
   }, []);
 
-  // 再生速度の変更
+  // 再生速度の変更（未完了の間は等速より速い再生＝早送りは不可）
   const handlePlaybackRateChange = (rate: number) => {
+    if (skipLocked && rate > 1) {
+      return;
+    }
     if (videoRef.current) {
       videoRef.current.playbackRate = rate;
       setPlaybackRate(rate);
@@ -1040,17 +1055,26 @@ export function EnhancedVideoPlayer({
               </button>
               {showSpeedMenu && (
                 <div className="absolute bottom-full right-0 mb-2 bg-black/90 rounded-lg overflow-hidden shadow-lg min-w-[5rem] z-20">
-                  {playbackRateOptions.map((rate) => (
-                    <button
-                      key={rate}
-                      onClick={() => handlePlaybackRateChange(rate)}
-                      className={`block w-full text-left px-3 py-2 text-xs sm:text-sm hover:bg-white/20 transition-colors ${
-                        rate === playbackRate ? 'text-blue-400 font-semibold' : 'text-white'
-                      }`}
-                    >
-                      {rate}x{rate === 1 ? ' (標準)' : ''}
-                    </button>
-                  ))}
+                  {playbackRateOptions.map((rate) => {
+                    const rateLocked = skipLocked && rate > 1;
+                    return (
+                      <button
+                        key={rate}
+                        onClick={() => handlePlaybackRateChange(rate)}
+                        disabled={rateLocked}
+                        title={rateLocked ? '視聴完了後に利用できます' : undefined}
+                        className={`block w-full text-left px-3 py-2 text-xs sm:text-sm transition-colors ${
+                          rateLocked
+                            ? 'text-gray-500 cursor-not-allowed'
+                            : rate === playbackRate
+                            ? 'text-blue-400 font-semibold hover:bg-white/20'
+                            : 'text-white hover:bg-white/20'
+                        }`}
+                      >
+                        {rate}x{rate === 1 ? ' (標準)' : ''}{rateLocked ? ' 🔒' : ''}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>

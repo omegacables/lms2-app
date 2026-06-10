@@ -39,6 +39,8 @@ export default function VideoPlayerMobile({
   const sessionStartTimeRef = useRef<number>(0);
   const lastPositionRef = useRef<number>(0);
   const watchedSegmentsRef = useRef<Array<{start: number, end: number}>>([]);
+  // 早送り制御用：これまでに視聴した最大位置（未完了の間はこれより先へ進めない）
+  const maxWatchedTimeRef = useRef<number>(0);
 
   // UI状態
   const [isLoading, setIsLoading] = useState(true);
@@ -309,12 +311,14 @@ export default function VideoPlayerMobile({
       if (currentPosition > 0 && currentPosition < videoDuration) {
         videoRef.current.currentTime = currentPosition;
         lastPositionRef.current = currentPosition;
+        maxWatchedTimeRef.current = currentPosition;
         console.log('[VideoPlayer] 続きから再生 - 位置設定', {
           currentPosition
         });
         // 初回ログ保存は useEffect で自動的に実行される
       } else {
         lastPositionRef.current = 0;
+        maxWatchedTimeRef.current = 0;
       }
 
       setIsLoading(false);
@@ -338,6 +342,19 @@ export default function VideoPlayerMobile({
   const handleTimeUpdate = () => {
     if (videoRef.current) {
       const currentTime = videoRef.current.currentTime;
+
+      // 未完了の間は未視聴部分への早送りを阻止（ネイティブコントロール等の迂回対策）
+      if (!hasCompletedOnce && currentTime > maxWatchedTimeRef.current + 2) {
+        videoRef.current.currentTime = maxWatchedTimeRef.current;
+        setCurrentTime(maxWatchedTimeRef.current);
+        return;
+      }
+
+      // 視聴済みの最大位置を更新
+      if (!hasCompletedOnce && currentTime > maxWatchedTimeRef.current) {
+        maxWatchedTimeRef.current = currentTime;
+      }
+
       setCurrentTime(currentTime);
 
       // バッファリング状況の更新
@@ -495,17 +512,25 @@ export default function VideoPlayerMobile({
     }
   };
 
-  // シーク
+  // シーク（未完了の間は未視聴部分への早送りは不可。視聴済み範囲内と巻き戻しは可）
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newTime = parseFloat(e.target.value);
     if (videoRef.current) {
+      if (!hasCompletedOnce && newTime > maxWatchedTimeRef.current) {
+        videoRef.current.currentTime = maxWatchedTimeRef.current;
+        setCurrentTime(maxWatchedTimeRef.current);
+        return;
+      }
       videoRef.current.currentTime = newTime;
       setCurrentTime(newTime);
     }
   };
 
-  // 再生速度の変更
+  // 再生速度の変更（未完了の間は等速より速い再生＝早送りは不可）
   const handlePlaybackRateChange = (rate: number) => {
+    if (!hasCompletedOnce && rate > 1) {
+      return;
+    }
     if (videoRef.current) {
       videoRef.current.playbackRate = rate;
       setPlaybackRate(rate);
@@ -1019,18 +1044,27 @@ export default function VideoPlayerMobile({
                       className="absolute bottom-full right-0 mb-2 bg-black/95 rounded-lg overflow-hidden shadow-xl min-w-[6rem] z-20"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {playbackRateOptions.map((rate) => (
-                        <button
-                          key={rate}
-                          onClick={() => handlePlaybackRateChange(rate)}
-                          className={`block w-full text-left px-4 py-2 text-sm hover:bg-white/20 transition-colors ${
-                            rate === playbackRate ? 'text-blue-400 font-semibold' : 'text-white'
-                          }`}
-                          type="button"
-                        >
-                          {rate}x{rate === 1 ? ' (標準)' : ''}
-                        </button>
-                      ))}
+                      {playbackRateOptions.map((rate) => {
+                        const rateLocked = !hasCompletedOnce && rate > 1;
+                        return (
+                          <button
+                            key={rate}
+                            onClick={() => handlePlaybackRateChange(rate)}
+                            disabled={rateLocked}
+                            title={rateLocked ? '視聴完了後に利用できます' : undefined}
+                            className={`block w-full text-left px-4 py-2 text-sm transition-colors ${
+                              rateLocked
+                                ? 'text-gray-500 cursor-not-allowed'
+                                : rate === playbackRate
+                                ? 'text-blue-400 font-semibold hover:bg-white/20'
+                                : 'text-white hover:bg-white/20'
+                            }`}
+                            type="button"
+                          >
+                            {rate}x{rate === 1 ? ' (標準)' : ''}{rateLocked ? ' 🔒' : ''}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
