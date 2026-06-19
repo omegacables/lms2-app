@@ -23,16 +23,134 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 /**
+ * タブごとに独立した認証セッションを実現するための仕組み。
+ *
+ * 背景: supabase-js は storageKey を共有する全タブでセッションを同期するため、
+ * 同一ブラウザの別タブで2つ目のアカウントにログインすると最初のタブも
+ * そのアカウントに上書きされてしまう。
+ * そこで storageKey をタブごとに分け（sessionStorageに保持したタブIDを付与）、
+ * タブ単位で別アカウントに同時ログインできるようにする。
+ *
+ * 注意:
+ * - sessionStorage はタブを閉じると消えるため、ブラウザ／タブを閉じると
+ *   そのタブのログインは切れる（共有PCではむしろ望ましい挙動）。
+ * - PKCE の code-verifier だけはタブ間で共有する。パスワードリセットや
+ *   メール確認のリンクが別タブで開かれてもセッション交換が成功するようにするため。
+ */
+const LEGACY_AUTH_KEY = 'supabase.auth.token';
+const TAB_ID_SESSION_KEY = 'lms.auth.tab-id';
+const TAB_ALIVE_PREFIX = 'lms.auth.alive.';
+const SHARED_VERIFIER_KEY = 'supabase.auth.code-verifier';
+const TAB_ORPHAN_TTL_MS = 24 * 60 * 60 * 1000; // 24時間動きのないタブのセッションは掃除
+
+const getTabId = (): string => {
+  const existing = window.sessionStorage.getItem(TAB_ID_SESSION_KEY);
+  if (existing) return existing;
+  const id =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  window.sessionStorage.setItem(TAB_ID_SESSION_KEY, id);
+  return id;
+};
+
+const isVerifierKey = (key: string) => key.includes('code-verifier');
+
+// 閉じられたタブが残した古いセッションを localStorage から掃除する
+const cleanupOrphanTabSessions = (currentTabId: string) => {
+  try {
+    const now = Date.now();
+    const tokenPrefix = `${LEGACY_AUTH_KEY}.`;
+    const orphanIds: string[] = [];
+
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (!key || !key.startsWith(tokenPrefix)) continue;
+      const tabId = key.slice(tokenPrefix.length);
+      if (tabId === currentTabId) continue;
+      const aliveRaw = window.localStorage.getItem(`${TAB_ALIVE_PREFIX}${tabId}`);
+      const alive = aliveRaw ? parseInt(aliveRaw, 10) : 0;
+      if (!alive || now - alive > TAB_ORPHAN_TTL_MS) {
+        orphanIds.push(tabId);
+      }
+    }
+
+    orphanIds.forEach((tabId) => {
+      window.localStorage.removeItem(`${LEGACY_AUTH_KEY}.${tabId}`);
+      window.localStorage.removeItem(`${TAB_ALIVE_PREFIX}${tabId}`);
+    });
+  } catch {
+    // 掃除に失敗しても致命的ではないので無視
+  }
+};
+
+let resolvedStorageKey = LEGACY_AUTH_KEY;
+let perTabStorage: Storage | undefined;
+
+if (typeof window !== 'undefined') {
+  const tabId = getTabId();
+  resolvedStorageKey = `${LEGACY_AUTH_KEY}.${tabId}`;
+
+  // 既存ログイン（旧キーのセッション）を最初のタブへ引き継ぐ。
+  // 引き継いだ後は旧キーを消すので、他の新規タブは未ログイン状態になる。
+  try {
+    const legacySession = window.localStorage.getItem(LEGACY_AUTH_KEY);
+    if (legacySession && !window.localStorage.getItem(resolvedStorageKey)) {
+      window.localStorage.setItem(resolvedStorageKey, legacySession);
+      window.localStorage.removeItem(LEGACY_AUTH_KEY);
+    }
+  } catch {
+    // 移行に失敗しても通常ログインで続行可能
+  }
+
+  // このタブの生存マーカーを更新し、古いタブのセッションを掃除
+  const markAlive = () => {
+    try {
+      window.localStorage.setItem(`${TAB_ALIVE_PREFIX}${tabId}`, Date.now().toString());
+    } catch {
+      // 無視
+    }
+  };
+  markAlive();
+  cleanupOrphanTabSessions(tabId);
+  window.setInterval(markAlive, 5 * 60 * 1000); // 5分ごとに生存を記録
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') markAlive();
+  });
+
+  // code-verifier はタブ間共有、それ以外はタブ固有キーで localStorage に保存
+  perTabStorage = {
+    getItem: (key: string) =>
+      isVerifierKey(key)
+        ? window.localStorage.getItem(SHARED_VERIFIER_KEY)
+        : window.localStorage.getItem(key),
+    setItem: (key: string, value: string) => {
+      if (isVerifierKey(key)) window.localStorage.setItem(SHARED_VERIFIER_KEY, value);
+      else window.localStorage.setItem(key, value);
+    },
+    removeItem: (key: string) => {
+      if (isVerifierKey(key)) window.localStorage.removeItem(SHARED_VERIFIER_KEY);
+      else window.localStorage.removeItem(key);
+    },
+    clear: () => window.localStorage.clear(),
+    key: (index: number) => window.localStorage.key(index),
+    get length() {
+      return window.localStorage.length;
+    },
+  } as Storage;
+}
+
+/**
  * クライアントサイド用Supabaseクライアント
- * 認証セッションを適切に管理
+ * 認証セッションを適切に管理（タブごとに独立）
  */
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,    // トークンの自動更新を有効化
     persistSession: true,      // セッションの永続化を有効化
     detectSessionInUrl: true,  // URLからセッション検出を有効化
-    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-    storageKey: 'supabase.auth.token',
+    storage: perTabStorage,
+    storageKey: resolvedStorageKey, // タブごとに分けて同時複数ログインを可能にする
     flowType: 'pkce',          // より安全な認証フロー
     // デバッグモードを有効化
     debug: process.env.NODE_ENV === 'development',
