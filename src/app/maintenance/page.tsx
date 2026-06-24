@@ -25,9 +25,13 @@ export default function MaintenancePage() {
             </p>
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
               <p className="text-xl font-bold text-red-700 dark:text-red-400">
-                6月25日（木）〜 6月27日（土）12:00
+                6月25日（木）〜 6月26日（金）13:00
               </p>
             </div>
+            <p className="text-base text-gray-700 dark:text-gray-300 mb-3">
+              サーバーの通信の都合により、<br />
+              快適にご閲覧いただけない状況となっております。
+            </p>
             <p className="text-base text-gray-700 dark:text-gray-300">
               期間中は受講いただくことができません。<br />
               ご不便をおかけいたしますが、何卒ご了承ください。
@@ -45,7 +49,7 @@ export default function MaintenancePage() {
                 <ul className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
                   <li className="flex items-start">
                     <span className="inline-block w-2 h-2 bg-orange-500 rounded-full mr-2 mt-1.5"></span>
-                    <span><strong>6月27日（土）12:00</strong> よりサービス再開予定です</span>
+                    <span><strong>6月26日（金）13:00</strong> よりサービス再開予定です</span>
                   </li>
                   <li className="flex items-start">
                     <span className="inline-block w-2 h-2 bg-orange-500 rounded-full mr-2 mt-1.5"></span>
