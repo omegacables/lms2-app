@@ -8,34 +8,24 @@ export default function MaintenancePage() {
       <div className="max-w-2xl w-full">
         {/* メインカード */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 md:p-12">
-          {/* 年始アイコン */}
+          {/* メンテナンスアイコン */}
           <div className="flex justify-center mb-6">
-            <div className="text-7xl">🎍</div>
-          </div>
-
-          {/* 新年のご挨拶 */}
-          <div className="text-center mb-6">
-            <p className="text-2xl font-bold text-red-600 dark:text-red-400 mb-2">
-              謹賀新年
-            </p>
-            <p className="text-gray-600 dark:text-gray-300 text-sm">
-              本年もどうぞよろしくお願いいたします
-            </p>
+            <div className="text-7xl">🛠️</div>
           </div>
 
           {/* タイトル */}
           <h1 className="text-3xl md:text-4xl font-bold text-center text-gray-900 dark:text-white mb-4">
-            年始休業のお知らせ
+            メンテナンスのお知らせ
           </h1>
 
           <div className="text-center text-gray-600 dark:text-gray-300 mb-8">
             <p className="text-lg mb-4">
               誠に勝手ながら、下記期間中は<br />
-              サーバーを休止させていただきます。
+              システムメンテナンスを実施いたします。
             </p>
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
               <p className="text-xl font-bold text-red-700 dark:text-red-400">
-                1月1日（水）〜 1月5日（日）15:00
+                6月25日（木）〜 6月27日（土）12:00
               </p>
             </div>
             <p className="text-base text-gray-700 dark:text-gray-300">
@@ -55,7 +45,7 @@ export default function MaintenancePage() {
                 <ul className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
                   <li className="flex items-start">
                     <span className="inline-block w-2 h-2 bg-orange-500 rounded-full mr-2 mt-1.5"></span>
-                    <span><strong>1月5日（日）15:00</strong> よりサービス再開予定です</span>
+                    <span><strong>6月27日（土）12:00</strong> よりサービス再開予定です</span>
                   </li>
                   <li className="flex items-start">
                     <span className="inline-block w-2 h-2 bg-orange-500 rounded-full mr-2 mt-1.5"></span>
@@ -104,11 +94,11 @@ export default function MaintenancePage() {
           </div>
         </div>
 
-        {/* 年始装飾 */}
+        {/* メンテナンス装飾 */}
         <div className="mt-8 flex justify-center space-x-4 text-3xl">
-          <span>🎌</span>
-          <span>🌅</span>
-          <span>🎌</span>
+          <span>⚙️</span>
+          <span>🔧</span>
+          <span>⚙️</span>
         </div>
       </div>
     </div>
