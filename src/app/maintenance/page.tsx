@@ -53,6 +53,10 @@ export default function MaintenancePage() {
                   </li>
                   <li className="flex items-start">
                     <span className="inline-block w-2 h-2 bg-orange-500 rounded-full mr-2 mt-1.5"></span>
+                    <span>これまで閲覧された動画の視聴ログは記録されていますのでご安心ください</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="inline-block w-2 h-2 bg-orange-500 rounded-full mr-2 mt-1.5"></span>
                     <span>学習データは安全に保管されています</span>
                   </li>
                   <li className="flex items-start">
