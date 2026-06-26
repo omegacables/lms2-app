@@ -28,6 +28,7 @@ interface Course {
   category: string;
   difficulty_level: 'beginner' | 'intermediate' | 'advanced';
   completion_threshold: number;
+  show_viewing_notice: boolean;
   status: 'active' | 'inactive';
   thumbnail_url: string;
   thumbnail_file_path: string;
@@ -65,6 +66,7 @@ export default function EditCoursePage() {
     category: '',
     difficulty_level: 'beginner' as 'beginner' | 'intermediate' | 'advanced',
     completion_threshold: 80,
+    show_viewing_notice: true,
     status: 'active' as 'active' | 'inactive',
     estimated_duration: 0
   });
@@ -110,6 +112,7 @@ export default function EditCoursePage() {
         category: courseData.category || '',
         difficulty_level: courseData.difficulty_level || 'beginner',
         completion_threshold: courseData.completion_threshold || 80,
+        show_viewing_notice: courseData.show_viewing_notice !== false,
         status: courseData.status || 'active',
         estimated_duration: courseData.estimated_duration || calculatedDuration
       });
@@ -252,6 +255,7 @@ export default function EditCoursePage() {
         category: formData.category,
         difficulty_level: formData.difficulty_level,
         completion_threshold: formData.completion_threshold,
+        show_viewing_notice: formData.show_viewing_notice,
         status: formData.status,
         estimated_duration: manualDuration ? formData.estimated_duration : null,
         updated_at: new Date().toISOString()
@@ -508,6 +512,26 @@ export default function EditCoursePage() {
                           <option value="inactive">非公開</option>
                         </select>
                       </div>
+                    </div>
+
+                    {/* 視聴前の注意事項ポップアップ表示設定 */}
+                    <div className="pt-2">
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.show_viewing_notice}
+                          onChange={(e) => setFormData({ ...formData, show_viewing_notice: e.target.checked })}
+                          className="mt-1"
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            視聴前の注意事項ポップアップを表示する
+                          </span>
+                          <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            オフにすると、このコースの動画を再生する際の注意事項ダイアログを表示しません。
+                          </span>
+                        </span>
+                      </label>
                     </div>
                   </div>
                 </div>

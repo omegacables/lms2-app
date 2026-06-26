@@ -939,9 +939,10 @@ export default function VideoPlayerPage() {
               onComplete={handleVideoComplete}
               onBeforeUnload={saveProgressImmediately}
               onPlayStart={handlePlayStart}
-              enableSkipPrevention={!isAdmin && !hasCompletedBefore} // 管理者または完了済みの場合はスキップ防止を無効化
+              enableSkipPrevention={!isAdmin && !hasCompletedBefore && user?.profile?.can_skip_videos !== true} // 管理者・完了済み・スキップ許可ユーザーはスキップ防止を無効化
               completionThreshold={course?.completion_threshold || 95}
               isCompleted={hasCompletedBefore}
+              showViewingNotice={course?.show_viewing_notice !== false} // コース設定で注意事項ポップアップのON/OFF
             />
           </div>
 

@@ -566,6 +566,7 @@ export default function CourseLearnPage() {
                       title={currentVideo.title}
                       currentPosition={currentVideoLog?.current_position || 0}
                       isCompleted={(currentVideoLog?.progress_percent || 0) >= COMPLETION_THRESHOLD}
+                      canSkip={isAdmin || user?.profile?.can_skip_videos === true}
                       onProgressUpdate={handleProgressUpdate}
                       onError={(error) => console.error('Video error:', error)}
                       onSaveProgressRef={saveProgressRef}

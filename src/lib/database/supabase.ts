@@ -317,6 +317,7 @@ export type Database = {
           last_login_at: string | null;
           password_changed_at: string | null;
           is_active: boolean;
+          can_skip_videos: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -330,6 +331,7 @@ export type Database = {
           last_login_at?: string | null;
           password_changed_at?: string | null;
           is_active?: boolean;
+          can_skip_videos?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -343,6 +345,7 @@ export type Database = {
           last_login_at?: string | null;
           password_changed_at?: string | null;
           is_active?: boolean;
+          can_skip_videos?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -475,6 +478,7 @@ export type Database = {
           difficulty_level: 'beginner' | 'intermediate' | 'advanced' | null;
           estimated_duration: number | null;
           completion_threshold: number;
+          show_viewing_notice: boolean;
           order_index: number;
           created_by: string | null;
           created_at: string;
@@ -490,6 +494,7 @@ export type Database = {
           difficulty_level?: 'beginner' | 'intermediate' | 'advanced' | null;
           estimated_duration?: number | null;
           completion_threshold?: number;
+          show_viewing_notice?: boolean;
           order_index?: number;
           created_by?: string | null;
           created_at?: string;
@@ -505,6 +510,7 @@ export type Database = {
           difficulty_level?: 'beginner' | 'intermediate' | 'advanced' | null;
           estimated_duration?: number | null;
           completion_threshold?: number;
+          show_viewing_notice?: boolean;
           order_index?: number;
           created_by?: string | null;
           created_at?: string;

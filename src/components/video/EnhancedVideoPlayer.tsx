@@ -25,6 +25,7 @@ interface EnhancedVideoPlayerProps {
   enableSkipPrevention?: boolean;
   completionThreshold?: number;
   isCompleted?: boolean;
+  showViewingNotice?: boolean;
 }
 
 export function EnhancedVideoPlayer({
@@ -38,7 +39,8 @@ export function EnhancedVideoPlayer({
   onPlayStart,
   enableSkipPrevention = true,
   completionThreshold = 95,
-  isCompleted = false
+  isCompleted = false,
+  showViewingNotice = true
 }: EnhancedVideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -740,13 +742,13 @@ export function EnhancedVideoPlayer({
     }
   };
 
-  // 完了済み動画の場合は警告をスキップして自動再生しない
+  // 完了済み動画、またはコース設定で注意事項が無効の場合は警告をスキップ
   useEffect(() => {
-    if (isCompleted && showWarning) {
+    if ((isCompleted || !showViewingNotice) && showWarning) {
       setShowWarning(false);
       setViewingSession(crypto.randomUUID());
     }
-  }, [isCompleted, showWarning]);
+  }, [isCompleted, showWarning, showViewingNotice]);
 
   // スペースキーで再生/停止（input/textarea/button 等にフォーカス中は無効）
   const togglePlayRef = useRef<() => void>(() => {});
@@ -804,7 +806,7 @@ export function EnhancedVideoPlayer({
   };
 
   // 警告ダイアログまたは動画プレイヤーを表示
-  if (showWarning && !isCompleted) {
+  if (showWarning && !isCompleted && showViewingNotice) {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white dark:bg-neutral-900 rounded-lg p-8 max-w-2xl mx-4 shadow-xl">

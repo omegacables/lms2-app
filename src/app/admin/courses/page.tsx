@@ -21,6 +21,7 @@ import {
   AcademicCapIcon,
   FunnelIcon,
   ChevronDownIcon,
+  DocumentDuplicateIcon,
 } from '@heroicons/react/24/outline';
 import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
 import type { Tables } from '@/lib/database/supabase';
@@ -65,6 +66,7 @@ export default function CoursesPage() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [duplicatingId, setDuplicatingId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchCourses();
@@ -160,6 +162,44 @@ export default function CoursesPage() {
     } catch (error) {
       console.error('コース削除エラー:', error);
       alert(`コースの削除に失敗しました: ${(error as Error).message}`);
+    }
+  };
+
+  const handleDuplicate = async (courseId: number) => {
+    if (!confirm('このコースを複製しますか？\n動画・章ごとコピーされ、複製は「非公開」で作成されます。')) {
+      return;
+    }
+
+    try {
+      setDuplicatingId(courseId);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('認証セッションが見つかりません');
+      }
+
+      const response = await fetch(`/api/courses/${courseId}/duplicate`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'コース複製に失敗しました');
+      }
+
+      alert('コースを複製しました。複製は「非公開」で作成されています。');
+      // キャッシュをクリアして一覧を再取得
+      courseCache.clear();
+      await fetchCourses();
+    } catch (error) {
+      console.error('コース複製エラー:', error);
+      alert(`コースの複製に失敗しました: ${(error as Error).message}`);
+    } finally {
+      setDuplicatingId(null);
     }
   };
 
@@ -437,6 +477,16 @@ export default function CoursesPage() {
                             <PencilIcon className="h-4 w-4" />
                           </Button>
                         </Link>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDuplicate(course.id)}
+                          disabled={duplicatingId === course.id}
+                          title="このコースを複製"
+                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                        >
+                          <DocumentDuplicateIcon className="h-4 w-4" />
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"

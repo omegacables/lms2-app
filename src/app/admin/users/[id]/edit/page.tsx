@@ -27,6 +27,7 @@ interface UserData {
   department: string;
   role: 'student' | 'instructor' | 'admin' | 'labor_consultant';
   is_active: boolean;
+  can_skip_videos: boolean;
 }
 
 
@@ -44,7 +45,8 @@ export default function EditUserPage() {
     company: '',
     department: '',
     role: 'student' as 'student' | 'instructor' | 'admin' | 'labor_consultant',
-    is_active: true
+    is_active: true,
+    can_skip_videos: false
   });
 
   useEffect(() => {
@@ -78,7 +80,8 @@ export default function EditUserPage() {
         company: profileData.company || '',
         department: profileData.department || '',
         role: profileData.role || 'student',
-        is_active: profileData.is_active !== false
+        is_active: profileData.is_active !== false,
+        can_skip_videos: profileData.can_skip_videos === true
       };
 
       setUserData(userInfo);
@@ -87,7 +90,8 @@ export default function EditUserPage() {
         company: userInfo.company,
         department: userInfo.department,
         role: userInfo.role,
-        is_active: userInfo.is_active
+        is_active: userInfo.is_active,
+        can_skip_videos: userInfo.can_skip_videos
       });
     } catch (error) {
       console.error('ユーザー情報取得エラー:', error);
@@ -107,7 +111,8 @@ export default function EditUserPage() {
             company: profileData.company || '',
             department: profileData.department || '',
             role: profileData.role || 'student',
-            is_active: profileData.is_active !== false
+            is_active: profileData.is_active !== false,
+            can_skip_videos: profileData.can_skip_videos === true
           };
 
           setUserData(userInfo);
@@ -116,7 +121,8 @@ export default function EditUserPage() {
             company: userInfo.company,
             department: userInfo.department,
             role: userInfo.role,
-            is_active: userInfo.is_active
+            is_active: userInfo.is_active,
+            can_skip_videos: userInfo.can_skip_videos
           });
         }
       } catch (fallbackError) {
@@ -151,6 +157,7 @@ export default function EditUserPage() {
           department: formData.department,
           role: formData.role,
           is_active: formData.is_active,
+          can_skip_videos: formData.can_skip_videos,
           updated_at: new Date().toISOString()
         })
         .eq('id', userId);
@@ -310,6 +317,26 @@ export default function EditUserPage() {
                     className="mr-2"
                   />
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">アクティブ</span>
+                </label>
+              </div>
+
+              {/* 動画スキップ許可 */}
+              <div className="mb-6">
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.can_skip_videos}
+                    onChange={(e) => setFormData({ ...formData, can_skip_videos: e.target.checked })}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      動画のスキップを許可する（早送り制限の解除）
+                    </span>
+                    <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      オンにすると、このユーザーは未視聴部分への早送り・シーク・倍速再生が自由にできます。
+                    </span>
+                  </span>
                 </label>
               </div>
 

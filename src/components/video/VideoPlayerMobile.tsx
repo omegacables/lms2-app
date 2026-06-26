@@ -17,6 +17,7 @@ interface VideoPlayerMobileProps {
   title?: string;
   currentPosition?: number;
   isCompleted?: boolean;
+  canSkip?: boolean;
   onProgressUpdate?: (position: number, totalWatched: number, progressPercent: number, isComplete: boolean) => void;
   onError?: (error: string) => void;
   onSaveProgressRef?: React.MutableRefObject<(() => void) | null>;
@@ -28,6 +29,7 @@ export default function VideoPlayerMobile({
   title,
   currentPosition = 0,
   isCompleted = false,
+  canSkip = false,
   onProgressUpdate,
   onError,
   onSaveProgressRef
@@ -343,8 +345,8 @@ export default function VideoPlayerMobile({
     if (videoRef.current) {
       const currentTime = videoRef.current.currentTime;
 
-      // 未完了の間は未視聴部分への早送りを阻止（ネイティブコントロール等の迂回対策）
-      if (!hasCompletedOnce && currentTime > maxWatchedTimeRef.current + 2) {
+      // 未完了かつスキップ許可がない間は、未視聴部分への早送りを阻止（ネイティブコントロール等の迂回対策）
+      if (!hasCompletedOnce && !canSkip && currentTime > maxWatchedTimeRef.current + 2) {
         videoRef.current.currentTime = maxWatchedTimeRef.current;
         setCurrentTime(maxWatchedTimeRef.current);
         return;
@@ -516,7 +518,7 @@ export default function VideoPlayerMobile({
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newTime = parseFloat(e.target.value);
     if (videoRef.current) {
-      if (!hasCompletedOnce && newTime > maxWatchedTimeRef.current) {
+      if (!hasCompletedOnce && !canSkip && newTime > maxWatchedTimeRef.current) {
         videoRef.current.currentTime = maxWatchedTimeRef.current;
         setCurrentTime(maxWatchedTimeRef.current);
         return;
@@ -526,9 +528,9 @@ export default function VideoPlayerMobile({
     }
   };
 
-  // 再生速度の変更（未完了の間は等速より速い再生＝早送りは不可）
+  // 再生速度の変更（未完了かつスキップ許可がない間は等速より速い再生＝早送りは不可）
   const handlePlaybackRateChange = (rate: number) => {
-    if (!hasCompletedOnce && rate > 1) {
+    if (!hasCompletedOnce && !canSkip && rate > 1) {
       return;
     }
     if (videoRef.current) {
@@ -1045,7 +1047,7 @@ export default function VideoPlayerMobile({
                       onClick={(e) => e.stopPropagation()}
                     >
                       {playbackRateOptions.map((rate) => {
-                        const rateLocked = !hasCompletedOnce && rate > 1;
+                        const rateLocked = !hasCompletedOnce && !canSkip && rate > 1;
                         return (
                           <button
                             key={rate}

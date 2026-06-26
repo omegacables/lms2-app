@@ -18,6 +18,7 @@ export interface UserProfile {
   last_login_at?: string;
   password_changed_at?: string;
   is_active: boolean;
+  can_skip_videos?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -32,6 +33,7 @@ export interface Course {
   difficulty_level?: DifficultyLevel;
   estimated_duration?: number;
   completion_threshold: number;
+  show_viewing_notice?: boolean;
   order_index: number;
   created_by?: string;
   created_at: string;
