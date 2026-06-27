@@ -40,6 +40,7 @@ interface StudentDetail {
   department?: string;
   role: string;
   is_active: boolean;
+  can_skip_videos?: boolean;
   last_login_at?: string;
   password_changed_at?: string;
   created_at: string;
@@ -83,7 +84,8 @@ export default function StudentDetailPage() {
     display_name: '',
     company: '',
     department: '',
-    is_active: true
+    is_active: true,
+    can_skip_videos: false
   });
 
   const studentId = params.id as string;
@@ -139,7 +141,8 @@ export default function StudentDetailPage() {
         display_name: finalStudentData.display_name || '',
         company: finalStudentData.company || '',
         department: finalStudentData.department || '',
-        is_active: finalStudentData.is_active ?? true
+        is_active: finalStudentData.is_active ?? true,
+        can_skip_videos: finalStudentData.can_skip_videos === true
       });
 
     } catch (error) {
@@ -260,6 +263,7 @@ export default function StudentDetailPage() {
           company: editForm.company,
           department: editForm.department,
           is_active: editForm.is_active,
+          can_skip_videos: editForm.can_skip_videos,
           updated_at: new Date().toISOString()
         })
         .eq('id', studentId);
@@ -441,7 +445,8 @@ export default function StudentDetailPage() {
                             display_name: student.display_name || '',
                             company: student.company || '',
                             department: student.department || '',
-                            is_active: student.is_active ?? true
+                            is_active: student.is_active ?? true,
+                            can_skip_videos: student.can_skip_videos === true
                           });
                         }}
                       >
@@ -494,6 +499,21 @@ export default function StudentDetailPage() {
                       />
                       <label htmlFor="is_active" className="text-sm font-medium text-gray-700 dark:text-gray-300">
                         アクティブ
+                      </label>
+                    </div>
+                    <div className="flex items-start space-x-3">
+                      <input
+                        type="checkbox"
+                        id="can_skip_videos"
+                        checked={editForm.can_skip_videos}
+                        onChange={(e) => setEditForm({...editForm, can_skip_videos: e.target.checked})}
+                        className="mt-1 w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                      />
+                      <label htmlFor="can_skip_videos" className="text-sm text-gray-700 dark:text-gray-300">
+                        <span className="block font-medium">動画のスキップを許可する（早送り制限の解除）</span>
+                        <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                          オンにすると、このユーザーは未視聴部分への早送り・シーク・倍速再生が自由にできます。
+                        </span>
                       </label>
                     </div>
                   </div>
