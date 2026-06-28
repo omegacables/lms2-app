@@ -12,13 +12,14 @@ import { requireAdmin } from '@/lib/auth/requireAdmin';
  */
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const auth = await requireAdmin(req);
     if (!auth.ok) return auth.response;
 
-    const sourceId = parseInt(params.id);
+    const { id } = await params;
+    const sourceId = parseInt(id);
     if (!sourceId || isNaN(sourceId)) {
       return NextResponse.json({ error: '無効なコースIDです' }, { status: 400 });
     }
