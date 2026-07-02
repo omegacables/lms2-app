@@ -487,53 +487,49 @@ supabase.auth.onAuthStateChange(async (event, session) => {
   const store = useAuthStore.getState();
 
   if (event === 'SIGNED_IN' && session?.user) {
-    console.log('[Auth State Change] User signed in:', session.user.email);
-    
-    // 開発環境では迅速にユーザーを設定（プロフィール取得は後回し）
-    const authUser: AuthUser = {
-      id: session.user.id,
-      email: session.user.email!,
-      profile: undefined, // プロフィールは後で取得
-    };
+    // 既に同じユーザーがストアにいる場合は何もしない
+    // （タブ復帰やトークン更新で SIGNED_IN が再発火しても、userオブジェクト参照を変えず
+    //   視聴ページなどが不要に再レンダー／再取得＝プレーヤー再マウントしないようにする）
+    if (store.user?.id === session.user.id) {
+      console.log('[Auth State Change] SIGNED_IN: 同一ユーザーのため据え置き');
+      return;
+    }
 
-    console.log('[Auth State Change] Setting user in store:', authUser.email);
-    store.setUser(authUser);
-    
-    // バックグラウンドでプロフィールを取得（非同期）
-    setTimeout(async () => {
+    console.log('[Auth State Change] User signed in:', session.user.email);
+
+    // プロフィールを取得してから1回だけ set する（profile:undefined の一瞬のブレを作らない）
+    (async () => {
+      let profile = undefined;
       try {
-        const { data: profile } = await supabase
+        const { data } = await supabase
           .from('user_profiles')
           .select('*')
           .eq('id', session.user.id)
           .single();
-
-        if (profile) {
-          const updatedAuthUser: AuthUser = {
-            ...authUser,
-            profile: profile,
-          };
-          console.log('[Auth State Change] Profile loaded for:', updatedAuthUser.email);
-          store.setUser(updatedAuthUser);
-        }
+        profile = data || undefined;
       } catch (error) {
         console.warn('[Auth State Change] Profile fetch failed:', error);
       }
-    }, 100);
-    
+      // 取得中に別状態へ変わっていないか確認
+      if (useAuthStore.getState().user?.id === session.user.id) return;
+      store.setUser({ id: session.user.id, email: session.user.email!, profile });
+    })();
+
   } else if (event === 'SIGNED_OUT') {
     console.log('[Auth State Change] User signed out');
     store.setUser(null);
   } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-    console.log('[Auth State Change] Token refreshed for:', session.user.email);
-    
-    const authUser: AuthUser = {
+    // トークン更新はセッションのみ更新すればよく、userオブジェクトは変えない
+    // （参照が変わると視聴中ページが再取得＝動画が途切れる原因になる）
+    if (store.user?.id === session.user.id) {
+      console.log('[Auth State Change] TOKEN_REFRESHED: userは据え置き');
+      return;
+    }
+    store.setUser({
       id: session.user.id,
       email: session.user.email!,
-      profile: store.user?.profile || undefined, // 既存のプロフィールを保持
-    };
-
-    store.setUser(authUser);
+      profile: store.user?.profile || undefined,
+    });
   }
 });
 

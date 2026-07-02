@@ -10,6 +10,19 @@ export async function middleware(req: NextRequest) {
     },
   });
 
+  // デバッグ／テスト用APIは本番では無効化（未認証・service role で情報漏洩する恐れがあるため）
+  const path = req.nextUrl.pathname;
+  const isDebugOrTestApi =
+    path.startsWith('/api/debug') ||
+    path.startsWith('/api/test') ||
+    ['/api/test-db', '/api/test-auth', '/api/test-connection', '/api/test-certificate', '/api/check-session'].includes(path);
+  if (isDebugOrTestApi) {
+    if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    return res; // 開発環境では通す
+  }
+
   // メンテナンスページへのアクセスは常に許可
   if (req.nextUrl.pathname === '/maintenance') {
     return res;
@@ -177,5 +190,13 @@ export const config = {
      * - public folder
      */
     '/((?!api|_next/static|_next/image|favicon.ico|public).*)',
+    // デバッグ／テスト用APIは本番で無効化するため個別に対象へ含める
+    '/api/debug/:path*',
+    '/api/test/:path*',
+    '/api/test-db',
+    '/api/test-auth',
+    '/api/test-connection',
+    '/api/test-certificate',
+    '/api/check-session',
   ],
 };

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminSupabaseClient } from '@/lib/database/supabase';
+import { requireAdmin } from '@/lib/auth/requireAdmin';
 
 // コース割り当て一覧を取得
 export async function GET(
@@ -7,6 +8,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
     const supabase = createAdminSupabaseClient();
     const { id: userId } = await params;
 
@@ -111,6 +114,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
     const supabase = createAdminSupabaseClient();
     const { id: userId } = await params;
     const { courseIds, assignedBy } = await request.json();
@@ -185,6 +190,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
     const supabase = createAdminSupabaseClient();
     const { id: userId } = await params;
     const { courseId } = await request.json();

@@ -68,6 +68,22 @@ export default function VideoPlayerPage() {
   const sessionId = useRef<string>(crypto.randomUUID());
   const progressUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingUpdateRef = useRef<{ position: number; videoDuration: number; progressPercent: number } | null>(null);
+  // sendBeacon は Authorization ヘッダを付けられないため、最新のアクセストークンを保持して本文に載せる
+  const accessTokenRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (active) accessTokenRef.current = data.session?.access_token ?? null;
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      accessTokenRef.current = session?.access_token ?? null;
+    });
+    return () => {
+      active = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
 
   // file_url から Storage 内のパスを抽出（public / sign / 直接パス いずれも対応）
   const extractStoragePath = (url: string | null | undefined): string | null => {
@@ -159,10 +175,12 @@ export default function VideoPlayerPage() {
   };
 
   useEffect(() => {
-    if (courseId && videoId && user) {
+    if (courseId && videoId && user?.id) {
       fetchVideoDetails();
     }
-  }, [courseId, videoId, user]);
+    // 依存は user?.id のみ（トークン自動更新でuserオブジェクト参照が変わっても再取得＝プレーヤー再マウントしない）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId, videoId, user?.id]);
 
   // コンポーネントのアンマウント時とページ離脱時に進捗を保存
   useEffect(() => {
@@ -174,6 +192,7 @@ export default function VideoPlayerPage() {
 
         // sendBeaconで終了時刻を送信（より確実）
         const endTimePayload = {
+          access_token: accessTokenRef.current,
           log_id: viewLog.id,
           end_time: now,
           last_updated: now,
@@ -201,6 +220,7 @@ export default function VideoPlayerPage() {
 
           // sendBeaconで終了時刻を送信
           const payload = {
+            access_token: accessTokenRef.current,
             log_id: viewLog.id,
             end_time: now,
             last_updated: now,
@@ -233,6 +253,7 @@ export default function VideoPlayerPage() {
         // 終了時刻を記録
         const now = getJSTTimestamp();
         const payload = {
+          access_token: accessTokenRef.current,
           log_id: viewLog.id,
           end_time: now,
           last_updated: now,
@@ -729,6 +750,7 @@ export default function VideoPlayerPage() {
       );
 
       const payload = {
+        access_token: accessTokenRef.current,
         user_id: user!.id,
         video_id: videoId,
         course_id: courseId,

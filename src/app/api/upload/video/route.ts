@@ -1,21 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/database/supabase';
+import { createAdminSupabaseClient } from '@/lib/database/supabase';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60; // 最大60秒の実行時間
 
+// 許可する動画のMIME/拡張子
+const ALLOWED_MIME = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-m4v'];
+const ALLOWED_EXT = ['.mp4', '.webm', '.mov', '.m4v'];
+
 export async function POST(request: NextRequest) {
   try {
-    // 認証チェック
+    // 認証チェック（トークンを実際に検証する）
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { error: '認証が必要です' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
     }
-
     const token = authHeader.substring(7);
+
+    const supabase = createAdminSupabaseClient();
+
+    // トークンからユーザーを検証
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !authUser) {
+      return NextResponse.json({ error: '認証に失敗しました' }, { status: 401 });
+    }
+    // 管理者／講師のみアップロード可
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', authUser.id)
+      .single();
+    if (!profile || (profile.role !== 'admin' && profile.role !== 'instructor')) {
+      return NextResponse.json({ error: 'アップロード権限がありません' }, { status: 403 });
+    }
 
     // フォームデータを取得
     const formData = await request.formData();
@@ -39,6 +56,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'ファイルサイズが大きすぎます（最大3GB）' },
         { status: 413 }
+      );
+    }
+
+    // MIME／拡張子のホワイトリスト検証
+    const lowerName = (file.name || '').toLowerCase();
+    const extOk = ALLOWED_EXT.some((ext) => lowerName.endsWith(ext));
+    const mimeOk = !file.type || ALLOWED_MIME.includes(file.type);
+    if (!extOk || !mimeOk) {
+      return NextResponse.json(
+        { error: '対応していないファイル形式です（mp4 / webm / mov のみ）' },
+        { status: 415 }
       );
     }
 

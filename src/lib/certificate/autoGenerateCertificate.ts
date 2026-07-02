@@ -13,15 +13,20 @@ export async function autoGenerateCertificate(
   console.log(`  コースID: ${courseId}`);
 
   try {
+    // 認証トークンを取得（APIが本人/管理者を検証するため）
+    const { data: { session } } = await supabase.auth.getSession();
+
     // APIエンドポイントを呼び出して証明書を生成
     const response = await fetch('/api/certificates/generate', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token ?? ''}`,
       },
       body: JSON.stringify({
         userId,
-        courseId
+        courseId,
+        access_token: session?.access_token,
       })
     });
 

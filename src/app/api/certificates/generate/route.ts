@@ -43,13 +43,36 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { userId, courseId } = body;
+    const { userId, courseId, access_token } = body;
 
     if (!userId || !courseId) {
       return NextResponse.json({
         success: false,
         error: 'Missing required parameters'
       }, { status: 400 });
+    }
+
+    // 認証：本文のトークンまたはAuthorizationヘッダで本人を検証
+    const headerToken = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
+    const token = access_token || headerToken;
+    if (!token) {
+      return NextResponse.json({ success: false, error: '認証が必要です' }, { status: 401 });
+    }
+    const { data: { user: authUser }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !authUser) {
+      return NextResponse.json({ success: false, error: '認証に失敗しました' }, { status: 401 });
+    }
+    // 本人、または admin / instructor / labor_consultant のみ発行可
+    if (authUser.id !== userId) {
+      const { data: requester } = await supabaseAdmin
+        .from('user_profiles')
+        .select('role')
+        .eq('id', authUser.id)
+        .single();
+      const role = requester?.role;
+      if (role !== 'admin' && role !== 'instructor' && role !== 'labor_consultant') {
+        return NextResponse.json({ success: false, error: '権限がありません' }, { status: 403 });
+      }
     }
 
     console.log('✨ 証明書生成API開始');

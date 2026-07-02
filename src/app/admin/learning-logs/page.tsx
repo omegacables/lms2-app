@@ -454,14 +454,17 @@ export default function LearningLogsPage() {
         if (newLog.user_id && newLog.course_id) {
           try {
             console.log('学習ログ追加後、コース完了・証明書生成を確認中...');
+            const { data: { session: certSession } } = await supabase.auth.getSession();
             const certResponse = await fetch('/api/certificates/generate', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
+                'Authorization': `Bearer ${certSession?.access_token ?? ''}`,
               },
               body: JSON.stringify({
                 userId: newLog.user_id,
-                courseId: parseInt(newLog.course_id)
+                courseId: parseInt(newLog.course_id),
+                access_token: certSession?.access_token,
               })
             });
             const certResult = await certResponse.json();
@@ -538,14 +541,17 @@ export default function LearningLogsPage() {
         if (editingLog.user_id && editingLog.course_id) {
           try {
             console.log('学習ログ更新後、コース完了・証明書生成を確認中...');
+            const { data: { session: certSession } } = await supabase.auth.getSession();
             const certResponse = await fetch('/api/certificates/generate', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
+                'Authorization': `Bearer ${certSession?.access_token ?? ''}`,
               },
               body: JSON.stringify({
                 userId: editingLog.user_id,
-                courseId: parseInt(editingLog.course_id)
+                courseId: parseInt(editingLog.course_id),
+                access_token: certSession?.access_token,
               })
             });
             const certResult = await certResponse.json();

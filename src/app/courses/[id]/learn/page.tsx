@@ -36,6 +36,28 @@ export default function CourseLearnPage() {
 
   // 動画プレーヤーへの参照
   const saveProgressRef = useRef<(() => void) | null>(null);
+  // このページ表示中の視聴セッションID（動画ごとに1行を更新し続けるための識別子）
+  const sessionId = useRef<string>(crypto.randomUUID());
+  // 動画ID → この視聴セッションで使うログID（INSERTの乱発を防ぎ、同じ行をUPDATEする）
+  const sessionLogIdRef = useRef<Record<number, number>>({});
+  // 離脱時 sendBeacon 用：最後に計算した進捗ペイロード
+  const lastProgressRef = useRef<any>(null);
+  // sendBeacon は Authorization ヘッダを付けられないため、最新のアクセストークンを保持
+  const accessTokenRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (active) accessTokenRef.current = data.session?.access_token ?? null;
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      accessTokenRef.current = session?.access_token ?? null;
+    });
+    return () => {
+      active = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
 
   // コースと動画の状態
   const [course, setCourse] = useState<Course | null>(null);
@@ -59,12 +81,13 @@ export default function CourseLearnPage() {
     completionDate: null as Date | null,
   });
 
-  // 初期データ取得
+  // 初期データ取得（依存は user?.id のみ。トークン更新でuser参照が変わっても再取得しない）
   useEffect(() => {
-    if (courseId && user) {
+    if (courseId && user?.id) {
       fetchCourseData();
     }
-  }, [courseId, user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId, user?.id]);
 
   // 現在の動画の再生URL（bucket private/public いずれでも再生可能なように署名付きURLを使用）
   useEffect(() => {
@@ -105,31 +128,34 @@ export default function CourseLearnPage() {
     };
   }, [videos, currentVideoIndex]);
 
+  // 離脱時に sendBeacon で確実に進捗を送る（unload中の通常fetch/supabase呼び出しは中断されるため）
+  const flushProgressBeacon = () => {
+    const p = lastProgressRef.current;
+    if (!p || !p.log_id) return;
+    const payload = { ...p, access_token: accessTokenRef.current };
+    try {
+      const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+      navigator.sendBeacon('/api/videos/save-progress', blob);
+    } catch (e) {
+      // 失敗しても致命的ではない
+    }
+  };
+
   // ページ離脱時のログ保存（ポップアップなし）
   useEffect(() => {
     const handleBeforeUnload = () => {
-      // 必ず進捗を保存（ポップアップは表示しない）
-      console.log('[Learn] 🚨 beforeunload - 進捗保存');
-      if (saveProgressRef.current) {
-        saveProgressRef.current();
-      }
+      // プレーヤーに最新値を lastProgressRef へ反映させてから beacon 送信
+      if (saveProgressRef.current) saveProgressRef.current();
+      flushProgressBeacon();
     };
-
     const handlePageHide = () => {
-      // ページが完全に隠れる前に保存（モバイル対応）
-      console.log('[Learn] 📱 pagehide - 進捗保存');
-      if (saveProgressRef.current) {
-        saveProgressRef.current();
-      }
+      if (saveProgressRef.current) saveProgressRef.current();
+      flushProgressBeacon();
     };
-
     const handleVisibilityChange = () => {
-      // タブ切り替え時も保存
       if (document.hidden) {
-        console.log('[Learn] 👁️ visibilitychange - 進捗保存');
-        if (saveProgressRef.current) {
-          saveProgressRef.current();
-        }
+        if (saveProgressRef.current) saveProgressRef.current();
+        flushProgressBeacon();
       }
     };
 
@@ -324,60 +350,79 @@ export default function CourseLearnPage() {
       return;
     }
 
+    // 離脱時 beacon 用に、最新の進捗を常に控えておく（この動画のセッションログIDに紐付け）
+    lastProgressRef.current = {
+      log_id: sessionLogIdRef.current[currentVideo.id] ?? undefined,
+      video_id: currentVideo.id,
+      course_id: courseId,
+      session_id: sessionId.current,
+      current_position: Math.round(position),
+      total_watched_time: totalWatched,
+      progress_percent: progressPercent,
+      status: isComplete ? 'completed' : 'in_progress',
+      end_time: new Date().toISOString(),
+    };
+
     setIsSaving(true);
 
     try {
       const now = new Date().toISOString();
+      const existingLogId = sessionLogIdRef.current[currentVideo.id];
 
-      // ✅ 100%未満の場合は常に新しいログを作成（履歴として残る）
-      const insertData = {
-        user_id: user.id,
-        course_id: courseId,
-        video_id: currentVideo.id,
-        current_position: position,
-        total_watched_time: totalWatched,
-        progress_percent: progressPercent,
-        completed_at: isComplete ? now : null,
-        start_time: now, // 視聴開始時刻
-        end_time: now, // 視聴終了時刻
-        last_updated: now,
-      };
-
-      const { data, error } = await supabase
-        .from('video_view_logs')
-        .insert(insertData)
-        .select()
-        .single();
-
-      if (error) {
-        console.error('[Learn] 新規ログ作成エラー:', error);
-        throw error;
+      // この視聴セッションで既に行があれば UPDATE（無ければ INSERT）
+      // → 保存のたびに行が増える問題を解消し、1セッション1行に集約
+      if (existingLogId) {
+        const currentProgress = latestLog?.progress_percent || 0;
+        const nextProgress = Math.max(progressPercent, currentProgress);
+        const { data, error } = await supabase
+          .from('video_view_logs')
+          .update({
+            current_position: position,
+            total_watched_time: totalWatched,
+            progress_percent: nextProgress,
+            completed_at: isComplete ? now : null,
+            status: isComplete ? 'completed' : 'in_progress',
+            end_time: now,
+            last_updated: now,
+          })
+          .eq('id', existingLogId)
+          .eq('user_id', user.id)
+          .select()
+          .single();
+        if (error) throw error;
+        setViewLogs(prev => prev.map(l => (l.id === existingLogId ? data : l)));
+      } else {
+        const insertData = {
+          user_id: user.id,
+          course_id: courseId,
+          video_id: currentVideo.id,
+          session_id: sessionId.current,
+          current_position: position,
+          total_watched_time: totalWatched,
+          progress_percent: progressPercent,
+          completed_at: isComplete ? now : null,
+          status: isComplete ? 'completed' : 'in_progress',
+          start_time: now,
+          end_time: now,
+          last_updated: now,
+        };
+        const { data, error } = await supabase
+          .from('video_view_logs')
+          .insert(insertData)
+          .select()
+          .single();
+        if (error) throw error;
+        sessionLogIdRef.current[currentVideo.id] = data.id;
+        lastProgressRef.current.log_id = data.id;
+        setViewLogs(prev => [...prev, data]);
       }
-
-      console.log('[Learn] 📝 新規ログ作成（履歴）:', {
-        videoId: currentVideo.id,
-        logId: data.id,
-        startTime: now,
-        endTime: now,
-        position: position.toFixed(2),
-        progress: progressPercent,
-        isComplete,
-        isNewCompletion: isComplete && !wasCompleted
-      });
-
-      // ローカル状態に追加
-      setViewLogs(prev => [...prev, data]);
-
-      // 進捗を再計算（viewLogsは既にsetViewLogsで更新されているので、それを使用）
-      calculateCourseProgress(videos, viewLogs);
 
       // 動画が完了し、次の動画がある場合は自動的に次へ
       if (isComplete && currentVideoIndex < videos.length - 1) {
         setTimeout(() => {
           handleNextVideo();
-        }, 2000); // 2秒後に次の動画へ
+        }, 2000);
       }
-
     } catch (err) {
       console.error('Error updating progress:', err);
     } finally {

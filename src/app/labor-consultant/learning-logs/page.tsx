@@ -362,14 +362,17 @@ export default function LaborConsultantLearningLogsPage() {
         // ログ更新後、コースが完了したか確認して証明書生成を試みる
         if (editingLog.user_id && editingLog.course_id) {
           try {
+            const { data: { session: certSession } } = await supabase.auth.getSession();
             const certResponse = await fetch('/api/certificates/generate', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
+                'Authorization': `Bearer ${certSession?.access_token ?? ''}`,
               },
               body: JSON.stringify({
                 userId: editingLog.user_id,
-                courseId: editingLog.course_id
+                courseId: editingLog.course_id,
+                access_token: certSession?.access_token,
               })
             });
             const certResult = await certResponse.json();

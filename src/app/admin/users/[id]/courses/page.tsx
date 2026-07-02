@@ -142,7 +142,10 @@ export default function StudentCoursesPage() {
 
   const fetchAssignedCourses = async () => {
     try {
-      const response = await fetch(`/api/admin/users/${studentId}/courses`);
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch(`/api/admin/users/${studentId}/courses`, {
+        headers: { 'Authorization': `Bearer ${session?.access_token ?? ''}` },
+      });
       const data = await response.json();
 
       if (data.success) {
@@ -215,10 +218,12 @@ export default function StudentCoursesPage() {
 
     setSaving(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch(`/api/admin/users/${studentId}/courses`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token ?? ''}`
         },
         body: JSON.stringify({
           courseIds: selectedCourses,
@@ -250,10 +255,12 @@ export default function StudentCoursesPage() {
     }
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch(`/api/admin/users/${studentId}/courses`, {
         method: 'DELETE',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token ?? ''}`
         },
         body: JSON.stringify({ courseId })
       });

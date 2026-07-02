@@ -1,118 +1,99 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/database/supabase';
+import { createAdminSupabaseClient } from '@/lib/database/supabase';
 
+// 進捗保存API
+// - sendBeacon 経由でも動くよう、認証トークンは本文(access_token)またはAuthorizationヘッダで受け取る
+// - トークンから本人を検証し、本人のログのみ更新／作成する（IDOR防止）
+// - 書き込みは service role で行うため RLS に弾かれない（sendBeaconでも確実に保存される）
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const {
-      user_id,
+      access_token,
       video_id,
       course_id,
       session_id,
       current_position,
       total_watched_time,
       progress_percent,
-      video_duration,
       status,
       start_time,
       end_time,
-      log_id
+      log_id,
     } = body;
 
-    console.log('[Progress Save API] Received request:', {
-      user_id,
-      video_id,
-      log_id,
-      progress_percent,
-      status
-    });
+    const admin = createAdminSupabaseClient();
+
+    // 認証：本文のトークン優先、無ければ Authorization ヘッダ
+    const headerToken = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
+    const token = access_token || headerToken;
+    if (!token) {
+      return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+    }
+    const { data: { user: authUser }, error: authError } = await admin.auth.getUser(token);
+    if (authError || !authUser) {
+      return NextResponse.json({ error: '認証に失敗しました' }, { status: 401 });
+    }
 
     // 既存のログを更新
     if (log_id) {
-      // まず現在の進捗率を取得
-      const { data: currentLog, error: fetchError } = await supabase
+      const { data: currentLog, error: fetchError } = await admin
         .from('video_view_logs')
-        .select('progress_percent')
+        .select('user_id, progress_percent')
         .eq('id', log_id)
         .single();
 
-      if (fetchError) {
-        console.error('[Progress Save API] Fetch error:', fetchError);
-        return NextResponse.json(
-          { error: 'Failed to fetch current progress', details: fetchError.message },
-          { status: 500 }
-        );
+      if (fetchError || !currentLog) {
+        return NextResponse.json({ error: 'ログが見つかりません' }, { status: 404 });
       }
 
-      // 進捗が戻らないようにする：現在の進捗率よりも高い場合のみ更新
-      const currentProgress = currentLog?.progress_percent || 0;
+      // 本人のログのみ更新可（他人のログの改ざんを防止）
+      if (currentLog.user_id !== authUser.id) {
+        return NextResponse.json({ error: '権限がありません' }, { status: 403 });
+      }
+
+      // 進捗が戻る場合はスキップ（単調増加を保証）
+      const currentProgress = currentLog.progress_percent || 0;
       if (progress_percent < currentProgress) {
-        console.log('[Progress Save API] スキップ: 進捗が戻っています', {
-          現在の進捗: currentProgress + '%',
-          新しい進捗: progress_percent + '%',
-          log_id
-        });
-        return NextResponse.json({
-          success: true,
-          log_id,
-          skipped: true,
-          reason: '進捗が戻るため更新しませんでした'
-        });
+        return NextResponse.json({ success: true, log_id, skipped: true });
       }
 
       const updateData: any = {
         session_id,
-        current_position: Math.round(current_position),
+        current_position: Math.round(current_position || 0),
         progress_percent,
         total_watched_time,
         status,
         last_updated: end_time,
         end_time,
       };
+      if (start_time) updateData.start_time = start_time;
+      if (status === 'completed') updateData.completed_at = end_time;
 
-      // 開始時刻が提供されている場合のみ更新
-      if (start_time) {
-        updateData.start_time = start_time;
-      }
-
-      // 完了時刻を設定
-      if (status === 'completed') {
-        updateData.completed_at = end_time;
-      }
-
-      console.log('[Progress Save API] 進捗を更新:', {
-        log_id,
-        現在の進捗: currentProgress + '%',
-        新しい進捗: progress_percent + '%',
-        差分: '+' + (progress_percent - currentProgress).toFixed(1) + '%'
-      });
-
-      const { error: updateError } = await supabase
+      const { error: updateError } = await admin
         .from('video_view_logs')
         .update(updateData)
-        .eq('id', log_id);
+        .eq('id', log_id)
+        .eq('user_id', authUser.id); // 二重の安全策
 
       if (updateError) {
-        console.error('[Progress Save API] Update error:', updateError);
         return NextResponse.json(
           { error: 'Failed to update progress', details: updateError.message },
           { status: 500 }
         );
       }
-
-      console.log('[Progress Save API] Progress updated successfully:', log_id);
       return NextResponse.json({ success: true, log_id });
     }
 
-    // 新規ログを作成（通常は発生しないが、念のため）
-    const { data: newLog, error: insertError } = await supabase
+    // 新規ログを作成（user_id は必ず検証済みIDを使用）
+    const { data: newLog, error: insertError } = await admin
       .from('video_view_logs')
       .insert({
-        user_id,
+        user_id: authUser.id,
         video_id,
         course_id,
         session_id,
-        current_position: Math.round(current_position),
+        current_position: Math.round(current_position || 0),
         total_watched_time,
         progress_percent,
         status,
@@ -124,16 +105,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (insertError) {
-      console.error('[Progress Save API] Insert error:', insertError);
       return NextResponse.json(
         { error: 'Failed to create progress log', details: insertError.message },
         { status: 500 }
       );
     }
-
-    console.log('[Progress Save API] New log created:', newLog.id);
     return NextResponse.json({ success: true, log_id: newLog.id });
-
   } catch (err) {
     console.error('[Progress Save API] Unexpected error:', err);
     return NextResponse.json(

@@ -191,14 +191,17 @@ export default function MyCoursesPage() {
 
     try {
       // APIルートを使用して証明書を生成
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch('/api/certificates/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token ?? ''}`,
         },
         body: JSON.stringify({
           userId: user!.id,
-          courseId: course.id
+          courseId: course.id,
+          access_token: session?.access_token,
         })
       });
 
