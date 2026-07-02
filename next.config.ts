@@ -34,6 +34,19 @@ const nextConfig: NextConfig = {
     },
   },
 
+  // 動画をサイトと同一ドメイン経由で配信するための中継（社内フィルタ対策）
+  // /media/videos/... → Supabase Storage の videos バケット
+  async rewrites() {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (!supabaseUrl) return [];
+    return [
+      {
+        source: '/media/videos/:path*',
+        destination: `${supabaseUrl}/storage/v1/object/public/videos/:path*`,
+      },
+    ];
+  },
+
   // セキュリティヘッダー
   async headers() {
     return [

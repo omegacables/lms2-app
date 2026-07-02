@@ -15,6 +15,8 @@ import {
 
 interface EnhancedVideoPlayerProps {
   videoUrl: string;
+  /** 再生失敗時に切り替える予備の配信URL（同一ドメイン経由など） */
+  fallbackVideoUrl?: string;
   videoId: number;
   title?: string;
   currentPosition?: number;
@@ -30,6 +32,7 @@ interface EnhancedVideoPlayerProps {
 
 export function EnhancedVideoPlayer({
   videoUrl,
+  fallbackVideoUrl,
   videoId,
   title = '',
   currentPosition = 0,
@@ -63,6 +66,73 @@ export function EnhancedVideoPlayer({
 
   // 未完了の間は早送り（未視聴部分へのシーク・倍速再生）をロック
   const skipLocked = !isCompleted && enableSkipPrevention;
+
+  // ===== 再生の自動復旧（ネットワーク断・社内フィルタによる遮断対策） =====
+  const [currentSrc, setCurrentSrc] = useState(videoUrl);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const recoveryResumePosRef = useRef<number | null>(null); // 復旧後に戻る再生位置
+  const recoveryAttemptsRef = useRef(0);
+  const usedFallbackRef = useRef(false);
+  const lastRecoveryAtRef = useRef(0);
+  const lastTimeUpdateAtRef = useRef(0);
+
+  // 動画（videoUrl）が切り替わったら復旧状態をリセット
+  useEffect(() => {
+    setCurrentSrc(videoUrl);
+    setPlaybackError(null);
+    recoveryAttemptsRef.current = 0;
+    usedFallbackRef.current = false;
+    recoveryResumePosRef.current = null;
+  }, [videoUrl]);
+
+  // 再生の復旧を試みる：位置を記憶して、予備URLへの切り替え or 再読み込みを行う
+  const attemptRecovery = (reason: string) => {
+    const video = videoRef.current;
+    if (!video || !currentSrc) return;
+
+    const pos = Math.max(video.currentTime || 0, 0);
+
+    if (recoveryAttemptsRef.current >= 4) {
+      console.error('[VideoPlayer] 再生復旧を断念:', reason);
+      setPlaybackError(
+        '動画の再生に繰り返し失敗しました。\n' +
+        'ネットワーク環境（社内のセキュリティ・フィルタリングやWi-Fiの通信制限など）により、動画データが遮断されている可能性があります。\n' +
+        '有線接続や別のネットワークでお試しいただくか、管理者にお問い合わせください。'
+      );
+      return;
+    }
+
+    recoveryAttemptsRef.current += 1;
+    lastRecoveryAtRef.current = Date.now();
+    recoveryResumePosRef.current = pos;
+
+    if (fallbackVideoUrl && !usedFallbackRef.current && currentSrc !== fallbackVideoUrl) {
+      // 予備の配信経路（同一ドメイン経由）に切り替えて続きから再開
+      usedFallbackRef.current = true;
+      console.warn('[VideoPlayer] 再生に失敗したため配信経路を切り替えます:', { reason, pos: pos.toFixed(1) });
+      setCurrentSrc(fallbackVideoUrl);
+    } else {
+      // 同じURLを再読み込みして続きから再開
+      console.warn('[VideoPlayer] 再生を再読み込みで復旧します:', { reason, attempt: recoveryAttemptsRef.current, pos: pos.toFixed(1) });
+      video.load();
+    }
+  };
+
+  // 停止検知ウォッチドッグ：再生中なのに20秒以上 timeupdate が来なければ復旧を試みる
+  useEffect(() => {
+    if (!isPlaying) return;
+    lastTimeUpdateAtRef.current = Date.now();
+    const watchdog = setInterval(() => {
+      const video = videoRef.current;
+      if (!video || video.paused || video.ended) return;
+      if (Date.now() - lastTimeUpdateAtRef.current > 20000) {
+        lastTimeUpdateAtRef.current = Date.now();
+        attemptRecovery('20秒以上再生が進んでいません');
+      }
+    }, 5000);
+    return () => clearInterval(watchdog);
+  }, [isPlaying, currentSrc, fallbackVideoUrl]);
+  // ===== 自動復旧ここまで =====
 
   // バッファリング状態の管理
   const [isBuffering, setIsBuffering] = useState(true);
@@ -236,6 +306,20 @@ export function EnhancedVideoPlayer({
 
       console.log('[VideoPlayer] メタデータ読み込み完了 - 動画時間:', videoDuration, '秒');
 
+      // 自動復旧からの再開：記憶した位置に戻して再生を続ける
+      if (recoveryResumePosRef.current !== null) {
+        const resumeAt = Math.max(0, Math.min(recoveryResumePosRef.current, (videoDuration || 1) - 0.5));
+        recoveryResumePosRef.current = null;
+        videoRef.current.currentTime = resumeAt;
+        setCurrentTime(resumeAt);
+        console.log('[VideoPlayer] 復旧: 続きから再開します:', resumeAt.toFixed(1), '秒');
+        videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {
+          // 自動再生がブロックされた場合はユーザーの再生操作を待つ
+        });
+        updateBufferProgress();
+        return;
+      }
+
       // 保存された位置から再開（完了済みでない場合のみ）
       if (currentPosition > 0 && !isCompleted) {
         // 位置が動画の長さを超えていないか確認
@@ -317,6 +401,13 @@ export function EnhancedVideoPlayer({
   const handleTimeUpdate = () => {
     if (videoRef.current) {
       const current = videoRef.current.currentTime;
+
+      // 停止検知ウォッチドッグ用：再生が進んでいることを記録
+      lastTimeUpdateAtRef.current = Date.now();
+      // 復旧後2分以上正常に再生できていれば、復旧の試行回数をリセット
+      if (recoveryAttemptsRef.current > 0 && Date.now() - lastRecoveryAtRef.current > 120000) {
+        recoveryAttemptsRef.current = 0;
+      }
 
       // 未完了の間は未視聴部分への早送りを阻止（ネイティブコントロール等の迂回対策）
       const allowedMax = Math.max(maxWatchedTime, currentPosition);
@@ -878,12 +969,17 @@ export function EnhancedVideoPlayer({
     >
       <video
         ref={videoRef}
-        src={videoUrl}
+        src={currentSrc}
         className={`w-full h-full ${!showControls && isPlaying ? 'cursor-none' : ''}`}
         onClick={togglePlay}
         onLoadedMetadata={handleLoadedMetadata}
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleEnded}
+        onError={() => {
+          if (currentSrc) {
+            attemptRecovery('動画の読み込みエラー');
+          }
+        }}
         onContextMenu={handleContextMenu}
         onPlay={() => {
           setIsPlaying(true);
@@ -904,6 +1000,28 @@ export function EnhancedVideoPlayer({
         preload="auto"
         playsInline
       />
+
+      {/* 再生失敗（復旧不能）のオーバーレイ */}
+      {playbackError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-85 z-20 p-6">
+          <div className="text-white text-center max-w-lg">
+            <ExclamationTriangleIcon className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
+            <p className="text-lg font-semibold mb-3">動画を再生できません</p>
+            <p className="text-sm text-gray-200 whitespace-pre-line mb-6">{playbackError}</p>
+            <button
+              onClick={() => {
+                setPlaybackError(null);
+                recoveryAttemptsRef.current = 0;
+                usedFallbackRef.current = false;
+                attemptRecovery('手動での再試行');
+              }}
+              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+            >
+              もう一度試す
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 読み込み中のオーバーレイ */}
       {isBuffering && (

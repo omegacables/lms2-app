@@ -62,6 +62,8 @@ export default function VideoPlayerPage() {
   const [lastPosition, setLastPosition] = useState<number>(0);
 
   const [playbackUrl, setPlaybackUrl] = useState<string>('');
+  // 同一ドメイン経由の配信URL（社内フィルタ等でSupabase直アクセスが遮断される場合の復旧用）
+  const [sameOriginUrl, setSameOriginUrl] = useState<string>('');
 
   const sessionId = useRef<string>(crypto.randomUUID());
   const progressUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -83,20 +85,28 @@ export default function VideoPlayerPage() {
   useEffect(() => {
     if (!video?.file_url) {
       setPlaybackUrl('');
+      setSameOriginUrl('');
       return;
     }
     const path = extractStoragePath(video.file_url);
     if (!path) {
       // Supabase 外の URL（外部リンク等）。そのまま使う
       setPlaybackUrl(video.file_url);
+      setSameOriginUrl('');
       return;
     }
+
+    // 同一ドメイン経由の配信URL（/media/videos/... → Supabase Storage への中継）
+    // 社内ネットワークで supabase.co が遮断される場合の復旧経路として使う
+    const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+    setSameOriginUrl(`/media/videos/${encodedPath}`);
+
     let cancelled = false;
     (async () => {
       // 署名付き URL を作る（bucket が private でも再生可能）。失敗時は public URL にフォールバック
       const { data, error } = await supabase.storage
         .from('videos')
-        .createSignedUrl(path, 60 * 60 * 24); // 24時間
+        .createSignedUrl(path, 60 * 60 * 24 * 7); // 7日（長時間開いたタブでも期限切れしないように）
       if (cancelled) return;
       if (!error && data?.signedUrl) {
         setPlaybackUrl(data.signedUrl);
@@ -932,6 +942,7 @@ export default function VideoPlayerPage() {
           <div className="aspect-video max-h-[70vh]">
             <EnhancedVideoPlayer
               videoUrl={playbackUrl || video.file_url}
+              fallbackVideoUrl={sameOriginUrl || undefined}
               videoId={videoId}
               title={video.title}
               currentPosition={lastPosition}
