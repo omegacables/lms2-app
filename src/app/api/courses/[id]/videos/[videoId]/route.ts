@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/database/supabase';
+import { removeVideoAssetIfUnreferenced } from '@/lib/database/safeStorage';
 import { cookies } from 'next/headers';
 
 // Upload configuration for large files
@@ -72,18 +73,8 @@ export async function PUT(
       return NextResponse.json({ error: '動画が見つかりません' }, { status: 404 });
     }
 
-    // 既存のファイルを削除
-    if (existingVideo.file_url) {
-      const urlParts = existingVideo.file_url.split('/storage/v1/object/public/videos/');
-      if (urlParts.length > 1) {
-        const oldPath = urlParts[1];
-        try {
-          await adminSupabase.storage.from('videos').remove([oldPath]);
-        } catch (deleteError) {
-          console.warn('Failed to delete old video:', deleteError);
-        }
-      }
-    }
+    // ※ 旧ファイルの削除は「新ファイルのアップロード＋DB更新が成功した後」に行う。
+    //   先に消すと、アップロード失敗時に行が削除済みファイルを指したままになり復旧不能になるため。
 
     // 新しい動画ファイルのアップロード（エラーハンドリング改善）
     const videoFileName = `${Date.now()}-${videoFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
@@ -130,9 +121,10 @@ export async function PUT(
       .from('videos')
       .getPublicUrl(videoPath);
 
-    // データベースの動画情報を更新
+    // データベースの動画情報を更新（file_path も同期して古いパスが残らないようにする）
     const updateData: any = {
       file_url: videoUrl.publicUrl,
+      file_path: videoPath,
       file_size: videoFile.size,
       mime_type: videoFile.type,
       updated_at: new Date().toISOString()
@@ -157,6 +149,22 @@ export async function PUT(
       // アップロードしたファイルを削除
       await adminSupabase.storage.from('videos').remove([videoPath]);
       return NextResponse.json({ error: '動画情報の更新に失敗しました' }, { status: 500 });
+    }
+
+    // アップロード＋DB更新が成功した後に、旧ファイルを削除
+    // （他の動画レコードと共有している場合はスキップ＝参照カウント。
+    //   コース複製で同一ファイルを共有しているとき、元コースの動画が消えるのを防ぐ）
+    if (existingVideo.file_url) {
+      try {
+        await removeVideoAssetIfUnreferenced(adminSupabase, {
+          url: existingVideo.file_url,
+          bucket: 'videos',
+          column: 'file_url',
+          excludeVideoId: videoId,
+        });
+      } catch (deleteError) {
+        console.warn('Failed to delete old video:', deleteError);
+      }
     }
 
     return NextResponse.json({
@@ -240,29 +248,32 @@ export async function DELETE(
       }, { status: 404 });
     }
 
-    // ストレージから動画ファイルを削除（失敗してもDB削除は続行）
+    // ストレージから動画ファイルを削除（他レコードと共有していない場合のみ＝参照カウント）
+    // コース複製で共有されたファイルを消して元コースを壊さないための保護
     if (video.file_url) {
-      const urlParts = video.file_url.split('/storage/v1/object/public/videos/');
-      if (urlParts.length > 1) {
-        const videoPath = urlParts[1];
-        try {
-          await adminSupabase.storage.from('videos').remove([videoPath]);
-        } catch (deleteError) {
-          console.warn('Failed to delete video file:', deleteError);
-        }
+      try {
+        await removeVideoAssetIfUnreferenced(adminSupabase, {
+          url: video.file_url,
+          bucket: 'videos',
+          column: 'file_url',
+          excludeVideoId: videoIdNum,
+        });
+      } catch (deleteError) {
+        console.warn('Failed to delete video file:', deleteError);
       }
     }
 
-    // サムネイルがある場合は削除
+    // サムネイルも同様に、共有していない場合のみ削除
     if (video.thumbnail_url) {
-      const urlParts = video.thumbnail_url.split('/storage/v1/object/public/thumbnails/');
-      if (urlParts.length > 1) {
-        const thumbnailPath = urlParts[1];
-        try {
-          await adminSupabase.storage.from('thumbnails').remove([thumbnailPath]);
-        } catch (deleteError) {
-          console.warn('Failed to delete thumbnail:', deleteError);
-        }
+      try {
+        await removeVideoAssetIfUnreferenced(adminSupabase, {
+          url: video.thumbnail_url,
+          bucket: 'thumbnails',
+          column: 'thumbnail_url',
+          excludeVideoId: videoIdNum,
+        });
+      } catch (deleteError) {
+        console.warn('Failed to delete thumbnail:', deleteError);
       }
     }
 

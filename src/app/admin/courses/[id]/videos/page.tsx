@@ -76,6 +76,14 @@ export default function CourseVideosPage() {
   // 動画追加用の状態
   const [showAddModal, setShowAddModal] = useState(false);
 
+  // アップロード済み動画から選択する用の状態
+  const [showLibraryModal, setShowLibraryModal] = useState(false);
+  const [libraryVideos, setLibraryVideos] = useState<any[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
+  const [librarySearch, setLibrarySearch] = useState('');
+  const [addingFromLibrary, setAddingFromLibrary] = useState<string | null>(null);
+
   // 動画置き換え用の状態
   const [replacingVideo, setReplacingVideo] = useState<string | null>(null);
   const [replaceFile, setReplaceFile] = useState<File | null>(null);
@@ -202,6 +210,71 @@ export default function CourseVideosPage() {
     } catch (error) {
       console.error('Error duplicating video:', error);
       alert('複製中にエラーが発生しました');
+    }
+  };
+
+  // アップロード済み動画の一覧を取得
+  const openLibrary = async () => {
+    setShowLibraryModal(true);
+    setLibraryLoading(true);
+    setLibraryError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch('/api/admin/videos/library', {
+        headers: {
+          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setLibraryVideos(data.videos || []);
+      } else {
+        const error = await response.json().catch(() => ({}));
+        setLibraryError(`一覧の取得に失敗しました: ${error.error || response.status}`);
+      }
+    } catch (error) {
+      console.error('Error fetching video library:', error);
+      setLibraryError('一覧の取得中にエラーが発生しました');
+    } finally {
+      setLibraryLoading(false);
+    }
+  };
+
+  // 既存ファイルを再利用してこのコースに動画を追加（再アップロードなし＝容量を圧迫しない）
+  const handleAddFromLibrary = async (libVideo: any) => {
+    setAddingFromLibrary(libVideo.id);
+    try {
+      const maxOrderIndex = Math.max(...videos.map(v => v.order_index), 0);
+
+      const { error } = await supabase
+        .from('videos')
+        .insert({
+          course_id: courseId,
+          title: libVideo.title,
+          description: libVideo.description ?? null,
+          file_url: libVideo.file_url,
+          file_path: libVideo.file_path ?? null,
+          file_size: libVideo.file_size ?? null,
+          mime_type: libVideo.mime_type ?? null,
+          duration: libVideo.duration ?? 0,
+          thumbnail_url: libVideo.thumbnail_url ?? null,
+          order_index: maxOrderIndex + 1,
+          status: 'inactive', // 追加直後は非公開
+        });
+
+      if (error) {
+        console.error('Error adding from library:', error);
+        alert(`追加に失敗しました: ${error.message}`);
+        return;
+      }
+
+      await fetchVideos();
+      alert('動画を追加しました（同じファイルを再利用したため容量は増えません）');
+    } catch (error) {
+      console.error('Error adding from library:', error);
+      alert('追加中にエラーが発生しました');
+    } finally {
+      setAddingFromLibrary(null);
     }
   };
 
@@ -425,11 +498,12 @@ export default function CourseVideosPage() {
 
       setUploadProgress(90);
 
-      // データベースを更新
+      // データベースを更新（file_path も同期して古いパスが残らないようにする）
       const { error: updateError } = await supabase
         .from('videos')
         .update({
           file_url: publicUrl,
+          file_path: filePath,
           file_size: replaceFile.size,
           mime_type: replaceFile.type,
           updated_at: new Date().toISOString()
@@ -443,22 +517,24 @@ export default function CourseVideosPage() {
         throw new Error('動画情報の更新に失敗しました');
       }
 
-      // 古いファイルを削除
+      // 古いファイルを削除（他コース/他レコードと共有している場合はスキップ＝参照カウント）
+      // コース複製で共有されたファイルを消して元コースを壊さないよう、サーバー側で安全に処理する
       if (video.file_url) {
-        const urlParts = video.file_url.split('/storage/v1/object/public/videos/');
-        if (urlParts.length > 1) {
-          const oldPath = urlParts[1];
-          try {
-            const { error: deleteError } = await supabase.storage
-              .from('videos')
-              .remove([oldPath]);
-
-            if (deleteError) {
-              console.warn('古いファイルの削除に失敗:', deleteError);
-            }
-          } catch (deleteError) {
-            console.warn('古いファイルの削除エラー:', deleteError);
+        try {
+          const cleanupRes = await fetch('/api/videos/cleanup-file', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': session.access_token ? `Bearer ${session.access_token}` : '',
+            },
+            body: JSON.stringify({ file_url: video.file_url }),
+          });
+          if (!cleanupRes.ok) {
+            const err = await cleanupRes.json().catch(() => ({}));
+            console.warn('古いファイルのクリーンアップに失敗:', cleanupRes.status, err.error || '');
           }
+        } catch (deleteError) {
+          console.warn('古いファイルのクリーンアップ呼び出しに失敗:', deleteError);
         }
       }
 
@@ -562,7 +638,7 @@ export default function CourseVideosPage() {
   );
 
   return (
-    <AuthGuard requiredRole="admin">
+    <AuthGuard requiredRoles={['admin', 'instructor']}>
       <MainLayout>
         <div className="min-h-screen bg-gray-50 dark:bg-neutral-950">
           {/* Navigation */}
@@ -591,13 +667,17 @@ export default function CourseVideosPage() {
                     </p>
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Link href={`/admin/courses/${courseId}/chapters`}>
                     <Button variant="outline">
                       <BookOpenIcon className="h-4 w-4 mr-2" />
                       章を管理
                     </Button>
                   </Link>
+                  <Button variant="outline" onClick={openLibrary}>
+                    <VideoCameraIcon className="h-4 w-4 mr-2" />
+                    アップロード済みから選択
+                  </Button>
                   <Button onClick={() => setShowAddModal(true)}>
                     <PlusIcon className="h-4 w-4 mr-2" />
                     動画を追加
@@ -884,6 +964,112 @@ export default function CourseVideosPage() {
                       }}
                       onCancel={() => setShowAddModal(false)}
                     />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* アップロード済み動画から選択するモーダル */}
+            {showLibraryModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center p-0 sm:p-4 z-50">
+                <div className="bg-white dark:bg-neutral-900 rounded-t-xl sm:rounded-lg max-w-3xl w-full max-h-[95vh] sm:max-h-[85vh] flex flex-col">
+                  <div className="p-4 sm:p-6 border-b border-gray-200 dark:border-neutral-800">
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                        アップロード済みから選択
+                      </h2>
+                      <button
+                        onClick={() => setShowLibraryModal(false)}
+                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl leading-none"
+                        aria-label="閉じる"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      既存の動画ファイルを再利用して追加します。再アップロードしないため容量を圧迫しません。
+                    </p>
+                    <div className="mt-3">
+                      <Input
+                        placeholder="タイトル・コース名で検索"
+                        value={librarySearch}
+                        onChange={(e) => setLibrarySearch(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+                    {libraryLoading ? (
+                      <div className="flex justify-center py-10">
+                        <LoadingSpinner />
+                      </div>
+                    ) : libraryError ? (
+                      <div className="text-center py-10">
+                        <p className="text-red-600 dark:text-red-400 mb-4">{libraryError}</p>
+                        <Button variant="outline" onClick={openLibrary}>再試行</Button>
+                      </div>
+                    ) : (
+                      (() => {
+                        const existingUrls = new Set(videos.map((v) => v.file_url));
+                        const term = librarySearch.trim().toLowerCase();
+                        const filtered = libraryVideos.filter((v) => {
+                          if (!term) return true;
+                          return (
+                            (v.title || '').toLowerCase().includes(term) ||
+                            (v.course_title || '').toLowerCase().includes(term)
+                          );
+                        });
+
+                        if (filtered.length === 0) {
+                          return (
+                            <p className="text-center text-gray-500 dark:text-gray-400 py-10">
+                              該当する動画がありません
+                            </p>
+                          );
+                        }
+
+                        return (
+                          <ul className="divide-y divide-gray-200 dark:divide-neutral-800">
+                            {filtered.map((v) => {
+                              const alreadyAdded = existingUrls.has(v.file_url);
+                              return (
+                                <li key={v.id} className="py-3 flex items-center gap-3">
+                                  <div className="flex-shrink-0 w-10 h-10 rounded bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
+                                    <VideoCameraIcon className="h-5 w-5 text-gray-400" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                      {v.title || '(無題)'}
+                                    </p>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                      {v.course_title}
+                                      {v.file_size ? ` ・ ${formatFileSize(v.file_size)}` : ''}
+                                    </p>
+                                  </div>
+                                  <Button
+                                    variant={alreadyAdded ? 'outline' : 'primary'}
+                                    onClick={() => handleAddFromLibrary(v)}
+                                    disabled={addingFromLibrary !== null || alreadyAdded}
+                                  >
+                                    {alreadyAdded
+                                      ? '追加済み'
+                                      : addingFromLibrary === v.id
+                                      ? '追加中...'
+                                      : '追加'}
+                                  </Button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        );
+                      })()
+                    )}
+                  </div>
+
+                  <div className="p-4 border-t border-gray-200 dark:border-neutral-800 flex justify-end">
+                    <Button variant="outline" onClick={() => setShowLibraryModal(false)}>
+                      閉じる
+                    </Button>
                   </div>
                 </div>
               </div>

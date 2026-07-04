@@ -5,7 +5,7 @@ import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/dat
 export type AdminAuthOk = {
   ok: true;
   user: { id: string; email?: string | null };
-  role: 'admin';
+  role: string;
 };
 
 export type AdminAuthFail = {
@@ -28,6 +28,17 @@ export type AdminAuthResult = AdminAuthOk | AdminAuthFail;
  *   // auth.user で admin ユーザーが取れる
  */
 export async function requireAdmin(request: NextRequest): Promise<AdminAuthResult> {
+  return requireRole(request, ['admin']);
+}
+
+/**
+ * 指定したロールのいずれかとして認証されているかを検証する共通ヘルパー。
+ * requireAdmin と同じ認証手順（Bearer優先→cookie、roleはservice roleで照会）。
+ */
+export async function requireRole(
+  request: NextRequest,
+  allowedRoles: string[]
+): Promise<AdminAuthResult> {
   // 1. 認証トークンを取得（ヘッダ優先）
   const authHeader = request.headers.get('authorization');
   const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
@@ -77,15 +88,15 @@ export async function requireAdmin(request: NextRequest): Promise<AdminAuthResul
     };
   }
 
-  if (profile.role !== 'admin') {
+  if (!allowedRoles.includes(profile.role)) {
     return {
       ok: false,
       response: NextResponse.json(
-        { error: '管理者権限が必要です' },
+        { error: `権限が不足しています（必要: ${allowedRoles.join(' / ')}）` },
         { status: 403 }
       ),
     };
   }
 
-  return { ok: true, user, role: 'admin' };
+  return { ok: true, user, role: profile.role };
 }
