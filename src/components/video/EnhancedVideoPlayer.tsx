@@ -153,6 +153,13 @@ export function EnhancedVideoPlayer({
     (navigator.userAgent.includes('Macintosh') && navigator.maxTouchPoints > 1)
   );
 
+  // iOS/iPadOS では video.volume がJSから変更不可（ハードウェアボタンのみ）のため、
+  // 音量スライダーは表示しない（ミュート切替のみ提供）
+  const isIOS = typeof window !== 'undefined' && (
+    /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.userAgent.includes('Macintosh') && navigator.maxTouchPoints > 1)
+  );
+
   // 初期位置を設定（初回マウント時のみ）
   useEffect(() => {
     if (currentPosition > 0) {
@@ -637,7 +644,10 @@ export function EnhancedVideoPlayer({
     setVolume(newVolume);
     if (videoRef.current) {
       videoRef.current.volume = newVolume;
-      setIsMuted(newVolume === 0);
+      // 要素側の muted も必ず同期する（stateだけ解除して実際は消音のままになるのを防ぐ）
+      const shouldMute = newVolume === 0;
+      videoRef.current.muted = shouldMute;
+      setIsMuted(shouldMute);
 
       // 音量変更後も再生状態を維持
       if (wasPlaying && videoRef.current.paused) {
@@ -1116,15 +1126,18 @@ export function EnhancedVideoPlayer({
                   <SpeakerWaveIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                 )}
               </button>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.1}
-                value={isMuted ? 0 : volume}
-                onChange={handleVolumeChange}
-                className="w-12 sm:w-20 h-1 bg-gray-600 rounded-full appearance-none cursor-pointer"
-              />
+              {/* iOSは音量をJSから変更できない（本体ボタンのみ）ためスライダー非表示 */}
+              {!isIOS && (
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.1}
+                  value={isMuted ? 0 : volume}
+                  onChange={handleVolumeChange}
+                  className="w-12 sm:w-20 h-1 bg-gray-600 rounded-full appearance-none cursor-pointer"
+                />
+              )}
             </div>
 
             {/* 時間表示 */}

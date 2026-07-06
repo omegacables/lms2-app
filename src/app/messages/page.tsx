@@ -20,7 +20,8 @@ import {
   PhotoIcon,
   DocumentIcon,
   XMarkIcon,
-  ArrowDownTrayIcon
+  ArrowDownTrayIcon,
+  ArrowLeftIcon
 } from '@heroicons/react/24/outline';
 
 interface SupportConversation {
@@ -565,10 +566,12 @@ export default function SupportMessages() {
             </div>
           </div>
 
-          {/* チャット画面 */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[600px] mb-6">
-            {/* 会話一覧 */}
-            <div className="lg:col-span-1 bg-white dark:bg-neutral-900 dark:bg-neutral-900 rounded-lg border flex flex-col">
+          {/* チャット画面
+              モバイル: 会話リストとチャットを切り替え表示（選択中はチャットのみ全面表示）
+              PC(lg以上): 従来どおり左リスト+右チャットの2ペイン */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100dvh-240px)] min-h-[400px] lg:h-[600px] mb-6">
+            {/* 会話一覧（モバイルでは会話選択中は非表示） */}
+            <div className={`${selectedConversation ? 'hidden lg:flex' : 'flex'} lg:col-span-1 bg-white dark:bg-neutral-900 rounded-lg border flex-col`}>
               <div className="p-4 border-b border-gray-200 dark:border-neutral-800">
                 <h2 className="font-semibold text-gray-900 dark:text-white">問い合わせ履歴</h2>
               </div>
@@ -629,15 +632,25 @@ export default function SupportMessages() {
               </div>
             </div>
 
-            {/* チャット画面 */}
-            <div className="lg:col-span-2 bg-white dark:bg-neutral-900 rounded-lg border flex flex-col">
+            {/* チャット画面（モバイルでは未選択時は非表示） */}
+            <div className={`${selectedConversation ? 'flex' : 'hidden lg:flex'} lg:col-span-2 bg-white dark:bg-neutral-900 rounded-lg border flex-col`}>
               {selectedConversation ? (
                 <>
                   {/* チャットヘッダー */}
-                  <div className="p-4 border-b border-gray-200 dark:border-neutral-800 bg-gray-50 dark:bg-black">
-                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                      {selectedConversation.subject}
-                    </h2>
+                  <div className="p-3 sm:p-4 border-b border-gray-200 dark:border-neutral-800 bg-gray-50 dark:bg-black">
+                    <div className="flex items-center gap-2">
+                      {/* モバイル用: 会話一覧に戻る */}
+                      <button
+                        onClick={() => setSelectedConversation(null)}
+                        className="lg:hidden p-1.5 -ml-1 rounded-lg hover:bg-gray-200 dark:hover:bg-neutral-800 flex-shrink-0"
+                        aria-label="問い合わせ履歴に戻る"
+                      >
+                        <ArrowLeftIcon className="h-5 w-5 text-gray-600 dark:text-gray-300" />
+                      </button>
+                      <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white truncate">
+                        {selectedConversation.subject}
+                      </h2>
+                    </div>
                     <div className="flex items-center mt-1">
                       {getStatusBadge(selectedConversation.status)}
                     </div>
