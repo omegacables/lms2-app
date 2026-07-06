@@ -249,7 +249,7 @@ export default function AttendanceStatusPage() {
 
           {/* フィルター */}
           <div className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 rounded-lg shadow mb-6 p-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">検索</label>
                 <input
@@ -299,8 +299,8 @@ export default function AttendanceStatusPage() {
               <div key={`${progress.userId}-${progress.courseId}-${index}`} className="bg-white dark:bg-neutral-900 rounded-lg shadow-sm dark:shadow-gray-900/20 border border-gray-200 dark:border-neutral-800 overflow-hidden">
                 {/* ヘッダー */}
                 <div className="bg-gradient-to-r from-purple-600 to-purple-700 p-4 text-white">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                       {isAdmin && (
                         <>
                           <div className="flex items-center space-x-2">
@@ -312,20 +312,20 @@ export default function AttendanceStatusPage() {
                             <span className="text-sm">{progress.userName}</span>
                           </div>
                           <div className="flex items-center space-x-2">
-                            <EnvelopeIcon className="h-4 w-4" />
-                            <span className="text-sm">{progress.userEmail}</span>
+                            <EnvelopeIcon className="h-4 w-4 shrink-0" />
+                            <span className="text-sm break-all">{progress.userEmail}</span>
                           </div>
                         </>
                       )}
                       <div className="font-semibold">{progress.courseName}</div>
                     </div>
-                    <div className="text-2xl font-bold">{progress.progressPercent}%</div>
+                    <div className="text-xl sm:text-2xl font-bold shrink-0">{progress.progressPercent}%</div>
                   </div>
                 </div>
 
                 {/* 統計 */}
                 <div className="p-4">
-                  <div className="grid grid-cols-4 gap-4 mb-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 mb-4">
                     <div className="text-center">
                       <div className="text-2xl font-bold text-gray-900 dark:text-white">{progress.notStartedVideos}</div>
                       <div className="text-xs text-gray-500 dark:text-gray-400">未受講</div>

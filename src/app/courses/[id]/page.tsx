@@ -270,7 +270,7 @@ export default function CourseDetailPage() {
 
           {/* コースヘッダー */}
           <div className="mb-8">
-            <div className="bg-card rounded-xl border border-border p-8">
+            <div className="bg-card rounded-xl border border-border p-4 sm:p-8">
               {course.thumbnail_url && (
                 <div className="mb-6">
                   <img
@@ -281,7 +281,7 @@ export default function CourseDetailPage() {
                 </div>
               )}
               
-              <h1 className="text-3xl font-bold mb-4">{course.title}</h1>
+              <h1 className="text-2xl sm:text-3xl font-bold mb-2 sm:mb-4">{course.title}</h1>
               
               {course.description && (
                 <p className="text-muted-foreground mb-6 text-lg leading-relaxed">
@@ -289,7 +289,7 @@ export default function CourseDetailPage() {
                 </p>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6">
                 {course.difficulty_level && (
                   <div className="bg-background rounded-lg p-4 border border-border">
                     <div className="flex items-center gap-2 mb-2">
@@ -411,9 +411,9 @@ export default function CourseDetailPage() {
                 return (
                   <div
                     key={video.id}
-                    className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-6 hover:shadow-lg dark:shadow-gray-900/50 hover:border-blue-300 transition-all duration-200"
+                    className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-4 sm:p-6 hover:shadow-lg dark:shadow-gray-900/50 hover:border-blue-300 transition-all duration-200"
                   >
-                    <div className="flex items-start gap-6">
+                    <div className="flex items-start gap-4 sm:gap-6">
                       <div className="flex-shrink-0">
                         <div className="relative">
                           {getStatusIcon(status)}
@@ -531,9 +531,9 @@ export default function CourseDetailPage() {
                   return (
                     <div
                       key={video.id}
-                      className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-6 hover:shadow-lg dark:shadow-gray-900/50 hover:border-blue-300 transition-all duration-200"
+                      className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-4 sm:p-6 hover:shadow-lg dark:shadow-gray-900/50 hover:border-blue-300 transition-all duration-200"
                     >
-                      <div className="flex items-start gap-6">
+                      <div className="flex items-start gap-4 sm:gap-6">
                         <div className="flex-shrink-0">
                           <div className="relative">
                             {getStatusIcon(status)}

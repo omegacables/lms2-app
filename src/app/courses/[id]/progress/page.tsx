@@ -223,10 +223,10 @@ export default function CourseProgressPage() {
               <ArrowLeftIcon className="h-4 w-4 mr-2" />
               マイコースへ戻る
             </Link>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
               {course.title} - 進捗詳細
             </h1>
-            <p className="text-lg text-gray-600 dark:text-gray-400">
+            <p className="hidden sm:block text-lg text-gray-600 dark:text-gray-400">
               あなたの学習進捗と詳細な統計情報
             </p>
           </div>
@@ -253,61 +253,61 @@ export default function CourseProgressPage() {
           </div>
 
           {/* Statistics Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white dark:bg-neutral-900 rounded-xl p-6 border border-gray-200 dark:border-neutral-800">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-6 mb-4 sm:mb-8">
+            <div className="bg-white dark:bg-neutral-900 rounded-xl px-3 py-2.5 sm:p-6 border border-gray-200 dark:border-neutral-800">
               <div className="flex items-center">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <CheckCircleIcon className="h-6 w-6 text-green-600" />
+                <div className="p-1.5 sm:p-2 bg-green-100 rounded-lg shrink-0">
+                  <CheckCircleIcon className="h-4 w-4 sm:h-6 sm:w-6 text-green-600" />
                 </div>
-                <div className="ml-4">
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                <div className="ml-2.5 sm:ml-4 min-w-0">
+                  <p className="text-base sm:text-2xl font-bold text-gray-900 dark:text-white truncate">
                     {stats.completedVideos}
                   </p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">完了動画</p>
+                  <p className="text-[11px] sm:text-sm text-gray-600 dark:text-gray-400 truncate">完了動画</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white dark:bg-neutral-900 rounded-xl p-6 border border-gray-200 dark:border-neutral-800">
+            <div className="bg-white dark:bg-neutral-900 rounded-xl px-3 py-2.5 sm:p-6 border border-gray-200 dark:border-neutral-800">
               <div className="flex items-center">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <ClockIcon className="h-6 w-6 text-blue-600" />
+                <div className="p-1.5 sm:p-2 bg-blue-100 rounded-lg shrink-0">
+                  <ClockIcon className="h-4 w-4 sm:h-6 sm:w-6 text-blue-600" />
                 </div>
-                <div className="ml-4">
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                <div className="ml-2.5 sm:ml-4 min-w-0">
+                  <p className="text-base sm:text-2xl font-bold text-gray-900 dark:text-white truncate">
                     {formatDuration(stats.totalWatchTime)}
                   </p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">総視聴時間</p>
+                  <p className="text-[11px] sm:text-sm text-gray-600 dark:text-gray-400 truncate">総視聴時間</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white dark:bg-neutral-900 rounded-xl p-6 border border-gray-200 dark:border-neutral-800">
+            <div className="bg-white dark:bg-neutral-900 rounded-xl px-3 py-2.5 sm:p-6 border border-gray-200 dark:border-neutral-800">
               <div className="flex items-center">
-                <div className="p-2 bg-purple-100 rounded-lg">
-                  <CalendarIcon className="h-6 w-6 text-purple-600" />
+                <div className="p-1.5 sm:p-2 bg-purple-100 rounded-lg shrink-0">
+                  <CalendarIcon className="h-4 w-4 sm:h-6 sm:w-6 text-purple-600" />
                 </div>
-                <div className="ml-4">
-                  <p className="text-lg font-bold text-gray-900 dark:text-white">
+                <div className="ml-2.5 sm:ml-4 min-w-0">
+                  <p className="text-sm sm:text-lg font-bold text-gray-900 dark:text-white truncate">
                     {stats.lastAccessDate
                       ? new Date(stats.lastAccessDate).toLocaleDateString('ja-JP')
                       : '未視聴'}
                   </p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">最終学習日</p>
+                  <p className="text-[11px] sm:text-sm text-gray-600 dark:text-gray-400 truncate">最終学習日</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white dark:bg-neutral-900 rounded-xl p-6 border border-gray-200 dark:border-neutral-800">
+            <div className="bg-white dark:bg-neutral-900 rounded-xl px-3 py-2.5 sm:p-6 border border-gray-200 dark:border-neutral-800">
               <div className="flex items-center">
-                <div className="p-2 bg-orange-100 rounded-lg">
-                  <FireIcon className="h-6 w-6 text-orange-600" />
+                <div className="p-1.5 sm:p-2 bg-orange-100 rounded-lg shrink-0">
+                  <FireIcon className="h-4 w-4 sm:h-6 sm:w-6 text-orange-600" />
                 </div>
-                <div className="ml-4">
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                <div className="ml-2.5 sm:ml-4 min-w-0">
+                  <p className="text-base sm:text-2xl font-bold text-gray-900 dark:text-white truncate">
                     {formatDuration(stats.estimatedCompletion)}
                   </p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">完了予想時間</p>
+                  <p className="text-[11px] sm:text-sm text-gray-600 dark:text-gray-400 truncate">完了予想時間</p>
                 </div>
               </div>
             </div>

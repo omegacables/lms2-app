@@ -1352,7 +1352,7 @@ ${accounts}
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="mb-6">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
               <div className="flex items-center">
                 <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mr-4">
                   <UserGroupIcon className="h-6 w-6 text-indigo-600" />
@@ -1362,7 +1362,7 @@ ${accounts}
                   <p className="text-gray-600 dark:text-gray-400">学習者の進捗管理とコース割り当てを行います</p>
                 </div>
               </div>
-              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+              <div className="flex flex-wrap gap-2 sm:gap-3">
                 <Link href="/admin/learning-logs">
                   <Button
                     variant="outline"
@@ -1434,8 +1434,8 @@ ${accounts}
                   </div>
                 </div>
                 {(
-                  <div className="flex items-center space-x-3">
-                    <div className="flex items-center space-x-2">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <FunnelIcon className="h-4 w-4 text-gray-400" />
                       <select
                         className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
@@ -1447,7 +1447,7 @@ ${accounts}
                         <option value="inactive">非アクティブ</option>
                       </select>
                     </div>
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center gap-2">
                       <span className="text-sm text-gray-500 dark:text-gray-400">並び順:</span>
                       <select
                         className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
@@ -1465,7 +1465,7 @@ ${accounts}
                         {sortOrder === 'asc' ? '↑' : '↓'}
                       </button>
                     </div>
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center gap-2">
                       <label className="flex items-center cursor-pointer">
                         <input
                           type="checkbox"

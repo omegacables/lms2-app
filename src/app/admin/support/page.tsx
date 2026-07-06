@@ -22,7 +22,8 @@ import {
   DocumentIcon,
   XMarkIcon,
   ArrowDownTrayIcon,
-  TrashIcon
+  TrashIcon,
+  ArrowLeftIcon
 } from '@heroicons/react/24/outline';
 
 interface SupportConversation {
@@ -535,10 +536,12 @@ export default function AdminSupportChat() {
             </div>
           </div>
 
-          {/* チャット画面 */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:h-[600px]">
-            {/* 会話一覧 */}
-            <div className="lg:col-span-1 bg-white dark:bg-neutral-900 dark:bg-neutral-900 rounded-lg border flex flex-col">
+          {/* チャット画面
+              モバイル: 会話リストとチャットを切り替え表示（選択中はチャットのみ全面表示）
+              PC(lg以上): 従来どおり左リスト+右チャットの2ペイン */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100dvh-240px)] min-h-[400px] lg:h-[600px]">
+            {/* 会話一覧（モバイルでは会話選択中は非表示） */}
+            <div className={`${selectedConversation ? 'hidden lg:flex' : 'flex'} lg:col-span-1 bg-white dark:bg-neutral-900 dark:bg-neutral-900 rounded-lg border flex-col`}>
               <div className="p-4 border-b border-gray-200 dark:border-neutral-800">
                 <div className="mb-4">
                   <div className="relative">
@@ -552,7 +555,7 @@ export default function AdminSupportChat() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   <select
                     className="p-1 border border-gray-300 dark:border-gray-600 rounded text-xs bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
                     value={statusFilter}
@@ -630,20 +633,30 @@ export default function AdminSupportChat() {
               </div>
             </div>
 
-            {/* チャット画面 */}
-            <div className="lg:col-span-2 bg-white dark:bg-neutral-900 rounded-lg border flex flex-col">
+            {/* チャット画面（モバイルでは未選択時は非表示） */}
+            <div className={`${selectedConversation ? 'flex' : 'hidden lg:flex'} lg:col-span-2 bg-white dark:bg-neutral-900 rounded-lg border flex-col`}>
               {selectedConversation ? (
                 <>
                   {/* チャットヘッダー */}
-                  <div className="p-4 border-b border-gray-200 dark:border-neutral-800 bg-gray-50 dark:bg-black">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                          {selectedConversation.studentName}
-                        </h2>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">{selectedConversation.subject}</p>
+                  <div className="p-3 sm:p-4 border-b border-gray-200 dark:border-neutral-800 bg-gray-50 dark:bg-black">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        {/* モバイル用: 会話一覧に戻る */}
+                        <button
+                          onClick={() => setSelectedConversation(null)}
+                          className="lg:hidden p-1.5 -ml-1 rounded-lg hover:bg-gray-200 dark:hover:bg-neutral-800 flex-shrink-0"
+                          aria-label="会話一覧に戻る"
+                        >
+                          <ArrowLeftIcon className="h-5 w-5 text-gray-600 dark:text-gray-300" />
+                        </button>
+                        <div className="min-w-0">
+                          <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white truncate">
+                            {selectedConversation.studentName}
+                          </h2>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 truncate">{selectedConversation.subject}</p>
+                        </div>
                       </div>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         {getStatusBadge(selectedConversation.status)}
                         {getPriorityBadge(selectedConversation.priority)}
                         <select
@@ -674,7 +687,7 @@ export default function AdminSupportChat() {
                         key={message.id}
                         className={`flex ${message.senderType === 'admin' ? 'justify-end' : 'justify-start'}`}
                       >
-                        <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                        <div className={`max-w-[75%] sm:max-w-md px-4 py-2 rounded-lg ${
                           message.senderType === 'admin'
                             ? 'bg-blue-600 text-white'
                             : 'bg-gray-200 text-gray-900 dark:text-white'

@@ -255,7 +255,7 @@ export default function AdminDashboard() {
         <div className="max-w-7xl mx-auto">
           {/* ヘッダーセクション */}
           <div className="mb-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div className="flex items-center">
                 <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mr-4">
                   <Cog6ToothIcon className="h-6 w-6 text-indigo-600" />
@@ -265,7 +265,7 @@ export default function AdminDashboard() {
                   <p className="text-gray-600 dark:text-gray-400">システム全体の状況を監視・管理できます。</p>
                 </div>
               </div>
-              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+              <div className="flex flex-wrap gap-2 sm:gap-3">
                 <Link href="/admin/courses/new">
                   <Button className="bg-indigo-600 hover:bg-indigo-700 flex items-center justify-center w-full sm:w-auto whitespace-nowrap">
                     <PlusIcon className="h-4 w-4 mr-2 flex-shrink-0" />
@@ -283,47 +283,47 @@ export default function AdminDashboard() {
           </div>
 
           {/* 主要統計 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg p-6 text-white">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-6 mb-8">
+            <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg px-3 py-2.5 sm:p-6 text-white">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-blue-100">総ユーザー数</p>
-                  <p className="text-2xl font-bold">{stats?.totalUsers}</p>
-                  <p className="text-sm text-blue-200">アクティブ: {stats?.activeUsers}</p>
+                <div className="min-w-0">
+                  <p className="text-[11px] sm:text-base text-blue-100 truncate">総ユーザー数</p>
+                  <p className="text-base sm:text-2xl font-bold truncate">{stats?.totalUsers}</p>
+                  <p className="text-[11px] sm:text-sm text-blue-200 truncate">アクティブ: {stats?.activeUsers}</p>
                 </div>
-                <UsersIcon className="h-8 w-8 text-blue-200" />
+                <UsersIcon className="h-4 w-4 sm:h-8 sm:w-8 text-blue-200 flex-shrink-0" />
               </div>
             </div>
-            
-            <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-lg p-6 text-white">
+
+            <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-lg px-3 py-2.5 sm:p-6 text-white">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-green-100">総コース数</p>
-                  <p className="text-2xl font-bold">{stats?.totalCourses}</p>
-                  <p className="text-sm text-green-200">公開中: {stats?.activeCourses}</p>
+                <div className="min-w-0">
+                  <p className="text-[11px] sm:text-base text-green-100 truncate">総コース数</p>
+                  <p className="text-base sm:text-2xl font-bold truncate">{stats?.totalCourses}</p>
+                  <p className="text-[11px] sm:text-sm text-green-200 truncate">公開中: {stats?.activeCourses}</p>
                 </div>
-                <AcademicCapIcon className="h-8 w-8 text-green-200" />
+                <AcademicCapIcon className="h-4 w-4 sm:h-8 sm:w-8 text-green-200 flex-shrink-0" />
               </div>
             </div>
-            
-            <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg p-6 text-white">
+
+            <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg px-3 py-2.5 sm:p-6 text-white">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-purple-100">総視聴時間</p>
-                  <p className="text-2xl font-bold">{stats ? formatTime(stats.totalWatchTime) : '0分'}</p>
+                <div className="min-w-0">
+                  <p className="text-[11px] sm:text-base text-purple-100 truncate">総視聴時間</p>
+                  <p className="text-base sm:text-2xl font-bold truncate">{stats ? formatTime(stats.totalWatchTime) : '0分'}</p>
                 </div>
-                <ClockIcon className="h-8 w-8 text-purple-200" />
+                <ClockIcon className="h-4 w-4 sm:h-8 sm:w-8 text-purple-200 flex-shrink-0" />
               </div>
             </div>
-            
-            <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-lg p-6 text-white">
+
+            <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-lg px-3 py-2.5 sm:p-6 text-white">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-orange-100">発行証明書</p>
-                  <p className="text-2xl font-bold">{stats?.totalCertificates}</p>
-                  <p className="text-sm text-orange-200">完了率: {stats?.completionRate}%</p>
+                <div className="min-w-0">
+                  <p className="text-[11px] sm:text-base text-orange-100 truncate">発行証明書</p>
+                  <p className="text-base sm:text-2xl font-bold truncate">{stats?.totalCertificates}</p>
+                  <p className="text-[11px] sm:text-sm text-orange-200 truncate">完了率: {stats?.completionRate}%</p>
                 </div>
-                <TrophyIcon className="h-8 w-8 text-orange-200" />
+                <TrophyIcon className="h-4 w-4 sm:h-8 sm:w-8 text-orange-200 flex-shrink-0" />
               </div>
             </div>
           </div>
@@ -460,26 +460,26 @@ export default function AdminDashboard() {
           {/* 今週の統計 */}
           <div className="mt-8 bg-white dark:bg-neutral-900 rounded-lg shadow-sm dark:shadow-gray-900/20 border p-6">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">今週のハイライト</h2>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600 mb-1">+{stats?.newUsersThisWeek}</div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">新規ユーザー</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
+              <div className="text-center min-w-0">
+                <div className="text-base sm:text-2xl font-bold text-blue-600 mb-1 truncate">+{stats?.newUsersThisWeek}</div>
+                <div className="text-[11px] sm:text-sm text-gray-600 dark:text-gray-400 truncate">新規ユーザー</div>
               </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-600 mb-1">
+              <div className="text-center min-w-0">
+                <div className="text-base sm:text-2xl font-bold text-green-600 mb-1 truncate">
                   {stats ? Math.floor(stats.totalCertificates * 0.15) : 0}
                 </div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">新規証明書</div>
+                <div className="text-[11px] sm:text-sm text-gray-600 dark:text-gray-400 truncate">新規証明書</div>
               </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-purple-600 mb-1">
+              <div className="text-center min-w-0">
+                <div className="text-base sm:text-2xl font-bold text-purple-600 mb-1 truncate">
                   {stats ? formatTime(Math.floor(stats.totalWatchTime * 0.2)) : '0分'}
                 </div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">今週の視聴時間</div>
+                <div className="text-[11px] sm:text-sm text-gray-600 dark:text-gray-400 truncate">今週の視聴時間</div>
               </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-orange-600 mb-1">{stats?.completionRate}%</div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">平均完了率</div>
+              <div className="text-center min-w-0">
+                <div className="text-base sm:text-2xl font-bold text-orange-600 mb-1 truncate">{stats?.completionRate}%</div>
+                <div className="text-[11px] sm:text-sm text-gray-600 dark:text-gray-400 truncate">平均完了率</div>
               </div>
             </div>
           </div>

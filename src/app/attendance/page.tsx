@@ -233,60 +233,60 @@ export default function AttendancePage() {
           ) : (
             <div className="space-y-8">
               {/* Stats Overview */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 bg-blue-50 dark:bg-blue-900/200 rounded-xl flex items-center justify-center">
-                      <ChartBarIcon className="w-6 h-6 text-white" />
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-6">
+                <div className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 px-3 py-2.5 sm:p-6">
+                  <div className="flex items-center justify-between mb-2 sm:mb-4">
+                    <div className="w-8 h-8 sm:w-12 sm:h-12 bg-blue-50 dark:bg-blue-900/200 rounded-xl flex items-center justify-center">
+                      <ChartBarIcon className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
                     </div>
                   </div>
-                  <div className="text-2xl font-bold text-blue-600 mb-1">
+                  <div className="text-base sm:text-2xl font-bold text-blue-600 mb-1 truncate">
                     {stats?.attendanceRate || 0}%
                   </div>
-                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">出席率</h3>
+                  <h3 className="text-[11px] sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1 truncate">出席率</h3>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
                     {stats?.activeDays || 0}/{stats?.totalDays || 0} 日間
                   </p>
                 </div>
 
-                <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 bg-orange-500 rounded-xl flex items-center justify-center">
-                      <FireIcon className="w-6 h-6 text-white" />
+                <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 px-3 py-2.5 sm:p-6">
+                  <div className="flex items-center justify-between mb-2 sm:mb-4">
+                    <div className="w-8 h-8 sm:w-12 sm:h-12 bg-orange-500 rounded-xl flex items-center justify-center">
+                      <FireIcon className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
                     </div>
                   </div>
-                  <div className="text-2xl font-bold text-orange-600 mb-1">
+                  <div className="text-base sm:text-2xl font-bold text-orange-600 mb-1 truncate">
                     {stats?.currentStreak || 0}日
                   </div>
-                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">現在のストリーク</h3>
+                  <h3 className="text-[11px] sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1 truncate">現在のストリーク</h3>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
                     最長: {stats?.longestStreak || 0}日
                   </p>
                 </div>
 
-                <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 bg-green-50 dark:bg-green-900/200 rounded-xl flex items-center justify-center">
-                      <ClockIcon className="w-6 h-6 text-white" />
+                <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 px-3 py-2.5 sm:p-6">
+                  <div className="flex items-center justify-between mb-2 sm:mb-4">
+                    <div className="w-8 h-8 sm:w-12 sm:h-12 bg-green-50 dark:bg-green-900/200 rounded-xl flex items-center justify-center">
+                      <ClockIcon className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
                     </div>
                   </div>
-                  <div className="text-2xl font-bold text-green-600 mb-1">
+                  <div className="text-base sm:text-2xl font-bold text-green-600 mb-1 truncate">
                     {formatTime(stats?.averageWatchTime || 0)}
                   </div>
-                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">平均学習時間</h3>
+                  <h3 className="text-[11px] sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1 truncate">平均学習時間</h3>
                   <p className="text-xs text-gray-500 dark:text-gray-400">1日あたり</p>
                 </div>
 
-                <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 bg-purple-500 rounded-xl flex items-center justify-center">
-                      <TrophyIcon className="w-6 h-6 text-white" />
+                <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 px-3 py-2.5 sm:p-6">
+                  <div className="flex items-center justify-between mb-2 sm:mb-4">
+                    <div className="w-8 h-8 sm:w-12 sm:h-12 bg-purple-500 rounded-xl flex items-center justify-center">
+                      <TrophyIcon className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
                     </div>
                   </div>
-                  <div className="text-2xl font-bold text-purple-600 mb-1">
+                  <div className="text-base sm:text-2xl font-bold text-purple-600 mb-1 truncate">
                     {stats?.totalVideosCompleted || 0}
                   </div>
-                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">完了動画数</h3>
+                  <h3 className="text-[11px] sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1 truncate">完了動画数</h3>
                   <p className="text-xs text-gray-500 dark:text-gray-400">今月完了</p>
                 </div>
               </div>
@@ -336,7 +336,7 @@ export default function AttendancePage() {
                 <div className="grid grid-cols-7 gap-2">
                   {/* Empty cells for days before month starts */}
                   {Array.from({ length: new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1).getDay() }, (_, i) => (
-                    <div key={`empty-${i}`} className="h-16"></div>
+                    <div key={`empty-${i}`} className="h-12 sm:h-16"></div>
                   ))}
                   
                   {/* Days of the month */}
@@ -348,7 +348,7 @@ export default function AttendancePage() {
                     return (
                       <div
                         key={index}
-                        className={`h-16 border-2 rounded-lg p-2 ${
+                        className={`h-12 sm:h-16 border-2 rounded-lg p-1 sm:p-2 ${
                           isFuture 
                             ? 'border-gray-100 bg-gray-50 dark:bg-black' 
                             : `border-2 ${getStatusColor(record.status)} ${isToday ? 'ring-2 ring-blue-300' : ''}`
@@ -356,7 +356,7 @@ export default function AttendancePage() {
                       >
                         <div className="flex items-center justify-between h-full">
                           <div>
-                            <div className={`text-sm font-medium ${isFuture ? 'text-gray-400' : ''}`}>
+                            <div className={`text-xs sm:text-sm font-medium ${isFuture ? 'text-gray-400' : ''}`}>
                               {date.getDate()}
                             </div>
                             {!isFuture && record.status === 'active' && (
@@ -377,7 +377,7 @@ export default function AttendancePage() {
                 </div>
 
                 {/* Legend */}
-                <div className="flex items-center justify-center space-x-6 mt-6 pt-6 border-t border-gray-200 dark:border-neutral-800">
+                <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mt-6 pt-6 border-t border-gray-200 dark:border-neutral-800">
                   <div className="flex items-center space-x-2">
                     <div className="w-4 h-4 bg-green-100 border-2 border-green-200 rounded"></div>
                     <span className="text-sm text-gray-600 dark:text-gray-400">学習した日</span>
@@ -404,22 +404,22 @@ export default function AttendancePage() {
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50 dark:bg-black">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           日付
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           ステータス
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           視聴動画数
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           完了動画数
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           学習時間
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           アクセスコース数
                         </th>
                       </tr>
@@ -435,7 +435,7 @@ export default function AttendancePage() {
                           
                           return (
                             <tr key={index} className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${isToday ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                              <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                                 {date.toLocaleDateString('ja-JP', { 
                                   year: 'numeric', 
                                   month: 'short', 
@@ -448,7 +448,7 @@ export default function AttendancePage() {
                                   </span>
                                 )}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
+                              <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
                                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border-2 ${getStatusColor(record.status)}`}>
                                   {getStatusIcon(record.status)}
                                   <span className="ml-1">
@@ -456,16 +456,16 @@ export default function AttendancePage() {
                                   </span>
                                 </span>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                              <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                 {record.videosWatched > 0 ? `${record.videosWatched}本` : '-'}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                              <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                 {record.completedVideos > 0 ? `${record.completedVideos}本` : '-'}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                              <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                 {record.totalWatchTime > 0 ? formatTime(record.totalWatchTime) : '-'}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                              <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                 {record.coursesAccessed > 0 ? `${record.coursesAccessed}コース` : '-'}
                               </td>
                             </tr>

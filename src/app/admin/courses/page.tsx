@@ -244,55 +244,55 @@ export default function CoursesPage() {
 
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             {/* 統計サマリー */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-6 mb-8">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow px-3 py-2.5 sm:p-6">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <AcademicCapIcon className="h-8 w-8 text-blue-600" />
+                    <AcademicCapIcon className="h-4 w-4 sm:h-8 sm:w-8 text-blue-600" />
                   </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">総コース数</p>
-                    <p className="text-2xl font-bold text-gray-900 dark:text-white">{courses.length}</p>
+                  <div className="ml-2 sm:ml-4 min-w-0">
+                    <p className="text-[11px] sm:text-sm font-medium text-gray-600 dark:text-gray-400 truncate">総コース数</p>
+                    <p className="text-base sm:text-2xl font-bold text-gray-900 dark:text-white truncate">{courses.length}</p>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow px-3 py-2.5 sm:p-6">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <CheckCircleIcon className="h-8 w-8 text-green-600" />
+                    <CheckCircleIcon className="h-4 w-4 sm:h-8 sm:w-8 text-green-600" />
                   </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">公開中</p>
-                    <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                  <div className="ml-2 sm:ml-4 min-w-0">
+                    <p className="text-[11px] sm:text-sm font-medium text-gray-600 dark:text-gray-400 truncate">公開中</p>
+                    <p className="text-base sm:text-2xl font-bold text-gray-900 dark:text-white truncate">
                       {courses.filter(c => c.status === 'active').length}
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow px-3 py-2.5 sm:p-6">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <XCircleIcon className="h-8 w-8 text-gray-400" />
+                    <XCircleIcon className="h-4 w-4 sm:h-8 sm:w-8 text-gray-400" />
                   </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">非公開</p>
-                    <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                  <div className="ml-2 sm:ml-4 min-w-0">
+                    <p className="text-[11px] sm:text-sm font-medium text-gray-600 dark:text-gray-400 truncate">非公開</p>
+                    <p className="text-base sm:text-2xl font-bold text-gray-900 dark:text-white truncate">
                       {courses.filter(c => c.status === 'inactive').length}
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow px-3 py-2.5 sm:p-6">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <PlayIcon className="h-8 w-8 text-purple-600" />
+                    <PlayIcon className="h-4 w-4 sm:h-8 sm:w-8 text-purple-600" />
                   </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">総動画数</p>
-                    <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                  <div className="ml-2 sm:ml-4 min-w-0">
+                    <p className="text-[11px] sm:text-sm font-medium text-gray-600 dark:text-gray-400 truncate">総動画数</p>
+                    <p className="text-base sm:text-2xl font-bold text-gray-900 dark:text-white truncate">
                       {courses.reduce((sum, c) => sum + (c.video_count || 0), 0)}
                     </p>
                   </div>
@@ -303,7 +303,7 @@ export default function CoursesPage() {
             {/* 検索・フィルター */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow mb-6">
               <div className="p-6">
-                <div className="flex flex-col md:flex-row gap-4">
+                <div className="flex flex-col md:flex-row gap-3 sm:gap-4">
                   {/* 検索 */}
                   <div className="flex-1 relative">
                     <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />

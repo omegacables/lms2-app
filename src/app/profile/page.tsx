@@ -150,14 +150,14 @@ export default function ProfilePage() {
       <MainLayout>
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* ヘッダー */}
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">プロフィール</h1>
-            <p className="text-gray-600 dark:text-gray-400">アカウント設定と学習統計を管理できます。</p>
+          <div className="mb-4 sm:mb-8">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">プロフィール</h1>
+            <p className="hidden sm:block text-gray-600 dark:text-gray-400">アカウント設定と学習統計を管理できます。</p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 sm:gap-8">
             {/* サイドバー */}
-            <div className="lg:col-span-1">
+            <div className="md:col-span-1">
               <nav className="space-y-1">
                 <button
                   onClick={() => setActiveTab('profile')}
@@ -196,7 +196,7 @@ export default function ProfilePage() {
             </div>
 
             {/* メインコンテンツ */}
-            <div className="lg:col-span-3">
+            <div className="md:col-span-3">
               {/* 通知エリア */}
               {error && (
                 <div className="mb-6 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 p-4">

@@ -732,26 +732,26 @@ export default function CertificatesManagement() {
           </div>
 
           {/* 統計サマリー */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-lg p-6 text-white">
-              <div className="text-2xl font-bold">{certificates.filter(c => c.is_active).length}</div>
-              <div className="text-green-100">有効な証明書</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-6 mb-8">
+            <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-lg px-3 py-2.5 sm:p-6 text-white min-w-0">
+              <div className="text-base sm:text-2xl font-bold truncate">{certificates.filter(c => c.is_active).length}</div>
+              <div className="text-[11px] sm:text-base text-green-100 truncate">有効な証明書</div>
             </div>
-            <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg p-6 text-white">
-              <div className="text-2xl font-bold">{certificates.length}</div>
-              <div className="text-blue-100">総発行数</div>
+            <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg px-3 py-2.5 sm:p-6 text-white min-w-0">
+              <div className="text-base sm:text-2xl font-bold truncate">{certificates.length}</div>
+              <div className="text-[11px] sm:text-base text-blue-100 truncate">総発行数</div>
             </div>
-            <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg p-6 text-white">
-              <div className="text-2xl font-bold">{certificates.filter(c => {
+            <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg px-3 py-2.5 sm:p-6 text-white min-w-0">
+              <div className="text-base sm:text-2xl font-bold truncate">{certificates.filter(c => {
                 const now = new Date();
                 const certDate = new Date(c.created_at);
                 return (now.getTime() - certDate.getTime()) <= (7 * 24 * 60 * 60 * 1000);
               }).length}</div>
-              <div className="text-purple-100">今週の発行</div>
+              <div className="text-[11px] sm:text-base text-purple-100 truncate">今週の発行</div>
             </div>
-            <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-lg p-6 text-white">
-              <div className="text-2xl font-bold">{certificates.filter(c => !c.is_active).length}</div>
-              <div className="text-red-100">無効化済み</div>
+            <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-lg px-3 py-2.5 sm:p-6 text-white min-w-0">
+              <div className="text-base sm:text-2xl font-bold truncate">{certificates.filter(c => !c.is_active).length}</div>
+              <div className="text-[11px] sm:text-base text-red-100 truncate">無効化済み</div>
             </div>
           </div>
 
@@ -853,7 +853,7 @@ export default function CertificatesManagement() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50 dark:bg-black">
                   <tr>
-                    <th className="px-4 py-3 text-left">
+                    <th className="px-3 sm:px-4 py-3 text-left">
                       <input
                         type="checkbox"
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
@@ -861,22 +861,22 @@ export default function CertificatesManagement() {
                         onChange={toggleSelectAll}
                       />
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       証明書ID
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       受講者
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       コース
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       発行日
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       ステータス
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       アクション
                     </th>
                   </tr>
@@ -884,7 +884,7 @@ export default function CertificatesManagement() {
                 <tbody className="bg-white dark:bg-neutral-900 divide-y divide-gray-200 dark:divide-gray-700">
                   {filteredCertificates.map((certificate) => (
                     <tr key={certificate.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800 ${selectedIds.has(certificate.id) ? 'bg-blue-50 dark:bg-blue-900/10' : ''}`}>
-                      <td className="px-4 py-4">
+                      <td className="px-3 sm:px-4 py-4">
                         <input
                           type="checkbox"
                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
@@ -892,10 +892,10 @@ export default function CertificatesManagement() {
                           onChange={() => toggleSelect(certificate.id)}
                         />
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-gray-100">
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-gray-100">
                         {certificate.id.substring(0, 8)}...
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
                         <div>
                           <div className="text-sm font-medium text-gray-900 dark:text-white">
                             {certificate.user_name || certificate.user_profiles?.display_name || certificate.user_profiles?.email}
@@ -910,16 +910,16 @@ export default function CertificatesManagement() {
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                         {certificate.course_title || certificate.courses?.title}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                         {new Date(certificate.manual_issue_date || certificate.completion_date).toLocaleDateString('ja-JP')}
                         {certificate.manual_issue_date && (
                           <span className="ml-1 text-xs text-blue-600 dark:text-blue-400">(手動)</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 text-xs rounded-full ${
                           certificate.is_active
                             ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
@@ -928,7 +928,7 @@ export default function CertificatesManagement() {
                           {certificate.is_active ? '有効' : '無効'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex space-x-2">
                           <Button
                             size="sm"

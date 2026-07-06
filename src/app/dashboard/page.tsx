@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/Button";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { supabase } from "@/lib/database/supabase";
 import { difficultyLabel, difficultyBadgeClass, sortCoursesByDifficulty } from "@/lib/constants/difficulty";
-import ProgressCards from "@/components/dashboard/ProgressCards";
 import {
   PlayIcon,
   BookOpenIcon,
@@ -411,12 +410,12 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="max-w-7xl mx-auto">
-            {/* Header */}
-            <div className="mb-6">
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+            {/* Header（モバイルはコンパクトに） */}
+            <div className="mb-4 sm:mb-6">
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
                 ダッシュボード
               </h1>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className="hidden sm:block text-gray-600 dark:text-gray-400">
                 学習を続けましょう
               </p>
             </div>
@@ -425,12 +424,12 @@ export default function DashboardPage() {
             {stats?.continueWatching && (
               <Link
                 href={`/courses/${stats.continueWatching.courseId}/videos/${stats.continueWatching.videoId}`}
-                className="block mb-8 group"
+                className="block mb-4 sm:mb-8 group"
               >
-                <div className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 rounded-2xl p-5 sm:p-6 text-white transition-colors">
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-14 w-14 sm:h-16 sm:w-16 shrink-0 items-center justify-center rounded-full bg-white/20 group-hover:bg-white/30 transition-colors">
-                      <PlayIcon className="h-7 w-7 sm:h-8 sm:w-8 text-white ml-1" />
+                <div className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 rounded-xl sm:rounded-2xl p-4 sm:p-6 text-white transition-colors">
+                  <div className="flex items-center gap-3 sm:gap-4">
+                    <div className="flex h-11 w-11 sm:h-16 sm:w-16 shrink-0 items-center justify-center rounded-full bg-white/20 group-hover:bg-white/30 transition-colors">
+                      <PlayIcon className="h-6 w-6 sm:h-8 sm:w-8 text-white ml-0.5 sm:ml-1" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs sm:text-sm font-medium text-indigo-100 mb-1">
@@ -463,34 +462,29 @@ export default function DashboardPage() {
               </Link>
             )}
 
-            {/* Progress Cards */}
-            <div className="mb-8">
-              <ProgressCards />
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-8">
               {/* Main Content */}
-              <div className="lg:col-span-2 space-y-8">
+              <div className="lg:col-span-2 space-y-4 sm:space-y-8">
                 {/* Current Course */}
                 {stats?.currentCourse ? (
-                  <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-8 text-white">
-                    <div className="flex items-start justify-between mb-6">
-                      <div className="flex-1">
-                        <h2 className="text-2xl font-bold mb-2">
+                  <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl sm:rounded-2xl p-5 sm:p-8 text-white">
+                    <div className="flex items-start justify-between mb-4 sm:mb-6">
+                      <div className="flex-1 min-w-0">
+                        <h2 className="text-lg sm:text-2xl font-bold mb-1 sm:mb-2">
                           {stats.currentCourse.title || "コース名未設定"}
                         </h2>
-                        <p className="text-blue-100 mb-4 line-clamp-3">
+                        <p className="text-blue-100 mb-3 sm:mb-4 text-sm sm:text-base line-clamp-2 sm:line-clamp-3">
                           {stats.currentCourse.description || "説明なし"}
                         </p>
-                        <div className="flex items-center space-x-4 text-sm text-blue-100">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm text-blue-100">
                           <span className="flex items-center">
                             <ClockIcon className="h-4 w-4 mr-1" />
                             {formatWatchTime(stats.totalWatchTime)}
                           </span>
                           {stats.currentCourse.nextVideo && (
-                            <span className="flex items-center">
-                              <AcademicCapIcon className="h-4 w-4 mr-1" />
-                              次: {stats.currentCourse.nextVideo}
+                            <span className="flex items-center min-w-0">
+                              <AcademicCapIcon className="h-4 w-4 mr-1 shrink-0" />
+                              <span className="truncate">次: {stats.currentCourse.nextVideo}</span>
                             </span>
                           )}
                           <span className="flex items-center">
@@ -499,7 +493,7 @@ export default function DashboardPage() {
                           </span>
                         </div>
                       </div>
-                      <div className="ml-6">
+                      <div className="ml-4 sm:ml-6 hidden sm:block">
                         <div className="w-24 h-24 bg-blue-50 dark:bg-blue-900/30 rounded-xl flex items-center justify-center">
                           <BookOpenIcon className="h-12 w-12 text-white" />
                         </div>
@@ -507,50 +501,45 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Progress Bar */}
-                    <div className="mb-6">
-                      <div className="flex justify-between text-sm mb-2">
+                    <div className="mb-4 sm:mb-6">
+                      <div className="flex justify-between text-xs sm:text-sm mb-1.5 sm:mb-2">
                         <span>コース進捗</span>
                         <span>{stats.currentCourse.progress}%</span>
                       </div>
-                      <div className="bg-blue-50 dark:bg-blue-900/30 rounded-full h-3">
+                      <div className="bg-blue-50 dark:bg-blue-900/30 rounded-full h-2.5 sm:h-3">
                         <div
-                          className="bg-green-400 dark:bg-green-500 rounded-full h-3 transition-all duration-300"
+                          className="bg-green-400 dark:bg-green-500 rounded-full h-full transition-all duration-300"
                           style={{ width: `${stats.currentCourse.progress}%` }}
                         />
                       </div>
                     </div>
 
-                    <div className="flex space-x-4">
-                      <Link
-                        href={`/courses/${stats.currentCourse.id}`}
-                        className="flex items-center px-6 py-3 bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 rounded-xl font-semibold hover:bg-blue-50 dark:hover:bg-gray-600 transition-colors"
-                      >
-                        <PlayIcon className="h-5 w-5 mr-2" />
-                        学習を続ける
-                      </Link>
-                      <button className="px-6 py-3 border border-blue-300 text-white rounded-xl font-semibold hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
-                        コース詳細
-                      </button>
-                    </div>
+                    <Link
+                      href={`/courses/${stats.currentCourse.id}`}
+                      className="inline-flex items-center px-4 py-2.5 sm:px-6 sm:py-3 bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 rounded-lg sm:rounded-xl font-semibold text-sm sm:text-base hover:bg-blue-50 dark:hover:bg-gray-600 transition-colors"
+                    >
+                      <PlayIcon className="h-5 w-5 mr-2" />
+                      学習を続ける
+                    </Link>
                   </div>
                 ) : null}
 
                 {/* Assigned Courses */}
                 {stats?.assignedCourses && stats.assignedCourses.length > 0 && (
                   <div>
-                    <div className="flex items-center justify-between mb-6">
-                      <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+                    <div className="flex items-center justify-between mb-3 sm:mb-6">
+                      <h3 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
                         割り当てられたコース
                       </h3>
                       <Link
                         href="/my-courses"
-                        className="text-blue-600 hover:text-blue-700 font-medium"
+                        className="text-sm sm:text-base text-blue-600 hover:text-blue-700 font-medium"
                       >
                         すべて見る
                       </Link>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
                       {stats.assignedCourses.map((course) => (
                         <Link
                           key={course.id}
@@ -668,9 +657,9 @@ export default function DashboardPage() {
               </div>
 
               {/* Sidebar */}
-              <div className="space-y-8">
+              <div className="space-y-4 sm:space-y-8">
                 {/* Learning Progress */}
-                <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-6">
+                <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-4 sm:p-6">
                   <h3 className="font-semibold text-gray-900 dark:text-white mb-4">
                     学習進捗ステータス
                   </h3>
@@ -719,7 +708,7 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Recent Activity */}
-                <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-6">
+                <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-4 sm:p-6">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="font-semibold text-gray-900 dark:text-white">
                       最近のアクティビティ
