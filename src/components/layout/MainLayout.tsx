@@ -375,8 +375,13 @@ export function MainLayout({ children }: MainLayoutProps) {
         {/* User section */}
         <div className="border-t border-zinc-950/5 dark:border-white/5 p-4">
           <div className="flex items-center gap-x-3 rounded-lg px-3 py-2 hover:bg-zinc-950/5 dark:hover:bg-white/5 transition-colors">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-100 dark:bg-zinc-800">
-              <UserCircleIcon className="h-6 w-6 text-zinc-600 dark:text-zinc-400" />
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+              {user?.profile?.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={user.profile.avatar_url} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <UserCircleIcon className="h-6 w-6 text-zinc-600 dark:text-zinc-400" />
+              )}
             </span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-zinc-950 dark:text-white">
@@ -466,8 +471,13 @@ export function MainLayout({ children }: MainLayoutProps) {
                 <span className="hidden lg:block text-sm font-medium text-zinc-950 dark:text-white">
                   {user?.profile?.display_name || 'ユーザー'}
                 </span>
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-zinc-100 dark:bg-zinc-800">
-                  <UserCircleIcon className="h-5 w-5 text-zinc-600 dark:text-zinc-400" />
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+                  {user?.profile?.avatar_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={user.profile.avatar_url} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <UserCircleIcon className="h-5 w-5 text-zinc-600 dark:text-zinc-400" />
+                  )}
                 </span>
               </div>
             </div>
