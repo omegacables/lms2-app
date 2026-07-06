@@ -310,63 +310,34 @@ export default function MyCoursesPage() {
     <AuthGuard>
       <MainLayout>
         <div className="max-w-7xl mx-auto">
-          {/* Header */}
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">マイコース</h1>
-            <p className="text-lg text-gray-600 dark:text-gray-400">
+          {/* Header（モバイルはコンパクトに） */}
+          <div className="mb-4 sm:mb-8">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-4">マイコース</h1>
+            <p className="hidden sm:block text-lg text-gray-600 dark:text-gray-400">
               あなたが受講中・完了したコースの進捗を確認できます。
             </p>
           </div>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 rounded-xl p-6 border border-gray-200 dark:border-neutral-800">
-              <div className="flex items-center">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <BookOpenIcon className="h-6 w-6 text-blue-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.totalCourses}</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">受講コース</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-neutral-900 rounded-xl p-6 border border-gray-200 dark:border-neutral-800">
-              <div className="flex items-center">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <CheckCircleIcon className="h-6 w-6 text-green-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.completedCourses}</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">完了済み</p>
+          {/* Stats Cards（モバイルは2×2のコンパクト表示、コース一覧までのスクロールを短く） */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-6 mb-4 sm:mb-8">
+            {[
+              { icon: BookOpenIcon, iconBg: 'bg-blue-100', iconColor: 'text-blue-600', value: stats.totalCourses, label: '受講コース' },
+              { icon: CheckCircleIcon, iconBg: 'bg-green-100', iconColor: 'text-green-600', value: stats.completedCourses, label: '完了済み' },
+              { icon: PlayIcon, iconBg: 'bg-yellow-100', iconColor: 'text-yellow-600', value: stats.inProgressCourses, label: '学習中' },
+              { icon: ClockIcon, iconBg: 'bg-purple-100', iconColor: 'text-purple-600', value: formatDuration(stats.totalWatchTime), label: '総学習時間' },
+            ].map(({ icon: Icon, iconBg, iconColor, value, label }) => (
+              <div key={label} className="bg-white dark:bg-neutral-900 rounded-lg sm:rounded-xl px-3 py-2.5 sm:p-6 border border-gray-200 dark:border-neutral-800">
+                <div className="flex items-center">
+                  <div className={`p-1.5 sm:p-2 ${iconBg} rounded-lg shrink-0`}>
+                    <Icon className={`h-4 w-4 sm:h-6 sm:w-6 ${iconColor}`} />
+                  </div>
+                  <div className="ml-2.5 sm:ml-4 min-w-0">
+                    <p className="text-base sm:text-2xl font-bold text-gray-900 dark:text-white truncate">{value}</p>
+                    <p className="text-[11px] sm:text-sm text-gray-600 dark:text-gray-400 truncate">{label}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-
-            <div className="bg-white dark:bg-neutral-900 rounded-xl p-6 border border-gray-200 dark:border-neutral-800">
-              <div className="flex items-center">
-                <div className="p-2 bg-yellow-100 rounded-lg">
-                  <PlayIcon className="h-6 w-6 text-yellow-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.inProgressCourses}</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">学習中</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-neutral-900 rounded-xl p-6 border border-gray-200 dark:border-neutral-800">
-              <div className="flex items-center">
-                <div className="p-2 bg-purple-100 rounded-lg">
-                  <ClockIcon className="h-6 w-6 text-purple-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{formatDuration(stats.totalWatchTime)}</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">総学習時間</p>
-                </div>
-              </div>
-            </div>
+            ))}
           </div>
 
           {/* Course List */}
@@ -379,98 +350,97 @@ export default function MyCoursesPage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-3 sm:space-y-6">
               {courses.map((course) => (
-                <div key={course.id} className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-6 hover:shadow-lg dark:shadow-gray-900/50 transition-shadow">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-4 mb-4">
-                        <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0">
-                          {course.thumbnail_url ? (
-                            <img
-                              src={course.thumbnail_url}
-                              alt={course.title}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                              <BookOpenIcon className="h-8 w-8 text-white" />
-                            </div>
-                          )}
+                <div key={course.id} className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-4 sm:p-6 hover:shadow-lg dark:shadow-gray-900/50 transition-shadow">
+                  <div className="flex items-start gap-3 sm:gap-4 mb-3 sm:mb-4">
+                    <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-lg sm:rounded-xl overflow-hidden flex-shrink-0">
+                      {course.thumbnail_url ? (
+                        <img
+                          src={course.thumbnail_url}
+                          alt={course.title}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                          <BookOpenIcon className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
                         </div>
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2 mb-2">
-                            <h3 className="text-xl font-bold text-gray-900 dark:text-white">{course.title}</h3>
-                            {getStatusBadge(course.progress || 0)}
-                            {course.certificate_earned && (
-                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                <TrophyIcon className="h-3 w-3 mr-1" />
-                                証明書取得
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-gray-600 dark:text-gray-400 mb-2 line-clamp-2">{course.description}</p>
-                          <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
-                            <span className="flex items-center">
-                              <AcademicCapIcon className="h-4 w-4 mr-1" />
-                              {course.total_videos} 動画
-                            </span>
-                            <span className="flex items-center">
-                              <ClockIcon className="h-4 w-4 mr-1" />
-                              {formatDuration(course.total_watch_time || 0)}
-                            </span>
-                            <span>
-                              最終学習: {new Date(course.last_accessed!).toLocaleDateString('ja-JP')}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Progress Bar */}
-                      <div className="mb-4">
-                        <div className="flex items-center justify-between text-sm mb-2">
-                          <span className="font-medium text-gray-700 dark:text-gray-300">
-                            進捗: {course.completed_videos}/{course.total_videos} 動画完了
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      {/* タイトル+バッジ: モバイルでは折り返して重ならないように */}
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1 sm:mb-2">
+                        <h3 className="text-base sm:text-xl font-bold text-gray-900 dark:text-white">{course.title}</h3>
+                        {getStatusBadge(course.progress || 0)}
+                        {course.certificate_earned && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                            <TrophyIcon className="h-3 w-3 mr-1" />
+                            証明書取得
                           </span>
-                          <span className="font-bold text-gray-900 dark:text-white">{course.progress}%</span>
-                        </div>
-                        <div className="w-3/4 bg-gray-200 dark:bg-gray-700 rounded-full h-3">
-                          <div
-                            className="h-3 bg-green-500 rounded-full transition-all duration-300"
-                            style={{ width: `${course.progress}%` }}
-                          />
-                        </div>
+                        )}
                       </div>
-
-                      <div className="flex items-center space-x-4">
-                        <Link href={`/courses/${course.id}`}>
-                          <Button className="bg-blue-600 hover:bg-blue-700 flex items-center">
-                            <PlayIcon className="h-4 w-4 mr-2" />
-                            {course.progress === 100 ? 'もう一度見る' : '学習を続ける'}
-                          </Button>
-                        </Link>
-                        
-                        {course.progress! > 0 && (
-                          <Link href={`/courses/${course.id}/progress`}>
-                            <Button variant="outline" className="flex items-center">
-                              <ChartBarIcon className="h-4 w-4 mr-2" />
-                              進捗詳細
-                            </Button>
-                          </Link>
-                        )}
-
-                        {course.progress === 100 && (
-                          <Button
-                            variant="outline"
-                            className="flex items-center text-yellow-700 border-yellow-300 hover:bg-yellow-50 dark:hover:bg-yellow-900/20"
-                            onClick={() => handleGetCertificate(course)}
-                          >
-                            <TrophyIcon className="h-4 w-4 mr-2" />
-                            証明書を取得
-                          </Button>
-                        )}
+                      <p className="hidden sm:block text-gray-600 dark:text-gray-400 mb-2 line-clamp-2">{course.description}</p>
+                      {/* メタ情報: 折り返し対応 */}
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                        <span className="flex items-center">
+                          <AcademicCapIcon className="h-4 w-4 mr-1" />
+                          {course.total_videos} 動画
+                        </span>
+                        <span className="flex items-center">
+                          <ClockIcon className="h-4 w-4 mr-1" />
+                          {formatDuration(course.total_watch_time || 0)}
+                        </span>
+                        <span>
+                          最終学習: {new Date(course.last_accessed!).toLocaleDateString('ja-JP')}
+                        </span>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Progress Bar（モバイルは全幅） */}
+                  <div className="mb-3 sm:mb-4">
+                    <div className="flex items-center justify-between text-xs sm:text-sm mb-1.5 sm:mb-2">
+                      <span className="font-medium text-gray-700 dark:text-gray-300">
+                        進捗: {course.completed_videos}/{course.total_videos} 動画完了
+                      </span>
+                      <span className="font-bold text-gray-900 dark:text-white">{course.progress}%</span>
+                    </div>
+                    <div className="w-full sm:w-3/4 bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 sm:h-3">
+                      <div
+                        className="h-full bg-green-500 rounded-full transition-all duration-300"
+                        style={{ width: `${course.progress}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* ボタン行: モバイルは折り返し（space-xは折り返しで崩れるためgapを使用） */}
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+                    <Link href={`/courses/${course.id}`}>
+                      <Button className="bg-blue-600 hover:bg-blue-700 flex items-center">
+                        <PlayIcon className="h-4 w-4 mr-2" />
+                        {course.progress === 100 ? 'もう一度見る' : '学習を続ける'}
+                      </Button>
+                    </Link>
+
+                    {course.progress! > 0 && (
+                      <Link href={`/courses/${course.id}/progress`}>
+                        <Button variant="outline" className="flex items-center">
+                          <ChartBarIcon className="h-4 w-4 mr-2" />
+                          進捗詳細
+                        </Button>
+                      </Link>
+                    )}
+
+                    {course.progress === 100 && (
+                      <Button
+                        variant="outline"
+                        className="flex items-center text-yellow-700 border-yellow-300 hover:bg-yellow-50 dark:hover:bg-yellow-900/20"
+                        onClick={() => handleGetCertificate(course)}
+                      >
+                        <TrophyIcon className="h-4 w-4 mr-2" />
+                        証明書を取得
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
