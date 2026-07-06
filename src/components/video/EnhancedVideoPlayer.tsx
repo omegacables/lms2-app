@@ -147,7 +147,11 @@ export function EnhancedVideoPlayer({
   const savedPositionBeforeBlur = useRef<number>(0);
 
   // デバイスタイプの検出
-  const isMobile = typeof window !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  // iPadOS 13以降のSafariはUAが「Macintosh」になるため、タッチポイント数でも判定する
+  const isMobile = typeof window !== 'undefined' && (
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+    (navigator.userAgent.includes('Macintosh') && navigator.maxTouchPoints > 1)
+  );
 
   // 初期位置を設定（初回マウント時のみ）
   useEffect(() => {
@@ -174,57 +178,29 @@ export function EnhancedVideoPlayer({
       onPlayStart();
     }
 
-    // 動画のロードを確実に開始
-    if (videoRef.current) {
-      videoRef.current.load();
-    }
-
-    // バッファが十分貯まるまで必ず待機（スマホは特に厳格）
-    setLoadingMessage(isMobile
-      ? '動画を読み込んでいます...\n📱 スマホでの快適な視聴のため、十分なバッファを確保中です'
-      : '動画を読み込んでいます。十分なバッファを確保中...'
-    );
+    // 動画のロードを開始し、ユーザー操作（タップ）の中で即座に play() を呼ぶ。
+    // iOS/iPadOS の Safari はユーザー操作起点の play() が無い限り動画データを
+    // バッファしないため、「バッファが貯まるまで再生しない」方式はデッドロックになる。
+    // バッファ待ちはオーバーレイ表示のみで行い、再生自体はブロックしない。
+    setLoadingMessage('動画を読み込んでいます...');
     setIsBuffering(true);
 
-    // バッファ進捗を積極的にチェック（200msごと）
-    const bufferCheckInterval = setInterval(() => {
-      updateBufferProgress();
-    }, 200);
-
-    // 準備完了まで待機（最大120秒）
-    const checkReady = setInterval(() => {
-      if (isReadyToPlay && videoRef.current) {
-        clearInterval(checkReady);
-        clearInterval(bufferCheckInterval);
-        console.log('[VideoPlayer] ✅ バッファ準備完了: 再生を開始します');
-        setIsBuffering(false);
-        videoRef.current.play();
-        setIsPlaying(true);
-      }
-    }, 300);
-
-    // タイムアウト（120秒）
-    setTimeout(() => {
-      clearInterval(checkReady);
-      clearInterval(bufferCheckInterval);
-      if (!isReadyToPlay && videoRef.current) {
-        // タイムアウトしても再生を試みる（最終手段）
-        console.log('[VideoPlayer] ⚠️ タイムアウト: 現在のバッファで再生を開始します (バッファ:', bufferProgress, '%)');
-        setIsReadyToPlay(true);
-        setIsBuffering(false);
-        videoRef.current.play();
-        setIsPlaying(true);
-      }
-    }, 120000);
-
-    // バッファが準備できていれば即座に再生
-    if (isReadyToPlay && videoRef.current) {
-      clearInterval(checkReady);
-      clearInterval(bufferCheckInterval);
-      // すでに準備完了している場合はすぐに再生
-      if (videoRef.current) {
-        console.log('[VideoPlayer] バッファ準備済み: 即座に再生開始');
-        videoRef.current.play();
+    if (videoRef.current) {
+      videoRef.current.load();
+      const playPromise = videoRef.current.play();
+      if (playPromise) {
+        playPromise
+          .then(() => {
+            setIsPlaying(true);
+            console.log('[VideoPlayer] 再生開始（バッファはバックグラウンドで継続）');
+          })
+          .catch((err) => {
+            // 自動再生ポリシー等で拒否された場合はオーバーレイを解除してタップ再生を促す
+            console.warn('[VideoPlayer] 初回再生開始に失敗:', err);
+            setIsPlaying(false);
+            setIsBuffering(false);
+          });
+      } else {
         setIsPlaying(true);
       }
     }
@@ -624,17 +600,16 @@ export function EnhancedVideoPlayer({
         // 一時停止時に進捗を保存
         saveProgress();
       } else {
-        // バッファが十分でない場合は警告
-        if (!isReadyToPlay && bufferProgress < 10) {
-          alert('動画を読み込んでいます。もう少しお待ちください。\n現在の読み込み状況: ' + bufferProgress + '%');
-          return;
-        }
-
         // 再生開始時に親コンポーネントに通知（開始時刻を記録）
         if (onPlayStart) {
           onPlayStart();
         }
-        videoRef.current.play();
+        // バッファ不足でもブロックしない（iOSはユーザー操作内のplay()が必須。
+        // 読み込み中はブラウザ側が自動的に待機し、waitingイベントでオーバーレイが出る）
+        videoRef.current.play().catch((err) => {
+          console.warn('[VideoPlayer] 再生開始に失敗:', err);
+          setIsPlaying(false);
+        });
         setIsPlaying(true);
         hideControlsAfterDelay();
       }
@@ -1023,9 +998,10 @@ export function EnhancedVideoPlayer({
         </div>
       )}
 
-      {/* 読み込み中のオーバーレイ */}
+      {/* 読み込み中のオーバーレイ（pointer-events-none: タップは下のvideo要素に通す。
+          iOSではタップ起点のplay()が再生開始に必須のため、オーバーレイで遮断しない） */}
       {isBuffering && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-75 z-10">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-75 z-10 pointer-events-none">
           <div className="text-white text-center">
             {/* ローディングスピナー */}
             <div className="mb-4">
@@ -1053,9 +1029,9 @@ export function EnhancedVideoPlayer({
             {/* デバイス別のヒント */}
             {isMobile ? (
               <div className="text-xs text-gray-400 mt-4 max-w-xs space-y-2">
-                <p className="font-semibold text-yellow-400">📱 スマホで視聴中</p>
+                <p className="font-semibold text-yellow-400">📱 スマホ・タブレットで視聴中</p>
                 <p>
-                  より快適な視聴のため、{bufferProgress >= 60 ? '90秒' : '60%'}以上のバッファを確保しています。
+                  再生しながらバックグラウンドで読み込みを続けます。
                 </p>
                 <p>
                   Wi-Fi環境での視聴を強く推奨します。
