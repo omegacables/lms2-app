@@ -9,6 +9,7 @@ import { useAuth } from "@/stores/auth";
 import { Button } from "@/components/ui/Button";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { supabase } from "@/lib/database/supabase";
+import { difficultyLabel, difficultyBadgeClass, sortCoursesByDifficulty } from "@/lib/constants/difficulty";
 import ProgressCards from "@/components/dashboard/ProgressCards";
 import {
   PlayIcon,
@@ -49,6 +50,14 @@ interface DashboardStats {
   };
   assignedCourses: Course[];
   notStartedCourses: number;
+  continueWatching?: {
+    videoId: number;
+    videoTitle: string;
+    courseId: number;
+    courseTitle: string;
+    position: number; // 前回の再生位置（秒）
+    progressPercent: number;
+  };
 }
 
 export default function DashboardPage() {
@@ -219,6 +228,27 @@ export default function DashboardPage() {
         .eq("user_id", user.id)
         .eq("is_active", true);
 
+      // 「前回の続きから」: 最後に視聴した未完了の動画（無ければ最新ログ）
+      let continueWatching = undefined;
+      if (viewLogs && viewLogs.length > 0) {
+        const resumeLog =
+          viewLogs.find((log) => log.status !== "completed" && log.video_id) ||
+          viewLogs[0];
+        if (resumeLog?.video_id && resumeLog.course_id) {
+          continueWatching = {
+            videoId: resumeLog.video_id,
+            videoTitle: resumeLog.videos?.title || "動画",
+            courseId: resumeLog.course_id,
+            courseTitle: resumeLog.courses?.title || "コース",
+            position: resumeLog.current_position || 0,
+            progressPercent:
+              resumeLog.status === "completed"
+                ? 100
+                : Math.min(100, Math.round(resumeLog.progress_percent || 0)),
+          };
+        }
+      }
+
       // 現在受講中のコースを取得（最も最近アクセスしたコース）
       let currentCourse = undefined;
       if (viewLogs && viewLogs.length > 0) {
@@ -302,7 +332,10 @@ export default function DashboardPage() {
         }),
       );
 
-      const validAssignedCourses = assignedCourses.filter(Boolean) as any[];
+      // レベル順（入門→エキスパート）で表示
+      const validAssignedCourses = sortCoursesByDifficulty(
+        assignedCourses.filter(Boolean) as any[]
+      );
 
       // 未開始のコース数を計算
       const startedCourseIds = new Set(viewLogs?.map((log) => log.course_id));
@@ -341,6 +374,7 @@ export default function DashboardPage() {
         currentCourse,
         assignedCourses: validAssignedCourses,
         notStartedCourses,
+        continueWatching,
       });
     } catch (error) {
       console.error("ダッシュボード統計取得エラー:", error);
@@ -386,6 +420,48 @@ export default function DashboardPage() {
                 学習を続けましょう
               </p>
             </div>
+
+            {/* 前回の続きから */}
+            {stats?.continueWatching && (
+              <Link
+                href={`/courses/${stats.continueWatching.courseId}/videos/${stats.continueWatching.videoId}`}
+                className="block mb-8 group"
+              >
+                <div className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 rounded-2xl p-5 sm:p-6 text-white transition-colors">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-14 w-14 sm:h-16 sm:w-16 shrink-0 items-center justify-center rounded-full bg-white/20 group-hover:bg-white/30 transition-colors">
+                      <PlayIcon className="h-7 w-7 sm:h-8 sm:w-8 text-white ml-1" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs sm:text-sm font-medium text-indigo-100 mb-1">
+                        前回の続きから視聴
+                      </p>
+                      <h2 className="text-base sm:text-lg font-bold truncate">
+                        {stats.continueWatching.videoTitle}
+                      </h2>
+                      <p className="text-xs sm:text-sm text-indigo-100 truncate">
+                        {stats.continueWatching.courseTitle}
+                      </p>
+                      {/* 進捗バー */}
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="h-1.5 flex-1 rounded-full bg-white/25 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-white"
+                            style={{ width: `${stats.continueWatching.progressPercent}%` }}
+                          />
+                        </div>
+                        <span className="text-xs text-indigo-100 shrink-0">
+                          {stats.continueWatching.progressPercent}%
+                        </span>
+                      </div>
+                    </div>
+                    <span className="hidden sm:inline-flex shrink-0 items-center rounded-lg bg-white/15 group-hover:bg-white/25 px-4 py-2 text-sm font-semibold transition-colors">
+                      続きを見る
+                    </span>
+                  </div>
+                </div>
+              </Link>
+            )}
 
             {/* Progress Cards */}
             <div className="mb-8">
@@ -500,25 +576,13 @@ export default function DashboardPage() {
                                 <h4 className="font-semibold text-gray-900 dark:text-white flex-1 line-clamp-2">
                                   {course.title || "コース名未設定"}
                                 </h4>
-                                <span
-                                  className={`px-2 py-1 rounded-full text-xs font-medium ml-2 ${
-                                    (course.difficulty_level || "") ===
-                                    "beginner"
-                                      ? "bg-green-100 text-green-800"
-                                      : (course.difficulty_level || "") ===
-                                          "intermediate"
-                                        ? "bg-yellow-100 text-yellow-800"
-                                        : "bg-red-100 text-red-800"
-                                  }`}
-                                >
-                                  {(course.difficulty_level || "") ===
-                                  "beginner"
-                                    ? "初級"
-                                    : (course.difficulty_level || "") ===
-                                        "intermediate"
-                                      ? "中級"
-                                      : "上級"}
-                                </span>
+                                {course.difficulty_level && (
+                                  <span
+                                    className={`px-2 py-1 rounded-full text-xs font-medium ml-2 ${difficultyBadgeClass(course.difficulty_level)}`}
+                                  >
+                                    {difficultyLabel(course.difficulty_level)}
+                                  </span>
+                                )}
                               </div>
                               <p className="text-gray-600 dark:text-gray-400 text-sm mb-4 line-clamp-2">
                                 {course.description || "説明なし"}

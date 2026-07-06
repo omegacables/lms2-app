@@ -20,6 +20,7 @@ import {
 } from '@heroicons/react/24/outline';
 import type { Tables } from '@/lib/database/supabase';
 import { generateCertificatePDF } from '@/lib/utils/certificatePDF';
+import { sortCoursesByDifficulty } from '@/lib/constants/difficulty';
 
 type Course = Tables<'courses'> & {
   videos?: Array<Tables<'videos'>>;
@@ -158,16 +159,16 @@ export default function MyCoursesPage() {
         })
       );
 
-      // Sort by last accessed (most recent first)
-      coursesWithProgress.sort((a, b) => new Date(b.last_accessed!).getTime() - new Date(a.last_accessed!).getTime());
+      // レベル順（入門→初級→中級→上級→エキスパート、同レベル内は表示順→タイトル順）
+      const sortedCourses = sortCoursesByDifficulty(coursesWithProgress);
 
       // Calculate stats
-      const totalCourses = coursesWithProgress.length;
+      const totalCourses = sortedCourses.length;
       const completedCourses = coursesWithProgress.filter(c => c.progress === 100).length;
       const inProgressCourses = coursesWithProgress.filter(c => c.progress > 0 && c.progress < 100).length;
       const totalWatchTime = coursesWithProgress.reduce((sum, c) => sum + (c.total_watch_time || 0), 0);
 
-      setCourses(coursesWithProgress);
+      setCourses(sortedCourses);
       setStats({
         totalCourses,
         completedCourses,

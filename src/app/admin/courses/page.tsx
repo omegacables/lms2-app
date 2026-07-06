@@ -8,6 +8,7 @@ import { useAuth } from '@/stores/auth';
 import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { supabase } from '@/lib/database/supabase';
+import { DIFFICULTY_LEVELS } from '@/lib/constants/difficulty';
 import { courseCache } from '@/utils/performance';
 import {
   PlusIcon,
@@ -44,11 +45,9 @@ const formatDuration = (seconds: number) => {
   return `${minutes}分`;
 };
 
-const difficultyLabels: Record<string, string> = {
-  beginner: '初級',
-  intermediate: '中級',
-  advanced: '上級',
-};
+const difficultyLabels: Record<string, string> = Object.fromEntries(
+  DIFFICULTY_LEVELS.map((l) => [l.value, l.label])
+);
 
 const categoryLabels: Record<string, string> = {
   programming: 'プログラミング',

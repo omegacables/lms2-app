@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { supabase } from '@/lib/database/supabase';
 import { useAuth } from '@/stores/auth';
+import { difficultyLabel, difficultyBadgeClass } from '@/lib/constants/difficulty';
 import type { Tables } from '@/lib/database/supabase';
 import {
   ChevronDownIcon,
@@ -297,13 +298,8 @@ export default function CourseDetailPage() {
                       </svg>
                       <span className="text-sm font-medium text-muted-foreground">難易度</span>
                     </div>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      course.difficulty_level === 'beginner' ? 'bg-green-100 text-green-800' :
-                      course.difficulty_level === 'intermediate' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
-                      {course.difficulty_level === 'beginner' ? '初級' : 
-                       course.difficulty_level === 'intermediate' ? '中級' : '上級'}
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${difficultyBadgeClass(course.difficulty_level)}`}>
+                      {difficultyLabel(course.difficulty_level)}
                     </span>
                   </div>
                 )}

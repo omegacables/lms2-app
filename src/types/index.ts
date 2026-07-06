@@ -3,7 +3,7 @@ export type UserRole = 'student' | 'instructor' | 'admin' | 'labor_consultant';
 export type CourseStatus = 'active' | 'inactive';
 export type VideoStatus = 'active' | 'inactive';
 export type LearningStatus = 'not_started' | 'in_progress' | 'completed';
-export type DifficultyLevel = 'beginner' | 'intermediate' | 'advanced';
+export type DifficultyLevel = 'introduction' | 'beginner' | 'intermediate' | 'advanced' | 'expert';
 
 // データベース型定義
 export interface UserProfile {

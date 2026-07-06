@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { supabase } from '@/lib/database/supabase';
+import { DIFFICULTY_LEVELS, type DifficultyLevel } from '@/lib/constants/difficulty';
 import {
   ArrowLeftIcon,
   DocumentIcon,
@@ -26,7 +27,7 @@ interface Course {
   title: string;
   description: string;
   category: string;
-  difficulty_level: 'beginner' | 'intermediate' | 'advanced';
+  difficulty_level: DifficultyLevel;
   completion_threshold: number;
   show_viewing_notice: boolean;
   status: 'active' | 'inactive';
@@ -64,7 +65,7 @@ export default function EditCoursePage() {
     title: '',
     description: '',
     category: '',
-    difficulty_level: 'beginner' as 'beginner' | 'intermediate' | 'advanced',
+    difficulty_level: 'beginner' as DifficultyLevel,
     completion_threshold: 80,
     show_viewing_notice: true,
     status: 'active' as 'active' | 'inactive',
@@ -479,9 +480,9 @@ export default function EditCoursePage() {
                           value={formData.difficulty_level}
                           onChange={(e) => setFormData({ ...formData, difficulty_level: e.target.value as any })}
                         >
-                          <option value="beginner">初級</option>
-                          <option value="intermediate">中級</option>
-                          <option value="advanced">上級</option>
+                          {DIFFICULTY_LEVELS.map((level) => (
+                            <option key={level.value} value={level.value}>{level.label}</option>
+                          ))}
                         </select>
                       </div>
 
