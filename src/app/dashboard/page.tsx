@@ -19,6 +19,7 @@ import {
   ChartBarIcon,
   ArrowTrendingUpIcon,
   CheckCircleIcon,
+  UserCircleIcon,
 } from "@heroicons/react/24/outline";
 import type { Tables } from "@/lib/database/supabase";
 
@@ -382,6 +383,14 @@ export default function DashboardPage() {
     }
   };
 
+  // 時間帯に応じたあいさつ
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 11) return "おはようございます";
+    if (hour >= 11 && hour < 18) return "こんにちは";
+    return "こんばんは";
+  };
+
   const formatWatchTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -410,14 +419,50 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="max-w-7xl mx-auto">
-            {/* Header（モバイルはコンパクトに） */}
-            <div className="mb-4 sm:mb-6">
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">
-                ダッシュボード
-              </h1>
-              <p className="hidden sm:block text-gray-600 dark:text-gray-400">
-                学習を続けましょう
-              </p>
+            {/* あいさつカード（時間帯あいさつ + 実績サマリー） */}
+            <div className="mb-4 sm:mb-6 bg-white dark:bg-neutral-900 rounded-xl sm:rounded-2xl border border-gray-200 dark:border-neutral-800 overflow-hidden">
+              <div className="flex flex-col sm:flex-row">
+                {/* 左: あいさつ */}
+                <div className="flex items-center gap-3 sm:gap-4 p-4 sm:p-6 flex-1 min-w-0">
+                  <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-full bg-blue-50 dark:bg-blue-900/30 overflow-hidden flex items-center justify-center shrink-0">
+                    {user?.profile?.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={user.profile.avatar_url} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <UserCircleIcon className="h-8 w-8 sm:h-9 sm:w-9 text-blue-500" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm font-semibold text-blue-600 dark:text-blue-400">
+                      {getGreeting()}
+                    </p>
+                    <h1 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white truncate">
+                      ようこそ、{user?.profile?.display_name || "ゲスト"}さん
+                    </h1>
+                    <p className="hidden sm:block text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                      今日も学習を続けましょう
+                    </p>
+                  </div>
+                </div>
+                {/* 右: 実績タイル */}
+                <div className="grid grid-cols-3 border-t sm:border-t-0 sm:border-l border-gray-200 dark:border-neutral-800 divide-x divide-gray-200 dark:divide-neutral-800 sm:flex">
+                  {[
+                    { label: "受講コース", value: String(stats?.totalCourses ?? 0), color: "text-blue-600 dark:text-blue-400" },
+                    { label: "完了", value: String(stats?.completedCourses ?? 0), color: "text-green-600 dark:text-green-400" },
+                    { label: "学習時間", value: formatWatchTime(stats?.totalWatchTime || 0), color: "text-purple-600 dark:text-purple-400" },
+                  ].map(({ label, value, color }) => (
+                    <div
+                      key={label}
+                      className="flex flex-col items-center justify-center px-2 py-2.5 sm:px-6 sm:py-4 text-center sm:min-w-[110px]"
+                    >
+                      <p className={`text-base sm:text-2xl font-bold ${color} truncate max-w-full`}>{value}</p>
+                      <p className="text-[10px] sm:text-xs font-medium tracking-wide text-gray-500 dark:text-gray-400">
+                        {label}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
 
             {/* 前回の続きから */}
@@ -426,36 +471,41 @@ export default function DashboardPage() {
                 href={`/courses/${stats.continueWatching.courseId}/videos/${stats.continueWatching.videoId}`}
                 className="block mb-4 sm:mb-8 group"
               >
-                <div className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 rounded-xl sm:rounded-2xl p-4 sm:p-6 text-white transition-colors">
-                  <div className="flex items-center gap-3 sm:gap-4">
-                    <div className="flex h-11 w-11 sm:h-16 sm:w-16 shrink-0 items-center justify-center rounded-full bg-white/20 group-hover:bg-white/30 transition-colors">
-                      <PlayIcon className="h-6 w-6 sm:h-8 sm:w-8 text-white ml-0.5 sm:ml-1" />
-                    </div>
+                <div className="bg-neutral-950 hover:bg-neutral-900 dark:bg-black dark:hover:bg-neutral-950 border border-neutral-800 rounded-xl sm:rounded-2xl p-4 sm:p-7 text-white transition-colors">
+                  <div className="flex items-center gap-4 sm:gap-6">
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs sm:text-sm font-medium text-indigo-100 mb-1">
-                        前回の続きから視聴
+                      <p className="flex items-center gap-1.5 text-[11px] sm:text-xs font-bold tracking-widest text-amber-400 mb-1.5 sm:mb-2">
+                        <PlayIcon className="h-3.5 w-3.5" />
+                        受講中
                       </p>
-                      <h2 className="text-base sm:text-lg font-bold truncate">
+                      <h2 className="text-lg sm:text-2xl font-bold truncate mb-0.5">
                         {stats.continueWatching.videoTitle}
                       </h2>
-                      <p className="text-xs sm:text-sm text-indigo-100 truncate">
+                      <p className="text-xs sm:text-sm text-neutral-400 truncate mb-3">
                         {stats.continueWatching.courseTitle}
                       </p>
                       {/* 進捗バー */}
-                      <div className="mt-2 flex items-center gap-2">
-                        <div className="h-1.5 flex-1 rounded-full bg-white/25 overflow-hidden">
+                      <div className="flex items-center gap-3 max-w-md">
+                        <span className="text-[11px] sm:text-xs text-neutral-400 shrink-0">学習進捗</span>
+                        <div className="h-1.5 flex-1 rounded-full bg-white/15 overflow-hidden">
                           <div
-                            className="h-full rounded-full bg-white"
+                            className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-amber-400"
                             style={{ width: `${stats.continueWatching.progressPercent}%` }}
                           />
                         </div>
-                        <span className="text-xs text-indigo-100 shrink-0">
+                        <span className="text-xs sm:text-sm font-bold text-amber-400 shrink-0">
                           {stats.continueWatching.progressPercent}%
                         </span>
                       </div>
                     </div>
-                    <span className="hidden sm:inline-flex shrink-0 items-center rounded-lg bg-white/15 group-hover:bg-white/25 px-4 py-2 text-sm font-semibold transition-colors">
-                      続きを見る
+                    <span className="hidden sm:inline-flex shrink-0 items-center gap-1 rounded-xl bg-white text-neutral-950 group-hover:bg-neutral-100 px-6 py-3.5 text-sm font-bold transition-colors">
+                      学習を再開
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                      </svg>
+                    </span>
+                    <span className="sm:hidden flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-neutral-950">
+                      <PlayIcon className="h-5 w-5 ml-0.5" />
                     </span>
                   </div>
                 </div>
@@ -527,13 +577,18 @@ export default function DashboardPage() {
                 {/* Assigned Courses */}
                 {stats?.assignedCourses && stats.assignedCourses.length > 0 && (
                   <div>
-                    <div className="flex items-center justify-between mb-3 sm:mb-6">
-                      <h3 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
-                        割り当てられたコース
-                      </h3>
+                    <div className="flex items-end justify-between mb-3 sm:mb-6">
+                      <div>
+                        <p className="text-[11px] sm:text-xs font-semibold tracking-wider text-gray-400 dark:text-gray-500 mb-0.5">
+                          コースを選択
+                        </p>
+                        <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">
+                          学びたいコースを選んでください
+                        </h3>
+                      </div>
                       <Link
                         href="/my-courses"
-                        className="text-sm sm:text-base text-blue-600 hover:text-blue-700 font-medium"
+                        className="text-sm sm:text-base text-blue-600 hover:text-blue-700 font-medium shrink-0"
                       >
                         すべて見る
                       </Link>
@@ -546,7 +601,8 @@ export default function DashboardPage() {
                           href={`/courses/${course.id}`}
                           className="block"
                         >
-                          <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 overflow-hidden hover:shadow-lg dark:hover:shadow-gray-900/50 transition-shadow cursor-pointer">
+                          <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 overflow-hidden hover:shadow-lg hover:border-blue-300 dark:hover:border-blue-700 dark:hover:shadow-gray-900/50 transition-all cursor-pointer">
+                            <div className="h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500" />
                             {course.thumbnail_url ? (
                               <div className="aspect-video relative bg-gray-100 dark:bg-neutral-800">
                                 <img
