@@ -57,6 +57,7 @@ interface DashboardStats {
     courseTitle: string;
     position: number; // 前回の再生位置（秒）
     progressPercent: number;
+    isNext: boolean; // true: 未視聴の「次の動画」への案内（前回分はすべて完了済み）
   };
 }
 
@@ -228,24 +229,62 @@ export default function DashboardPage() {
         .eq("user_id", user.id)
         .eq("is_active", true);
 
-      // 「前回の続きから」: 最後に視聴した未完了の動画（無ければ最新ログ）
+      // 「前回の続きから」: 最後に視聴した未完了の動画。
+      // すべて完了済みの場合は、最後に視聴したコースの「次の未視聴動画」を案内する
       let continueWatching = undefined;
       if (viewLogs && viewLogs.length > 0) {
-        const resumeLog =
-          viewLogs.find((log) => log.status !== "completed" && log.video_id) ||
-          viewLogs[0];
+        const resumeLog = viewLogs.find(
+          (log) => log.status !== "completed" && log.video_id
+        );
         if (resumeLog?.video_id && resumeLog.course_id) {
+          // 未完了の動画がある → 続きから再生
           continueWatching = {
             videoId: resumeLog.video_id,
             videoTitle: resumeLog.videos?.title || "動画",
             courseId: resumeLog.course_id,
             courseTitle: resumeLog.courses?.title || "コース",
             position: resumeLog.current_position || 0,
-            progressPercent:
-              resumeLog.status === "completed"
-                ? 100
-                : Math.min(100, Math.round(resumeLog.progress_percent || 0)),
+            progressPercent: Math.min(
+              100,
+              Math.round(resumeLog.progress_percent || 0)
+            ),
+            isNext: false,
           };
+        } else if (viewLogs[0]?.course_id) {
+          // 視聴済みはすべて完了 → 最後に視聴したコースの次の未視聴動画を探す
+          const latestLog = viewLogs[0];
+          const { data: courseVideos } = await supabase
+            .from("videos")
+            .select("id, title, order_index")
+            .eq("course_id", latestLog.course_id)
+            .eq("status", "active")
+            .order("order_index", { ascending: true });
+
+          const completedVideoIds = new Set(
+            viewLogs
+              .filter(
+                (log) =>
+                  log.course_id === latestLog.course_id &&
+                  log.status === "completed"
+              )
+              .map((log) => log.video_id)
+          );
+          const nextVideo = (courseVideos || []).find(
+            (v) => !completedVideoIds.has(v.id)
+          );
+
+          if (nextVideo) {
+            continueWatching = {
+              videoId: nextVideo.id,
+              videoTitle: nextVideo.title || "動画",
+              courseId: latestLog.course_id,
+              courseTitle: latestLog.courses?.title || "コース",
+              position: 0,
+              progressPercent: 0,
+              isNext: true,
+            };
+          }
+          // コースを最後まで完了している場合はカードを出さない
         }
       }
 
@@ -476,7 +515,7 @@ export default function DashboardPage() {
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center gap-1.5 text-[11px] sm:text-xs font-bold tracking-widest text-amber-400 mb-1.5 sm:mb-2">
                         <PlayIcon className="h-3.5 w-3.5" />
-                        受講中
+                        {stats.continueWatching.isNext ? "次の動画" : "受講中"}
                       </p>
                       <h2 className="text-lg sm:text-2xl font-bold truncate mb-0.5">
                         {stats.continueWatching.videoTitle}
@@ -484,22 +523,24 @@ export default function DashboardPage() {
                       <p className="text-xs sm:text-sm text-neutral-400 truncate mb-3">
                         {stats.continueWatching.courseTitle}
                       </p>
-                      {/* 進捗バー */}
-                      <div className="flex items-center gap-3 max-w-md">
-                        <span className="text-[11px] sm:text-xs text-neutral-400 shrink-0">学習進捗</span>
-                        <div className="h-1.5 flex-1 rounded-full bg-white/15 overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-amber-400"
-                            style={{ width: `${stats.continueWatching.progressPercent}%` }}
-                          />
+                      {/* 進捗バー（次の動画案内のときは非表示） */}
+                      {!stats.continueWatching.isNext && (
+                        <div className="flex items-center gap-3 max-w-md">
+                          <span className="text-[11px] sm:text-xs text-neutral-400 shrink-0">学習進捗</span>
+                          <div className="h-1.5 flex-1 rounded-full bg-white/15 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-amber-400"
+                              style={{ width: `${stats.continueWatching.progressPercent}%` }}
+                            />
+                          </div>
+                          <span className="text-xs sm:text-sm font-bold text-amber-400 shrink-0">
+                            {stats.continueWatching.progressPercent}%
+                          </span>
                         </div>
-                        <span className="text-xs sm:text-sm font-bold text-amber-400 shrink-0">
-                          {stats.continueWatching.progressPercent}%
-                        </span>
-                      </div>
+                      )}
                     </div>
                     <span className="hidden sm:inline-flex shrink-0 items-center gap-1 rounded-xl bg-white text-neutral-950 group-hover:bg-neutral-100 px-6 py-3.5 text-sm font-bold transition-colors">
-                      学習を再開
+                      {stats.continueWatching.isNext ? "次の動画へ" : "学習を再開"}
                       <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
                       </svg>

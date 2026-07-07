@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { checkAndGenerateCertificate } from '@/lib/certificate/autoGenerateCertificate';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -46,9 +46,12 @@ type VideoResource = {
 export default function VideoPlayerPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, isAdmin } = useAuth();
   const courseId = parseInt(params.id as string);
   const videoId = parseInt(params.videoId as string);
+  // 自動再生遷移（前の動画の完了から遷移してきた場合）
+  const autoStart = searchParams.get('autoplay') === '1';
 
   const [course, setCourse] = useState<Course | null>(null);
   const [video, setVideo] = useState<Video | null>(null);
@@ -60,6 +63,11 @@ export default function VideoPlayerPage() {
   const [error, setError] = useState<string | null>(null);
   const [hasCompletedBefore, setHasCompletedBefore] = useState(false);
   const [lastPosition, setLastPosition] = useState<number>(0);
+
+  // 動画完了時の「次の動画へ」自動遷移
+  const [nextVideoTarget, setNextVideoTarget] = useState<Video | null>(null);
+  const [nextCountdown, setNextCountdown] = useState(5);
+  const [showNextOverlay, setShowNextOverlay] = useState(false);
 
   const [playbackUrl, setPlaybackUrl] = useState<string>('');
   // 同一ドメイン経由の配信URL（社内フィルタ等でSupabase直アクセスが遮断される場合の復旧用）
@@ -578,8 +586,10 @@ export default function VideoPlayerPage() {
     });
 
     try {
-      // 進捗率98%以上で完了判定
-      const isCompleted = progressPercent >= 98;
+      // 完了判定: コース設定の完了閾値（未設定なら95%）以上で完了
+      // ※ 動画終端のエンディング部分でタブを閉じても完了になるよう、98%固定をやめた
+      const completionThreshold = course?.completion_threshold ?? 95;
+      const isCompleted = progressPercent >= completionThreshold;
 
       // 視聴時間を計算：動画時間 × 進捗率（％を小数に変換）/ 100
       // ただし、動画時間を超えないように制限
@@ -591,9 +601,10 @@ export default function VideoPlayerPage() {
       const now = getJSTTimestamp();
       const updateData: any = {
         session_id: sessionId.current,
-        current_position: Math.round(position),
-        progress_percent: progressPercent,
-        total_watched_time: calculatedWatchedTime,
+        // 完了時は100%・終端位置で確定させる（98%表示のまま止まる問題の修正）
+        current_position: isCompleted ? Math.round(videoDuration) : Math.round(position),
+        progress_percent: isCompleted ? 100 : progressPercent,
+        total_watched_time: isCompleted ? Math.floor(videoDuration) : calculatedWatchedTime,
         status: isCompleted ? 'completed' as const : 'in_progress' as const,
         last_updated: now,
         end_time: now, // 毎回終了時刻を記録（進捗保存時、ページ離脱時）
@@ -743,7 +754,9 @@ export default function VideoPlayerPage() {
 
       // sendBeacon APIを使って確実に送信
       const now = getJSTTimestamp();
-      const isCompleted = progressPercent >= 98;
+      // 完了判定はコース設定の完了閾値（未設定なら95%）と同期
+      const completionThreshold = course?.completion_threshold ?? 95;
+      const isCompleted = progressPercent >= completionThreshold;
       const calculatedWatchedTime = Math.min(
         Math.floor(videoDuration * (progressPercent / 100)),
         Math.floor(videoDuration)
@@ -755,9 +768,9 @@ export default function VideoPlayerPage() {
         video_id: videoId,
         course_id: courseId,
         session_id: sessionId.current,
-        current_position: Math.round(position),
-        total_watched_time: calculatedWatchedTime,
-        progress_percent: progressPercent,
+        current_position: isCompleted ? Math.round(videoDuration) : Math.round(position),
+        total_watched_time: isCompleted ? Math.floor(videoDuration) : calculatedWatchedTime,
+        progress_percent: isCompleted ? 100 : progressPercent,
         video_duration: videoDuration,
         status: isCompleted ? 'completed' : 'in_progress',
         start_time: viewLog.start_time || now,
@@ -831,15 +844,55 @@ export default function VideoPlayerPage() {
     router.push(`/courses/${courseId}`);
   };
 
-  const handleVideoComplete = () => {
+  const handleVideoComplete = async () => {
     console.log('動画視聴完了');
     // コース完了確認と証明書生成
-    checkCourseCompletionAndGenerateCertificate();
+    const courseCompleted = await checkCourseCompletionAndGenerateCertificate();
+
+    if (courseCompleted) {
+      // コースの全動画を完了 → お疲れさまでしたページへ
+      router.push(`/courses/${courseId}/complete`);
+      return;
+    }
+
+    // 次の公開動画があればカウントダウン付きで自動遷移
+    const next = getNextActiveVideo();
+    if (next) {
+      setNextVideoTarget(next);
+      setNextCountdown(5);
+      setShowNextOverlay(true);
+    }
   };
 
-  // コース完了確認と証明書自動生成
-  const checkCourseCompletionAndGenerateCertificate = async () => {
-    if (!user || !courseId) return;
+  // 次の「公開中」動画を取得（非公開はスキップ）
+  const getNextActiveVideo = (): Video | null => {
+    const currentIndex = allVideos.findIndex(v => v.id === videoId);
+    if (currentIndex === -1) return null;
+    return allVideos.slice(currentIndex + 1).find(v => v.status === 'active') || null;
+  };
+
+  // 「次の動画へ」カウントダウン
+  useEffect(() => {
+    if (!showNextOverlay || !nextVideoTarget) return;
+    if (nextCountdown <= 0) {
+      setShowNextOverlay(false);
+      router.push(`/courses/${courseId}/videos/${nextVideoTarget.id}?autoplay=1`);
+      return;
+    }
+    const timer = setTimeout(() => setNextCountdown(c => c - 1), 1000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showNextOverlay, nextCountdown, nextVideoTarget]);
+
+  // 動画が切り替わったらオーバーレイをリセット
+  useEffect(() => {
+    setShowNextOverlay(false);
+    setNextVideoTarget(null);
+  }, [videoId]);
+
+  // コース完了確認と証明書自動生成（コース全動画が完了していれば true を返す）
+  const checkCourseCompletionAndGenerateCertificate = async (): Promise<boolean> => {
+    if (!user || !courseId) return false;
 
     try {
       // コース内の公開動画のみを取得（APIと条件を一致させる）
@@ -851,11 +904,11 @@ export default function VideoPlayerPage() {
 
       if (videosError) {
         console.error('動画一覧取得エラー:', videosError);
-        return;
+        return false;
       }
 
       const totalVideos = courseVideos?.length || 0;
-      if (totalVideos === 0) return;
+      if (totalVideos === 0) return false;
 
       // ユーザーの完了した動画を取得
       const { data: completedLogs, error: logsError } = await supabase
@@ -867,32 +920,29 @@ export default function VideoPlayerPage() {
 
       if (logsError) {
         console.error('視聴ログ取得エラー:', logsError);
-        return;
+        return false;
       }
 
-      const completedVideos = completedLogs?.length || 0;
+      // 同一動画の複数ログを重複カウントしないよう動画ID単位で数える
+      const completedVideoIds = new Set((completedLogs || []).map(l => l.video_id));
+      const completedVideos = completedVideoIds.size;
       console.log(`コース進捗: ${completedVideos}/${totalVideos}`);
 
       // すべての動画が完了した場合、証明書を生成
       if (completedVideos >= totalVideos) {
         console.log('コース完了を検出！証明書を生成中...');
-        console.log(`コースID: ${courseId}, ユーザーID: ${user.id}`);
 
         const result = await checkAndGenerateCertificate(user.id, parseInt(courseId));
         console.log('証明書生成結果:', result);
-
-        if (result.hasNewCertificate) {
-          console.log('✅ 証明書が正常に生成されました:', result.certificateId);
-          // ユーザーに通知
-          alert('おめでとうございます！\nコースを完了し、証明書が発行されました。\n\n「証明書」ページからダウンロードできます。');
-        } else {
-          console.log('⚠️ 証明書はすでに存在しています');
-        }
-      } else {
-        console.log(`コース未完了: ${completedVideos}/${totalVideos} 動画完了`);
+        // 通知は受講完了ページ側で表示するため、ここでのalertは廃止
+        return true;
       }
+
+      console.log(`コース未完了: ${completedVideos}/${totalVideos} 動画完了`);
+      return false;
     } catch (err) {
       console.error('コース完了確認エラー:', err);
+      return false;
     }
   };
 
@@ -976,7 +1026,43 @@ export default function VideoPlayerPage() {
               completionThreshold={course?.completion_threshold || 95}
               isCompleted={hasCompletedBefore}
               showViewingNotice={course?.show_viewing_notice !== false} // コース設定で注意事項ポップアップのON/OFF
+              autoStart={autoStart}
             />
+
+            {/* 次の動画への自動遷移オーバーレイ */}
+            {showNextOverlay && nextVideoTarget && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+                <div className="bg-white dark:bg-neutral-900 rounded-2xl max-w-md w-full p-6 sm:p-8 text-center">
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+                    <svg className="h-8 w-8 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                    </svg>
+                  </div>
+                  <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mb-1">
+                    視聴完了！
+                  </h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                    <span className="font-bold text-blue-600 dark:text-blue-400 text-lg">{nextCountdown}</span> 秒後に次の動画へ移動します
+                  </p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white bg-gray-50 dark:bg-neutral-800 rounded-lg px-4 py-3 mb-5 truncate">
+                    次: {nextVideoTarget.title}
+                  </p>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <Button
+                      onClick={() => {
+                        setShowNextOverlay(false);
+                        router.push(`/courses/${courseId}/videos/${nextVideoTarget.id}?autoplay=1`);
+                      }}
+                    >
+                      すぐに次の動画へ
+                    </Button>
+                    <Button variant="outline" onClick={() => setShowNextOverlay(false)}>
+                      このページに留まる
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
         </div>

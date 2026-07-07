@@ -28,6 +28,8 @@ interface EnhancedVideoPlayerProps {
   completionThreshold?: number;
   isCompleted?: boolean;
   showViewingNotice?: boolean;
+  /** 前の動画完了からの自動遷移時: 注意事項をスキップして再生を自動開始する */
+  autoStart?: boolean;
 }
 
 export function EnhancedVideoPlayer({
@@ -43,7 +45,8 @@ export function EnhancedVideoPlayer({
   enableSkipPrevention = true,
   completionThreshold = 95,
   isCompleted = false,
-  showViewingNotice = true
+  showViewingNotice = true,
+  autoStart = false
 }: EnhancedVideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -818,13 +821,24 @@ export function EnhancedVideoPlayer({
     }
   };
 
-  // 完了済み動画、またはコース設定で注意事項が無効の場合は警告をスキップ
+  // 完了済み動画、コース設定で注意事項が無効、または自動遷移時は警告をスキップ
   useEffect(() => {
-    if ((isCompleted || !showViewingNotice) && showWarning) {
+    if ((isCompleted || !showViewingNotice || autoStart) && showWarning) {
       setShowWarning(false);
       setViewingSession(crypto.randomUUID());
     }
-  }, [isCompleted, showWarning, showViewingNotice]);
+  }, [isCompleted, showWarning, showViewingNotice, autoStart]);
+
+  // 自動遷移時は再生を自動開始する（自動再生ポリシーで拒否された場合は
+  // startWatching 内の catch でオーバーレイが解除され、タップで再生できる）
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (autoStart && !showWarning && !autoStartedRef.current && videoRef.current) {
+      autoStartedRef.current = true;
+      startWatching();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, showWarning]);
 
   // スペースキーで再生/停止（input/textarea/button 等にフォーカス中は無効）
   const togglePlayRef = useRef<() => void>(() => {});
