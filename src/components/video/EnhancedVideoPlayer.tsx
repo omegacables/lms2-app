@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { supabase } from '@/lib/database/supabase';
+import { generateUUID } from '@/lib/utils/uuid';
 import {
   ExclamationTriangleIcon,
   ArrowPathIcon,
@@ -180,7 +181,7 @@ export function EnhancedVideoPlayer({
 
   // 視聴開始
   const startWatching = async () => {
-    const sessionId = crypto.randomUUID();
+    const sessionId = generateUUID();
     setViewingSession(sessionId);
 
     // 再生開始時に親コンポーネントに通知（開始時刻を記録）
@@ -825,7 +826,7 @@ export function EnhancedVideoPlayer({
   useEffect(() => {
     if ((isCompleted || !showViewingNotice || autoStart) && showWarning) {
       setShowWarning(false);
-      setViewingSession(crypto.randomUUID());
+      setViewingSession(generateUUID());
     }
   }, [isCompleted, showWarning, showViewingNotice, autoStart]);
 

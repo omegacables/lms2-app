@@ -25,7 +25,8 @@ import {
   UserCircleIcon,
   MoonIcon,
   SunIcon,
-  ChatBubbleLeftRightIcon
+  ChatBubbleLeftRightIcon,
+  QuestionMarkCircleIcon
 } from '@heroicons/react/24/outline';
 import { 
   HomeIcon as HomeIconSolid,
@@ -76,17 +77,23 @@ const navigation: NavigationItem[] = [
     icon: TrophyIcon, 
     iconActive: TrophyIconSolid 
   },
-  { 
-    name: 'メッセージ', 
-    href: '/messages', 
-    icon: UserCircleIcon, 
-    iconActive: UserCircleIcon 
+  {
+    name: 'サポートチャット',
+    href: '/messages',
+    icon: ChatBubbleLeftRightIcon,
+    iconActive: ChatBubbleLeftRightIcon
   },
-  { 
-    name: '設定', 
-    href: '/settings', 
-    icon: Cog6ToothIcon, 
-    iconActive: Cog6ToothIconSolid 
+  {
+    name: 'Q&A',
+    href: '/faq',
+    icon: QuestionMarkCircleIcon,
+    iconActive: QuestionMarkCircleIcon
+  },
+  {
+    name: '設定',
+    href: '/settings',
+    icon: Cog6ToothIcon,
+    iconActive: Cog6ToothIconSolid
   },
 ];
 
@@ -134,6 +141,12 @@ const adminNavigation: NavigationItem[] = [
     iconActive: UserGroupIconSolid
   },
   {
+    name: 'サポートチャット',
+    href: '/admin/support',
+    icon: ChatBubbleLeftRightIcon,
+    iconActive: ChatBubbleLeftRightIcon
+  },
+  {
     name: 'システム設定',
     href: '/admin/settings',
     icon: Cog6ToothIcon,
@@ -167,10 +180,10 @@ const laborConsultantNavigation: NavigationItem[] = [
     iconActive: TrophyIconSolid
   },
   {
-    name: 'サポート',
+    name: 'サポートチャット',
     href: '/labor-consultant/support',
-    icon: UserCircleIcon,
-    iconActive: UserCircleIcon
+    icon: ChatBubbleLeftRightIcon,
+    iconActive: ChatBubbleLeftRightIcon
   },
 ];
 
@@ -339,6 +352,9 @@ export function MainLayout({ children }: MainLayoutProps) {
           {currentNavigation.map((item) => {
             const isActive = isActivePath(item.href);
             const Icon = isActive ? item.iconActive : item.icon;
+            // サポートチャット項目には未読件数の赤丸バッジを表示
+            const isSupportChat = ['/messages', '/admin/support', '/labor-consultant/support'].includes(item.href);
+            const showUnreadBadge = isSupportChat && unreadMessages > 0;
 
             // ロール制限チェック
             if (item.roles && !item.roles.includes(user?.profile?.role || 'student')) {
@@ -364,6 +380,11 @@ export function MainLayout({ children }: MainLayoutProps) {
                   <Icon className="h-4 w-4" />
                 </span>
                 <span className="truncate">{item.name}</span>
+                {showUnreadBadge && (
+                  <span className="ml-auto flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white">
+                    {unreadMessages > 99 ? '99+' : unreadMessages}
+                  </span>
+                )}
                 {isActive && (
                   <span className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-zinc-950 dark:bg-white" />
                 )}

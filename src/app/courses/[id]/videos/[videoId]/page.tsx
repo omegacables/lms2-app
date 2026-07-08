@@ -11,6 +11,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { supabase } from '@/lib/database/supabase';
 import { useAuth } from '@/stores/auth';
 import { EnhancedVideoPlayer } from '@/components/video/EnhancedVideoPlayer';
+import { generateUUID } from '@/lib/utils/uuid';
 import type { Tables } from '@/lib/database/supabase';
 import {
   DocumentTextIcon,
@@ -73,7 +74,7 @@ export default function VideoPlayerPage() {
   // 同一ドメイン経由の配信URL（社内フィルタ等でSupabase直アクセスが遮断される場合の復旧用）
   const [sameOriginUrl, setSameOriginUrl] = useState<string>('');
 
-  const sessionId = useRef<string>(crypto.randomUUID());
+  const sessionId = useRef<string>(generateUUID());
   const progressUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingUpdateRef = useRef<{ position: number; videoDuration: number; progressPercent: number } | null>(null);
   // sendBeacon は Authorization ヘッダを付けられないため、最新のアクセストークンを保持して本文に載せる

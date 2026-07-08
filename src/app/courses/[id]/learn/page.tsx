@@ -9,6 +9,7 @@ import { CourseCertificate } from '@/components/certificate/CourseCertificate';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/database/supabase';
+import { generateUUID } from '@/lib/utils/uuid';
 import { useAuth } from '@/stores/auth';
 import {
   ChevronLeftIcon,
@@ -37,7 +38,7 @@ export default function CourseLearnPage() {
   // 動画プレーヤーへの参照
   const saveProgressRef = useRef<(() => void) | null>(null);
   // このページ表示中の視聴セッションID（動画ごとに1行を更新し続けるための識別子）
-  const sessionId = useRef<string>(crypto.randomUUID());
+  const sessionId = useRef<string>(generateUUID());
   // 動画ID → この視聴セッションで使うログID（INSERTの乱発を防ぎ、同じ行をUPDATEする）
   const sessionLogIdRef = useRef<Record<number, number>>({});
   // 離脱時 sendBeacon 用：最後に計算した進捗ペイロード

@@ -734,7 +734,7 @@ export default function AdminSupportChat() {
                             </div>
                           )}
                           {message.message && !message.message.startsWith('[ファイル:') && (
-                            <p className="text-sm">{message.message}</p>
+                            <p className="text-sm whitespace-pre-wrap break-words">{message.message}</p>
                           )}
                           <p className={`text-xs mt-1 ${
                             message.senderType === 'admin' ? 'text-blue-200' : 'text-gray-500 dark:text-gray-400'

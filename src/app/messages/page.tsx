@@ -605,7 +605,7 @@ export default function SupportMessages() {
                           {conversation.subject}
                         </h3>
                         {conversation.unreadCount > 0 && (
-                          <span className="bg-red-50 dark:bg-red-900/200 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center font-bold ml-2">
+                          <span className="bg-red-500 text-white text-xs rounded-full h-5 min-w-[20px] px-1 flex items-center justify-center font-bold ml-2 flex-shrink-0">
                             {conversation.unreadCount > 9 ? '9+' : conversation.unreadCount}
                           </span>
                         )}
@@ -713,7 +713,7 @@ export default function SupportMessages() {
                           )}
                           {/* メッセージテキスト（ファイルのみの場合は非表示） */}
                           {message.message && !message.message.startsWith('[ファイル:') && (
-                            <p className="text-sm">{message.message}</p>
+                            <p className="text-sm whitespace-pre-wrap break-words">{message.message}</p>
                           )}
                           <p className={`text-xs mt-1 ${
                             message.senderType === 'student' ? 'text-blue-200' : 'text-gray-500 dark:text-gray-400'
@@ -899,20 +899,21 @@ export default function SupportMessages() {
           )}
 
           {/* Help Information */}
-          {/* サポート機能の説明 - スマホでは非表示 */}
-          <div className="mt-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-xl p-6 hidden lg:block">
-            <div className="flex items-start">
-              <ExclamationTriangleIcon className="h-6 w-6 text-blue-600 mr-3 flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="text-sm font-semibold text-blue-900 mb-2">
+          {/* サポート機能の説明 */}
+          <div className="mt-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 sm:p-6">
+            <div className="flex items-start gap-3">
+              <ExclamationTriangleIcon className="h-6 w-6 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-200 mb-2">
                   サポート機能について
                 </h3>
-                <div className="text-sm text-blue-800 space-y-1">
-                  <p>• 学習に関する質問やお困りごとをお気軽にご相談ください</p>
-                  <p>• コースの内容や操作方法について管理者がサポートします</p>
-                  <p>• 通常、1営業日以内にご返信いたします</p>
-                  <p>• 緊急の場合は優先度を「高」または「緊急」に設定してください</p>
-                </div>
+                <ul className="text-sm text-blue-800 dark:text-blue-300 space-y-1.5 list-disc list-outside pl-4 break-words">
+                  <li>動画が再生できない・完了にならない、証明書が発行されない等の問題もこちらからご相談ください</li>
+                  <li>学習に関する質問やお困りごとをお気軽にご相談ください</li>
+                  <li>コースの内容や操作方法について管理者がサポートします</li>
+                  <li>通常、1営業日以内にご返信いたします</li>
+                  <li>緊急の場合は優先度を「高」または「緊急」に設定してください</li>
+                </ul>
               </div>
             </div>
           </div>
