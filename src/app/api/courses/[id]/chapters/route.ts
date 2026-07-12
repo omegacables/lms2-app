@@ -24,12 +24,13 @@ export async function GET(
 
     console.log(`[GET] Found ${chapters?.length || 0} chapters`);
 
-    // 全動画を取得
+    // 全動画を取得（動画ファイルが無い「枠」動画は受講者に表示しない）
     const { data: allVideos, error: videosError } = await supabase
       .from('videos')
       .select('*')
       .eq('course_id', params.id)
       .eq('status', 'active')
+      .not('file_url', 'is', null)
       .order('order_index', { ascending: true });
 
     if (videosError) {

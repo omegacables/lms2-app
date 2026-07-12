@@ -13,11 +13,13 @@ export async function GET(
     const { id: courseId } = await params;
     const adminSupabase = createAdminSupabaseClient();
 
-    // 非公開動画も含めてすべての動画を取得
+    // 非公開動画も含めて取得。ただし動画ファイルが無い「枠」動画は
+    // 受講者向けの件数・完了判定に影響しないよう除外する
     const { data: videos, error } = await adminSupabase
       .from('videos')
       .select('id, duration, status')
-      .eq('course_id', courseId);
+      .eq('course_id', courseId)
+      .not('file_url', 'is', null);
 
     if (error) {
       console.error('動画取得エラー:', error);

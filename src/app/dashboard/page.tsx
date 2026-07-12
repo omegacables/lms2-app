@@ -258,6 +258,7 @@ export default function DashboardPage() {
             .select("id, title, order_index")
             .eq("course_id", latestLog.course_id)
             .eq("status", "active")
+            .not("file_url", "is", null)
             .order("order_index", { ascending: true });
 
           const completedVideoIds = new Set(

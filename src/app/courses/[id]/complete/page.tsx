@@ -54,7 +54,8 @@ export default function CourseCompletePage() {
           .from('videos')
           .select('id')
           .eq('course_id', courseId)
-          .eq('status', 'active');
+          .eq('status', 'active')
+          .not('file_url', 'is', null);
 
         const { data: completedLogs } = await supabase
           .from('video_view_logs')

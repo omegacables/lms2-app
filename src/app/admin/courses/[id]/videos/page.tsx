@@ -75,6 +75,10 @@ export default function CourseVideosPage() {
 
   // 動画追加用の状態
   const [showAddModal, setShowAddModal] = useState(false);
+  // 動画ファイル無しの「枠」動画を追加するモーダル
+  const [showPlaceholderModal, setShowPlaceholderModal] = useState(false);
+  const [placeholderForm, setPlaceholderForm] = useState({ title: '', description: '' });
+  const [creatingPlaceholder, setCreatingPlaceholder] = useState(false);
 
   // アップロード済み動画から選択する用の状態
   const [showLibraryModal, setShowLibraryModal] = useState(false);
@@ -237,6 +241,47 @@ export default function CourseVideosPage() {
       setLibraryError('一覧の取得中にエラーが発生しました');
     } finally {
       setLibraryLoading(false);
+    }
+  };
+
+  // 動画ファイル無しの「枠」動画を作成する
+  // （受講者には表示されない。ログ・管理用に枠だけ登録し、後から動画を差し替え可能）
+  const handleCreatePlaceholder = async () => {
+    if (!placeholderForm.title.trim()) {
+      alert('タイトルを入力してください');
+      return;
+    }
+    setCreatingPlaceholder(true);
+    try {
+      const maxOrderIndex = Math.max(...videos.map(v => v.order_index), 0);
+      const { error } = await supabase
+        .from('videos')
+        .insert({
+          course_id: courseId,
+          title: placeholderForm.title.trim(),
+          description: placeholderForm.description.trim() || null,
+          file_url: null,      // 動画ファイル無し（受講者に非表示の目印）
+          file_path: null,
+          duration: 0,
+          order_index: maxOrderIndex + 1,
+          status: 'inactive',  // 受講者に表示しない
+        });
+
+      if (error) {
+        console.error('枠動画の作成エラー:', error);
+        alert(`追加に失敗しました: ${error.message}`);
+        return;
+      }
+
+      setShowPlaceholderModal(false);
+      setPlaceholderForm({ title: '', description: '' });
+      alert('動画枠を追加しました（受講者には表示されません。動画は後から「置き換え」で登録できます）');
+      await fetchVideos();
+    } catch (error) {
+      console.error('枠動画の作成エラー:', error);
+      alert('追加中にエラーが発生しました');
+    } finally {
+      setCreatingPlaceholder(false);
     }
   };
 
@@ -678,6 +723,10 @@ export default function CourseVideosPage() {
                     <VideoCameraIcon className="h-4 w-4 mr-2" />
                     アップロード済みから選択
                   </Button>
+                  <Button variant="outline" onClick={() => setShowPlaceholderModal(true)}>
+                    <PlusIcon className="h-4 w-4 mr-2" />
+                    動画なしで追加
+                  </Button>
                   <Button onClick={() => setShowAddModal(true)}>
                     <PlusIcon className="h-4 w-4 mr-2" />
                     動画を追加
@@ -814,8 +863,13 @@ export default function CourseVideosPage() {
                               </div>
                             ) : (
                               <div>
-                                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                                <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2 flex-wrap">
                                   {video.title}
+                                  {!video.file_url && (
+                                    <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
+                                      動画なし（受講者非表示）
+                                    </span>
+                                  )}
                                 </p>
                                 {video.description && (
                                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -823,7 +877,9 @@ export default function CourseVideosPage() {
                                   </p>
                                 )}
                                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                                  サイズ: {formatFileSize(video.file_size)}
+                                  {video.file_url
+                                    ? `サイズ: ${formatFileSize(video.file_size)}`
+                                    : '「置き換え」から動画を登録できます'}
                                 </p>
                               </div>
                             )}
@@ -939,6 +995,58 @@ export default function CourseVideosPage() {
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* 動画なしで追加モーダル */}
+            {showPlaceholderModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div className="bg-white dark:bg-neutral-900 rounded-lg max-w-md w-full">
+                  <div className="p-4 sm:p-6 border-b border-gray-200 dark:border-neutral-800">
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                      動画なしで追加
+                    </h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      動画ファイル無しの「枠」を追加します。受講者には表示されず、進捗・完了率にも影響しません。動画は後から「置き換え」で登録できます。
+                    </p>
+                  </div>
+                  <div className="p-4 sm:p-6 space-y-4">
+                    <Input
+                      label="タイトル"
+                      value={placeholderForm.title}
+                      onChange={(e) => setPlaceholderForm({ ...placeholderForm, title: e.target.value })}
+                      placeholder="例: 第4章 準備中"
+                      required
+                    />
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        説明（任意）
+                      </label>
+                      <textarea
+                        value={placeholderForm.description}
+                        onChange={(e) => setPlaceholderForm({ ...placeholderForm, description: e.target.value })}
+                        rows={3}
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
+                        placeholder="メモや管理用の説明"
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setShowPlaceholderModal(false);
+                          setPlaceholderForm({ title: '', description: '' });
+                        }}
+                        disabled={creatingPlaceholder}
+                      >
+                        キャンセル
+                      </Button>
+                      <Button onClick={handleCreatePlaceholder} disabled={creatingPlaceholder || !placeholderForm.title.trim()}>
+                        {creatingPlaceholder ? '追加中...' : '追加する'}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

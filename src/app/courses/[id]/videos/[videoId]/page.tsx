@@ -388,11 +388,12 @@ export default function VideoPlayerPage() {
 
       setVideo(videoData);
 
-      // コース内の全動画を取得（非公開も含む）
+      // コース内の全動画を取得（動画ファイルが無い「枠」動画は受講者側の遷移対象から除外）
       const { data: allVideosData, error: allVideosError } = await supabase
         .from('videos')
         .select('*')
         .eq('course_id', courseId)
+        .not('file_url', 'is', null)
         .order('order_index', { ascending: true });
 
       if (allVideosError) throw allVideosError;
@@ -896,12 +897,13 @@ export default function VideoPlayerPage() {
     if (!user || !courseId) return false;
 
     try {
-      // コース内の公開動画のみを取得（APIと条件を一致させる）
+      // コース内の公開動画のみを取得（動画ファイルが無い「枠」動画は完了判定から除外）
       const { data: courseVideos, error: videosError } = await supabase
         .from('videos')
         .select('id')
         .eq('course_id', courseId)
-        .eq('status', 'active');
+        .eq('status', 'active')
+        .not('file_url', 'is', null);
 
       if (videosError) {
         console.error('動画一覧取得エラー:', videosError);

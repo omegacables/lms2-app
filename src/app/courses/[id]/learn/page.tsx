@@ -190,11 +190,12 @@ export default function CourseLearnPage() {
 
       setCourse(courseData);
 
-      // 動画一覧を取得（非公開動画も含める）
+      // 動画一覧を取得（動画ファイルが無い「枠」動画は受講者に表示しない）
       const { data: videosData, error: videosError } = await supabase
         .from('videos')
         .select('*')
         .eq('course_id', courseId)
+        .not('file_url', 'is', null)
         .order('order_index', { ascending: true });
 
       if (videosError) throw videosError;
