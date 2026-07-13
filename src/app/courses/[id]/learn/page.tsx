@@ -359,8 +359,8 @@ export default function CourseLearnPage() {
       course_id: courseId,
       session_id: sessionId.current,
       current_position: Math.round(position),
-      total_watched_time: totalWatched,
-      progress_percent: progressPercent,
+      total_watched_time: Math.round(totalWatched),
+      progress_percent: Math.round(progressPercent),
       status: isComplete ? 'completed' : 'in_progress',
       end_time: new Date().toISOString(),
     };
@@ -379,9 +379,9 @@ export default function CourseLearnPage() {
         const { data, error } = await supabase
           .from('video_view_logs')
           .update({
-            current_position: position,
-            total_watched_time: totalWatched,
-            progress_percent: nextProgress,
+            current_position: Math.round(position),
+            total_watched_time: Math.round(totalWatched),
+            progress_percent: Math.round(nextProgress),
             completed_at: isComplete ? now : null,
             status: isComplete ? 'completed' : 'in_progress',
             end_time: now,
@@ -399,9 +399,9 @@ export default function CourseLearnPage() {
           course_id: courseId,
           video_id: currentVideo.id,
           session_id: sessionId.current,
-          current_position: position,
-          total_watched_time: totalWatched,
-          progress_percent: progressPercent,
+          current_position: Math.round(position),
+          total_watched_time: Math.round(totalWatched),
+          progress_percent: Math.round(progressPercent),
           completed_at: isComplete ? now : null,
           status: isComplete ? 'completed' : 'in_progress',
           start_time: now,

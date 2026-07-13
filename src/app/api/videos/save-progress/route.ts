@@ -60,9 +60,10 @@ export async function POST(request: NextRequest) {
 
       const updateData: any = {
         session_id,
+        // 整数カラムへ小数が来ても弾かれないよう丸める（22P02対策）
         current_position: Math.round(current_position || 0),
-        progress_percent,
-        total_watched_time,
+        progress_percent: Math.round(progress_percent || 0),
+        total_watched_time: Math.round(total_watched_time || 0),
         status,
         last_updated: end_time,
         end_time,
@@ -94,8 +95,8 @@ export async function POST(request: NextRequest) {
         course_id,
         session_id,
         current_position: Math.round(current_position || 0),
-        total_watched_time,
-        progress_percent,
+        total_watched_time: Math.round(total_watched_time || 0),
+        progress_percent: Math.round(progress_percent || 0),
         status,
         start_time: start_time || end_time,
         end_time,

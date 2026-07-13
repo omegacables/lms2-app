@@ -282,9 +282,10 @@ export async function PATCH(
         last_updated: new Date().toISOString()
       };
 
-      if (current_position !== undefined) updateData.current_position = current_position;
-      if (total_watched_time !== undefined) updateData.total_watched_time = total_watched_time;
-      if (calculatedProgress !== undefined) updateData.progress_percent = calculatedProgress;
+      // 整数カラムへ小数が来ても弾かれないよう丸める（22P02対策）
+      if (current_position !== undefined) updateData.current_position = Math.round(current_position);
+      if (total_watched_time !== undefined) updateData.total_watched_time = Math.round(total_watched_time);
+      if (calculatedProgress !== undefined) updateData.progress_percent = Math.round(calculatedProgress);
       if (status) updateData.status = status;
 
       if (status === 'completed') {
@@ -311,9 +312,9 @@ export async function PATCH(
         user_id: user.id,
         video_id: parseInt(videoId),
         course_id: video.course_id,
-        current_position: current_position || 0,
-        total_watched_time: total_watched_time || 0,
-        progress_percent: calculatedProgress || 0,
+        current_position: Math.round(current_position || 0),
+        total_watched_time: Math.round(total_watched_time || 0),
+        progress_percent: Math.round(calculatedProgress || 0),
         status: status || 'not_started',
         last_updated: new Date().toISOString()
       };

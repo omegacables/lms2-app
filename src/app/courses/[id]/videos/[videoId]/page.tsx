@@ -317,7 +317,7 @@ export default function VideoPlayerPage() {
 
         const updateData: any = {
           current_position: Math.round(position),
-          progress_percent: progressPercent,
+          progress_percent: Math.round(progressPercent),
           total_watched_time: calculatedWatchedTime,
           status: isCompleted ? 'completed' : 'in_progress',
           end_time: now,
@@ -605,7 +605,7 @@ export default function VideoPlayerPage() {
         session_id: sessionId.current,
         // 完了時は100%・終端位置で確定させる（98%表示のまま止まる問題の修正）
         current_position: isCompleted ? Math.round(videoDuration) : Math.round(position),
-        progress_percent: isCompleted ? 100 : progressPercent,
+        progress_percent: isCompleted ? 100 : Math.round(progressPercent),
         total_watched_time: isCompleted ? Math.floor(videoDuration) : calculatedWatchedTime,
         status: isCompleted ? 'completed' as const : 'in_progress' as const,
         last_updated: now,
@@ -772,7 +772,7 @@ export default function VideoPlayerPage() {
         session_id: sessionId.current,
         current_position: isCompleted ? Math.round(videoDuration) : Math.round(position),
         total_watched_time: isCompleted ? Math.floor(videoDuration) : calculatedWatchedTime,
-        progress_percent: isCompleted ? 100 : progressPercent,
+        progress_percent: isCompleted ? 100 : Math.round(progressPercent),
         video_duration: videoDuration,
         status: isCompleted ? 'completed' : 'in_progress',
         start_time: viewLog.start_time || now,
