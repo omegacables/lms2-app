@@ -97,6 +97,9 @@ export default function LearningLogsPage() {
     status: 'not_started'
   });
   const [allUsers, setAllUsers] = useState<{ id: string; display_name: string; email: string; company?: string; department?: string }[]>([]);
+  // ログ追加フォームの「ユーザーを選択」オートコンプリート用
+  const [userQuery, setUserQuery] = useState('');
+  const [showUserList, setShowUserList] = useState(false);
   const [selectedLogs, setSelectedLogs] = useState<Set<string>>(new Set());
   const [showUnstarted, setShowUnstarted] = useState(false);
   const itemsPerPage = 50;
@@ -875,7 +878,7 @@ export default function LearningLogsPage() {
               </div>
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                 <Button
-                  onClick={() => setShowAddModal(true)}
+                  onClick={() => { setUserQuery(''); setShowUserList(false); setShowAddModal(true); }}
                   className="flex items-center justify-center w-full sm:w-auto bg-green-600 hover:bg-green-700 whitespace-nowrap"
                 >
                   <PencilIcon className="h-4 w-4 mr-2 flex-shrink-0" />
@@ -1808,29 +1811,69 @@ export default function LearningLogsPage() {
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       ユーザーを選択 <span className="text-red-500">*</span>
                     </label>
-                    <select
-                      value={newLog.user_id || ''}
-                      onChange={(e) => {
-                        const userId = e.target.value;
-                        const user = allUsers.find(u => u.id === userId);
-                        setNewLog({
-                          ...newLog,
-                          user_id: userId,
-                          user_name: user?.display_name || '',
-                          user_email: user?.email || '',
-                          company: user?.company || '',
-                          department: user?.department || ''
-                        });
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                    >
-                      <option value="">ユーザーを選択してください</option>
-                      {allUsers.map(user => (
-                        <option key={user.id} value={user.id}>
-                          {user.display_name} ({user.email})
-                        </option>
-                      ))}
-                    </select>
+                    {/* 名前・メール・会社名で部分一致検索して選択するオートコンプリート */}
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={userQuery}
+                        onChange={(e) => {
+                          setUserQuery(e.target.value);
+                          setShowUserList(true);
+                          // 入力を変えたら選択中ユーザーをクリア（曖昧な確定を防ぐ）
+                          if (newLog.user_id) {
+                            setNewLog({ ...newLog, user_id: '', user_name: '', user_email: '', company: '', department: '' });
+                          }
+                        }}
+                        onFocus={() => setShowUserList(true)}
+                        onBlur={() => setTimeout(() => setShowUserList(false), 150)}
+                        placeholder="ユーザー名・メール・会社名で検索"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                      />
+                      {newLog.user_id && (
+                        <p className="mt-1 text-xs text-green-600 dark:text-green-400">
+                          選択中: {newLog.user_name}（{newLog.user_email}）
+                        </p>
+                      )}
+                      {showUserList && userQuery.trim() && (
+                        <ul className="absolute z-20 mt-1 w-full max-h-60 overflow-auto rounded-lg border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 shadow-lg">
+                          {(() => {
+                            const q = userQuery.trim().toLowerCase();
+                            const matches = allUsers.filter(u =>
+                              (u.display_name || '').toLowerCase().includes(q) ||
+                              (u.email || '').toLowerCase().includes(q) ||
+                              (u.company || '').toLowerCase().includes(q)
+                            ).slice(0, 30);
+                            if (matches.length === 0) {
+                              return <li className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">該当するユーザーがいません</li>;
+                            }
+                            return matches.map(user => (
+                              <li key={user.id}>
+                                <button
+                                  type="button"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => {
+                                    setNewLog({
+                                      ...newLog,
+                                      user_id: user.id,
+                                      user_name: user.display_name || '',
+                                      user_email: user.email || '',
+                                      company: user.company || '',
+                                      department: user.department || ''
+                                    });
+                                    setUserQuery(user.display_name || user.email || '');
+                                    setShowUserList(false);
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-neutral-700"
+                                >
+                                  <span className="font-medium text-gray-900 dark:text-white">{user.display_name || '(名前未設定)'}</span>
+                                  <span className="text-gray-500 dark:text-gray-400"> {user.email}{user.company ? ` / ${user.company}` : ''}</span>
+                                </button>
+                              </li>
+                            ));
+                          })()}
+                        </ul>
+                      )}
+                    </div>
                   </div>
 
                   <div>
