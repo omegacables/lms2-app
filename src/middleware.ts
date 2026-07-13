@@ -23,6 +23,38 @@ export async function middleware(req: NextRequest) {
     return res; // 開発環境では通す
   }
 
+  // ===== DBに依存しないメンテナンスモード =====
+  // データベースのアップグレード等でDB自体が停止する作業では、
+  // DB(system_settings)を読む通常のメンテナンス判定は使えない（DBが落ちているため）。
+  // Vercelの環境変数 MAINTENANCE_MODE=true で、DBに一切触れず全員をメンテナンスページへ誘導する。
+  // 解除は MAINTENANCE_MODE を false（または削除）に戻して再デプロイ。
+  if (process.env.MAINTENANCE_MODE === 'true') {
+    // メンテナンスページ自身と静的ファイルは通す
+    if (req.nextUrl.pathname === '/maintenance') {
+      return res;
+    }
+    // 管理者用の緊急バイパス（?emergency_bypass=トークン）。
+    // 一度合致したらCookieを付与し、以降は付けなくても通す（作業確認用）
+    const bypassToken = req.nextUrl.searchParams.get('emergency_bypass');
+    const hasBypassCookie = req.cookies.get('mnt_bypass')?.value === process.env.EMERGENCY_BYPASS_TOKEN;
+    if (
+      (bypassToken && bypassToken === process.env.EMERGENCY_BYPASS_TOKEN) ||
+      hasBypassCookie
+    ) {
+      const passRes = NextResponse.next({ request: { headers: req.headers } });
+      if (bypassToken) {
+        passRes.cookies.set('mnt_bypass', bypassToken, {
+          httpOnly: true,
+          sameSite: 'lax',
+          maxAge: 60 * 60 * 6, // 6時間
+        });
+      }
+      return passRes;
+    }
+    // それ以外は全てメンテナンスページへ
+    return NextResponse.redirect(new URL('/maintenance', req.url));
+  }
+
   // メンテナンスページへのアクセスは常に許可
   if (req.nextUrl.pathname === '/maintenance') {
     return res;
