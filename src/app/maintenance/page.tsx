@@ -15,26 +15,26 @@ export default function MaintenancePage() {
 
           {/* タイトル */}
           <h1 className="text-3xl md:text-4xl font-bold text-center text-gray-900 dark:text-white mb-4">
-            メンテナンスのお知らせ
+            ただいまメンテナンス中です
           </h1>
 
           <div className="text-center text-gray-600 dark:text-gray-300 mb-8">
             <p className="text-lg mb-4">
-              誠に勝手ながら、下記期間中は<br />
-              システムメンテナンスを実施いたします。
+              誠に勝手ながら、ただいまシステムメンテナンスを<br />
+              実施しております。
             </p>
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
               <p className="text-xl font-bold text-red-700 dark:text-red-400">
-                6月25日（木）〜 6月26日（金）13:00
+                メンテナンス時間：5:00 〜 9:00 頃
               </p>
             </div>
             <p className="text-base text-gray-700 dark:text-gray-300 mb-3">
-              サーバーの通信の都合により、<br />
-              快適にご閲覧いただけない状況となっております。
+              メンテナンス中は受講いただくことができません。<br />
+              ご不便をおかけいたしますが、何卒ご了承ください。
             </p>
             <p className="text-base text-gray-700 dark:text-gray-300">
-              期間中は受講いただくことができません。<br />
-              ご不便をおかけいたしますが、何卒ご了承ください。
+              時間は前後する場合がございます。<br />
+              完了までいましばらくお待ちください。
             </p>
           </div>
 
@@ -49,7 +49,7 @@ export default function MaintenancePage() {
                 <ul className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
                   <li className="flex items-start">
                     <span className="inline-block w-2 h-2 bg-orange-500 rounded-full mr-2 mt-1.5"></span>
-                    <span><strong>6月26日（金）13:00</strong> よりサービス再開予定です</span>
+                    <span><strong>9:00頃</strong> よりサービス再開予定です</span>
                   </li>
                   <li className="flex items-start">
                     <span className="inline-block w-2 h-2 bg-orange-500 rounded-full mr-2 mt-1.5"></span>
