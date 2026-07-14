@@ -79,6 +79,8 @@ export function EnhancedVideoPlayer({
   const usedFallbackRef = useRef(false);
   const lastRecoveryAtRef = useRef(0);
   const lastTimeUpdateAtRef = useRef(0);
+  // 再生中の進捗通知（onProgressUpdate）の間引き用：最後に通知した時刻
+  const lastProgressEmitAtRef = useRef(0);
 
   // 動画（videoUrl）が切り替わったら復旧状態をリセット
   useEffect(() => {
@@ -412,8 +414,12 @@ export function EnhancedVideoPlayer({
       const progressPercent = duration > 0 ? (current / duration) * 100 : 0;
       setProgress(progressPercent);
 
-      // 再生中は常時進捗を更新（親コンポーネント側でデバウンス処理）
-      if (onProgressUpdate && duration > 0 && current > 0) {
+      // 再生中の進捗通知は5秒に1回に間引く
+      // ※ timeupdate は毎秒約4回発火するため、毎回通知すると親側の保存処理が
+      //    連鎖的に大量実行される（2026-07 の save-progress 大量リクエストの一因）。
+      //    一時停止・シーク・終了時は saveProgress() が別途即時通知するので精度は落ちない。
+      if (onProgressUpdate && duration > 0 && current > 0 && Date.now() - lastProgressEmitAtRef.current >= 5000) {
+        lastProgressEmitAtRef.current = Date.now();
         onProgressUpdate(current, duration, progressPercent);
         console.log('[EnhancedVideoPlayer] 進捗更新:', { current: current.toFixed(2), duration: duration.toFixed(2), progressPercent: progressPercent.toFixed(2) });
       }

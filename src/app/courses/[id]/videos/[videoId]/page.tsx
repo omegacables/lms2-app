@@ -79,6 +79,14 @@ export default function VideoPlayerPage() {
   const pendingUpdateRef = useRef<{ position: number; videoDuration: number; progressPercent: number } | null>(null);
   // sendBeacon は Authorization ヘッダを付けられないため、最新のアクセストークンを保持して本文に載せる
   const accessTokenRef = useRef<string | null>(null);
+  // 離脱時（beforeunload / visibilitychange / アンマウント）処理用に最新値を保持する ref。
+  // ⚠️ 離脱時保存の useEffect の依存配列に viewLog 等を入れてはいけない。
+  //    viewLog は保存のたびに更新されるため、依存に入れるとクリーンアップ（＝離脱時のつもりの
+  //    beacon 送信）が再生中に何度も実行され、/api/videos/save-progress への大量リクエストが
+  //    発生する（2026-07 のVercel課金急増の原因）。
+  const viewLogRef = useRef<VideoViewLog | null>(null);
+  const hasCompletedBeforeRef = useRef(false);
+  const saveProgressImmediatelyRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     let active = true;
@@ -93,6 +101,14 @@ export default function VideoPlayerPage() {
       sub.subscription.unsubscribe();
     };
   }, []);
+
+  // 離脱時処理用 ref を最新の state に同期
+  useEffect(() => {
+    viewLogRef.current = viewLog;
+  }, [viewLog]);
+  useEffect(() => {
+    hasCompletedBeforeRef.current = hasCompletedBefore;
+  }, [hasCompletedBefore]);
 
   // file_url から Storage 内のパスを抽出（public / sign / 直接パス いずれも対応）
   const extractStoragePath = (url: string | null | undefined): string | null => {
@@ -192,58 +208,50 @@ export default function VideoPlayerPage() {
   }, [courseId, videoId, user?.id]);
 
   // コンポーネントのアンマウント時とページ離脱時に進捗を保存
+  // ⚠️ 依存配列は必ず空（マウント時に1回だけ登録）にすること。
+  //    以前は [viewLog, hasCompletedBefore] を依存にしていたため、保存のたびに viewLog が
+  //    更新される→クリーンアップが実行される→beacon送信、が再生中に約0.5秒ごとに繰り返され、
+  //    /api/videos/save-progress へ月2,800万リクエスト（Vercel課金急増）が発生した。
+  //    最新値は viewLogRef / hasCompletedBeforeRef / saveProgressImmediatelyRef 経由で参照する。
   useEffect(() => {
+    // 終了時刻を sendBeacon で送信（送信した場合 true）
+    const sendEndTimeBeacon = (): boolean => {
+      const log = viewLogRef.current;
+      if (!log || hasCompletedBeforeRef.current) return false;
+
+      const now = getJSTTimestamp();
+      const payload = {
+        access_token: accessTokenRef.current,
+        log_id: log.id,
+        end_time: now,
+        last_updated: now,
+      };
+      const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+      return navigator.sendBeacon('/api/videos/update-end-time', blob);
+    };
+
     // ページ離脱時（ブラウザを閉じる、タブを閉じる、ブラウザバック等）
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      // 常に終了時刻を記録（ポップアップなし）
-      if (viewLog && !hasCompletedBefore) {
-        const now = getJSTTimestamp();
+      const sent = sendEndTimeBeacon();
+      console.log('beforeunload: 終了時刻を記録', sent ? '成功' : '失敗');
 
-        // sendBeaconで終了時刻を送信（より確実）
-        const endTimePayload = {
-          access_token: accessTokenRef.current,
-          log_id: viewLog.id,
-          end_time: now,
-          last_updated: now,
-        };
-
-        const endTimeBlob = new Blob([JSON.stringify(endTimePayload)], { type: 'application/json' });
-        const endTimeBeaconSent = navigator.sendBeacon('/api/videos/update-end-time', endTimeBlob);
-
-        console.log('beforeunload: 終了時刻を記録', endTimeBeaconSent ? '成功' : '失敗');
-
-        // 進捗がある場合は進捗も保存
-        if (pendingUpdateRef.current) {
-          saveProgressImmediately();
-          console.log('beforeunload: 進捗を保存しました');
-        }
+      // 進捗がある場合は進捗も保存
+      if (pendingUpdateRef.current) {
+        saveProgressImmediatelyRef.current();
+        console.log('beforeunload: 進捗を保存しました');
       }
     };
 
     // visibilitychangeイベント（タブを切り替えた時など）
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        // 常に終了時刻を記録
-        if (viewLog && !hasCompletedBefore) {
-          const now = getJSTTimestamp();
-
-          // sendBeaconで終了時刻を送信
-          const payload = {
-            access_token: accessTokenRef.current,
-            log_id: viewLog.id,
-            end_time: now,
-            last_updated: now,
-          };
-
-          const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-          navigator.sendBeacon('/api/videos/update-end-time', blob);
-
+        if (sendEndTimeBeacon()) {
           console.log('visibilitychange: 終了時刻を記録しました');
         }
 
         // 進捗がある場合は進捗も保存
         if (pendingUpdateRef.current) {
-          saveProgressImmediately();
+          saveProgressImmediatelyRef.current();
           console.log('visibilitychange: 進捗を保存しました');
         }
       }
@@ -258,28 +266,17 @@ export default function VideoPlayerPage() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
 
       // アンマウント時（ブラウザバック、ページ遷移時）に進捗を保存
-      if (viewLog && !hasCompletedBefore) {
-        // 終了時刻を記録
-        const now = getJSTTimestamp();
-        const payload = {
-          access_token: accessTokenRef.current,
-          log_id: viewLog.id,
-          end_time: now,
-          last_updated: now,
-        };
-        const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-        navigator.sendBeacon('/api/videos/update-end-time', blob);
+      if (sendEndTimeBeacon()) {
         console.log('アンマウント: 終了時刻を記録しました');
       }
 
       if (pendingUpdateRef.current) {
-        const { position, videoDuration, progressPercent } = pendingUpdateRef.current;
         // 同期的に保存
-        saveProgressImmediately();
+        saveProgressImmediatelyRef.current();
         console.log('コンポーネントアンマウント時に進捗を保存しました');
       }
     };
-  }, [viewLog, hasCompletedBefore]);
+  }, []);
 
   // 定期的に進捗全体を更新（5秒ごと）
   useEffect(() => {
@@ -795,6 +792,12 @@ export default function VideoPlayerPage() {
       console.log('進捗を即座に保存しました');
     }
   };
+
+  // 離脱時保存の useEffect（依存配列が空）から最新の saveProgressImmediately を呼べるように
+  // ref を毎レンダリング更新する
+  useEffect(() => {
+    saveProgressImmediatelyRef.current = saveProgressImmediately;
+  });
 
   // 再生開始時のハンドラー（開始時刻を記録）
   const handlePlayStart = async () => {
