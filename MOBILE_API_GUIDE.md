@@ -14,7 +14,40 @@
   | axialms.com | `ewtnyhfizuyvzvxkllva.supabase.co` |
   アプリがどちらのサイト向けかで接続先を切り替えること（ビルド設定/環境変数で管理）。
 
+## マルチブランド対応（1つのアプリで2サイトを扱う）
+
+2ブランド（stus-lms / axialms）は **別々のSupabaseプロジェクト**で、認証（ログイン）も
+プロジェクトごとに独立している。したがって FDW 等でDBを繋ぐのではなく、
+**アプリ側で接続先を実行時に切り替える**方式で対応する。
+
+- アプリ内に **両プロジェクトの設定（URL＋anonキー）** を保持する（anonキーは公開可）。
+- **どちらに接続するかは実行時に決める**：
+  1. ログイン画面に「ブランド選択」（stus-lms / axialms）を置く、または
+  2. 入力されたメールのドメイン等から自動判定する。
+- 選択に応じて **その URL＋anonキーで Supabase クライアントを生成**し、以降の
+  Auth / DB / Storage 呼び出しはすべてそのクライアント経由にする。
+  （supabase-swift はクライアントを実行時に任意のURL/キーで生成可能）
+- 選んだブランドは端末に保存（UserDefaults 等）し、次回起動時は選択をスキップ。
+- ログアウト時はブランド選択に戻れるようにする。
+- 1人のユーザーは一方のブランドにのみ所属する前提（同一人物が両方に居るケースは想定しない）。
+
+※「両ブランドを1つのデータとして統合」したい場合のみプロジェクト統合が必要だが、
+　現状は上記の実行時切り替えで完結する（DBの物理統合や FDW は不要）。
+
 ## 環境変数（アプリ側で必要なもの）
+
+接続先ごとに1組。マルチブランド対応では2組を保持し、実行時に選択する。
+
+```
+# stus-lms 用
+SUPABASE_URL_STUS=https://tjzdsiaehksqpxuvzqvp.supabase.co
+SUPABASE_ANON_KEY_STUS=<stusのanon key>
+# axialms 用
+SUPABASE_URL_AXIA=https://ewtnyhfizuyvzvxkllva.supabase.co
+SUPABASE_ANON_KEY_AXIA=<axialmsのanon key>
+```
+
+単一ブランドのみのビルドなら次の1組でよい:
 
 ```
 SUPABASE_URL=https://<project>.supabase.co
