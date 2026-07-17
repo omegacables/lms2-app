@@ -35,14 +35,21 @@ const nextConfig: NextConfig = {
   },
 
   // 動画をサイトと同一ドメイン経由で配信するための中継（社内フィルタ対策）
-  // /media/videos/... → Supabase Storage の videos バケット
+  // /media/videos/... → 配信元（NEXT_PUBLIC_MEDIA_BASE_URL があれば R2、なければ Supabase）
+  // ※ env を外すだけで Supabase 中継に戻せる（ロールバック用）
   async rewrites() {
+    const mediaBase = process.env.NEXT_PUBLIC_MEDIA_BASE_URL?.replace(/\/+$/, '');
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (!supabaseUrl) return [];
+    const destination = mediaBase
+      ? `${mediaBase}/:path*`
+      : supabaseUrl
+        ? `${supabaseUrl}/storage/v1/object/public/videos/:path*`
+        : null;
+    if (!destination) return [];
     return [
       {
         source: '/media/videos/:path*',
-        destination: `${supabaseUrl}/storage/v1/object/public/videos/:path*`,
+        destination,
       },
     ];
   },

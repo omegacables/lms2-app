@@ -10,6 +10,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/database/supabase';
 import { generateUUID } from '@/lib/utils/uuid';
+import { buildMediaUrl } from '@/lib/utils/mediaUrl';
 import { useAuth } from '@/stores/auth';
 import {
   ChevronLeftIcon,
@@ -108,6 +109,14 @@ export default function CourseLearnPage() {
 
     if (!path) {
       setPlaybackUrl(fileUrl);
+      return;
+    }
+
+    // 配信ベース（R2 の media.stus-lms.com 等）が設定されていれば、そこから直接配信する。
+    // Vercel/Supabase の転送費を回避（2026-07 の転送費高騰対策）。未設定なら従来の署名付きURL。
+    const mediaUrl = buildMediaUrl(path);
+    if (mediaUrl) {
+      setPlaybackUrl(mediaUrl);
       return;
     }
 
