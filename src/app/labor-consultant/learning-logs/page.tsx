@@ -38,7 +38,7 @@ interface LearningLog {
   last_updated: string;
 }
 
-type SortField = 'user_name' | 'company' | 'course_title' | 'video_title' | 'progress_percent' | 'start_time';
+type SortField = 'user_name' | 'company' | 'course_title' | 'video_title' | 'progress_percent' | 'start_time' | 'end_time' | 'total_watched_time' | 'status';
 
 export default function LaborConsultantLearningLogsPage() {
   const { user } = useAuth();
@@ -269,12 +269,15 @@ export default function LaborConsultantLearningLogsPage() {
     }
   };
 
+  // 日時系の列は初回クリック時に新しい順（降順）から始める
+  const isTimeField = (field: SortField) => field === 'start_time' || field === 'end_time';
+
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
       setSortField(field);
-      setSortOrder('asc');
+      setSortOrder(isTimeField(field) ? 'desc' : 'asc');
     }
   };
 
@@ -435,14 +438,21 @@ export default function LaborConsultantLearningLogsPage() {
       return matchesSearch && matchesStatus && matchesCompany && matchesCourse;
     })
     .sort((a, b) => {
+      // 空の日時は常に末尾へ
+      const timeValue = (value: string) => {
+        const time = value ? new Date(value).getTime() : NaN;
+        return Number.isNaN(time) ? null : time;
+      };
+      const statusRank: Record<string, number> = { not_started: 0, in_progress: 1, completed: 2 };
+
       let comparison = 0;
 
       switch (sortField) {
         case 'user_name':
-          comparison = a.user_name.localeCompare(b.user_name);
+          comparison = a.user_name.localeCompare(b.user_name, 'ja');
           break;
         case 'company':
-          comparison = a.company.localeCompare(b.company);
+          comparison = a.company.localeCompare(b.company, 'ja');
           break;
         case 'course_title':
           // コース順でソートし、同じコース内では動画順でソート
@@ -458,9 +468,24 @@ export default function LaborConsultantLearningLogsPage() {
         case 'progress_percent':
           comparison = a.progress_percent - b.progress_percent;
           break;
-        case 'start_time':
-          comparison = new Date(a.start_time).getTime() - new Date(b.start_time).getTime();
+        case 'total_watched_time':
+          comparison = a.total_watched_time - b.total_watched_time;
           break;
+        case 'status':
+          comparison = (statusRank[a.status] ?? 0) - (statusRank[b.status] ?? 0);
+          break;
+        case 'start_time':
+        case 'end_time': {
+          const tx = timeValue(sortField === 'start_time' ? a.start_time : a.end_time);
+          const ty = timeValue(sortField === 'start_time' ? b.start_time : b.end_time);
+          // 昇順・降順にかかわらず、日時が無い行は常に末尾に置く
+          if (tx === null || ty === null) {
+            if (tx === null && ty === null) return 0;
+            return tx === null ? 1 : -1;
+          }
+          comparison = tx - ty;
+          break;
+        }
       }
 
       return sortOrder === 'asc' ? comparison : -comparison;
@@ -702,13 +727,29 @@ export default function LaborConsultantLearningLogsPage() {
                           </div>
                         </th>
                         {columnVisibility.startTime && (
-                          <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            開始時刻
+                          <th
+                            className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-neutral-700"
+                            onClick={() => handleSort('start_time')}
+                          >
+                            <div className="flex items-center">
+                              開始時刻
+                              {sortField === 'start_time' && (
+                                sortOrder === 'asc' ? <ArrowUpIcon className="h-4 w-4 ml-1" /> : <ArrowDownIcon className="h-4 w-4 ml-1" />
+                              )}
+                            </div>
                           </th>
                         )}
                         {columnVisibility.endTime && (
-                          <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            終了時刻
+                          <th
+                            className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-neutral-700"
+                            onClick={() => handleSort('end_time')}
+                          >
+                            <div className="flex items-center">
+                              終了時刻
+                              {sortField === 'end_time' && (
+                                sortOrder === 'asc' ? <ArrowUpIcon className="h-4 w-4 ml-1" /> : <ArrowDownIcon className="h-4 w-4 ml-1" />
+                              )}
+                            </div>
                           </th>
                         )}
                         {columnVisibility.progress && (
@@ -725,13 +766,29 @@ export default function LaborConsultantLearningLogsPage() {
                           </th>
                         )}
                         {columnVisibility.watchedTime && (
-                          <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            視聴時間
+                          <th
+                            className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-neutral-700"
+                            onClick={() => handleSort('total_watched_time')}
+                          >
+                            <div className="flex items-center">
+                              視聴時間
+                              {sortField === 'total_watched_time' && (
+                                sortOrder === 'asc' ? <ArrowUpIcon className="h-4 w-4 ml-1" /> : <ArrowDownIcon className="h-4 w-4 ml-1" />
+                              )}
+                            </div>
                           </th>
                         )}
                         {columnVisibility.status && (
-                          <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            ステータス
+                          <th
+                            className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-neutral-700"
+                            onClick={() => handleSort('status')}
+                          >
+                            <div className="flex items-center">
+                              ステータス
+                              {sortField === 'status' && (
+                                sortOrder === 'asc' ? <ArrowUpIcon className="h-4 w-4 ml-1" /> : <ArrowDownIcon className="h-4 w-4 ml-1" />
+                              )}
+                            </div>
                           </th>
                         )}
                         <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">

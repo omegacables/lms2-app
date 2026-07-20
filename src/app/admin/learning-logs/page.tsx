@@ -42,8 +42,10 @@ interface LearningLog {
   department: string;
   course_id: string;
   course_title: string;
+  course_order: number;
   video_id: string;
   video_title: string;
+  video_order: number;
   start_time: string;
   end_time: string;
   watch_duration: number;
@@ -56,7 +58,7 @@ interface LearningLog {
   historyCount?: number;
 }
 
-type SortField = 'user_name' | 'company' | 'course_title' | 'video_title' | 'progress' | 'created_at';
+type SortField = 'user_name' | 'company' | 'course_title' | 'video_title' | 'progress' | 'created_at' | 'start_time' | 'end_time' | 'watch_duration' | 'status';
 type SortOrder = 'asc' | 'desc';
 
 export default function LearningLogsPage() {
@@ -67,16 +69,17 @@ export default function LearningLogsPage() {
   const [filterStatus, setFilterStatus] = useState<'all' | 'completed' | 'in_progress' | 'not_started'>('all');
   const [filterCompany, setFilterCompany] = useState<string>('all');
   const [filterCourse, setFilterCourse] = useState<string>('all');
-  const [sortField, setSortField] = useState<SortField>('created_at');
+  // 原則、開始時刻順（新しい順）で表示する
+  const [sortField, setSortField] = useState<SortField>('start_time');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [exportingCSV, setExportingCSV] = useState(false);
   const [companies, setCompanies] = useState<string[]>([]);
-  const [courses, setCourses] = useState<{ id: string; title: string }[]>([]);
+  const [courses, setCourses] = useState<{ id: string; title: string; order_index?: number }[]>([]);
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [currentPage, setCurrentPage] = useState(1);
   const [editingLog, setEditingLog] = useState<LearningLog | null>(null);
   const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
-  const [allVideos, setAllVideos] = useState<{ id: string; title: string; course_id: string; duration?: number }[]>([]);
+  const [allVideos, setAllVideos] = useState<{ id: string; title: string; course_id: string; duration?: number; order_index?: number }[]>([]);
   const [selectedCourseForEdit, setSelectedCourseForEdit] = useState<string>('');
   const [selectedVideoForEdit, setSelectedVideoForEdit] = useState<string>('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -115,11 +118,11 @@ export default function LearningLogsPage() {
     try {
       const { data, error } = await supabase
         .from('videos')
-        .select('id, title, course_id, duration')
-        .order('title');
+        .select('id, title, course_id, duration, order_index')
+        .order('order_index', { ascending: true });
 
       if (data) {
-        setAllVideos(data);
+        setAllVideos(data.map(v => ({ ...v, id: String(v.id), course_id: String(v.course_id) })));
       }
     } catch (error) {
       console.error('動画リスト取得エラー:', error);
@@ -194,25 +197,25 @@ export default function LearningLogsPage() {
       // コース情報を取得
       const { data: courses } = await supabase
         .from('courses')
-        .select('id, title')
+        .select('id, title, order_index')
         .in('id', courseIds);
 
       // ビデオ情報を取得
       const { data: videos } = await supabase
         .from('videos')
-        .select('id, title')
+        .select('id, title, order_index')
         .in('id', videoIds);
 
-      // データをマップに変換
-      const userMap = new Map(users?.map(u => [u.id, u]) || []);
-      const courseMap = new Map(courses?.map(c => [c.id, c]) || []);
-      const videoMap = new Map(videos?.map(v => [v.id, v]) || []);
+      // データをマップに変換（IDの型揺れを防ぐため文字列キーで統一）
+      const userMap = new Map(users?.map(u => [String(u.id), u]) || []);
+      const courseMap = new Map(courses?.map(c => [String(c.id), c]) || []);
+      const videoMap = new Map(videos?.map(v => [String(v.id), v]) || []);
 
       // ログデータを整形
       const formattedLogs = logsData.map((log: any) => {
-        const user = userMap.get(log.user_id);
-        const course = courseMap.get(log.course_id);
-        const video = videoMap.get(log.video_id);
+        const user = userMap.get(String(log.user_id));
+        const course = courseMap.get(String(log.course_id));
+        const video = videoMap.get(String(log.video_id));
 
         return {
           id: String(log.id),
@@ -221,10 +224,12 @@ export default function LearningLogsPage() {
           user_email: user?.email || '',
           company: user?.company || '',
           department: user?.department || '',
-          course_id: log.course_id,
+          course_id: String(log.course_id),
           course_title: course?.title || 'Unknown Course',
-          video_id: log.video_id,
+          course_order: course?.order_index ?? 999999,
+          video_id: String(log.video_id),
           video_title: video?.title || 'Unknown Video',
+          video_order: video?.order_index ?? 999999,
           start_time: log.start_time || log.created_at,
           end_time: log.end_time || '',
           watch_duration: log.total_watched_time || 0,
@@ -248,9 +253,10 @@ export default function LearningLogsPage() {
       // グループ化されたログを展開（最新のログを代表として、履歴を持つ）
       const displayLogs: LearningLog[] = [];
       groupedLogs.forEach(logs => {
-        // created_atで降順にソート（最新が先頭）
+        // 開始時刻で降順にソート（最新が先頭）。開始時刻が無い場合はcreated_atで代用
         const sortedLogs = logs.sort((a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          new Date(b.start_time || b.created_at).getTime() -
+          new Date(a.start_time || a.created_at).getTime()
         );
 
         // 最新のログを代表として使用
@@ -294,25 +300,31 @@ export default function LearningLogsPage() {
       // コース一覧を取得
       const { data: coursesData } = await supabase
         .from('courses')
-        .select('id, title')
+        .select('id, title, order_index')
         .eq('status', 'active')
-        .order('title');
-      
+        .order('order_index', { ascending: true });
+
       if (coursesData) {
-        setCourses(coursesData);
+        // course_id は文字列で比較するため、ここでIDを文字列に統一しておく
+        setCourses(coursesData.map(c => ({ ...c, id: String(c.id) })));
       }
     } catch (error) {
       console.error('フィルター情報取得エラー:', error);
     }
   };
 
+  // 日時系の列は初回クリック時に新しい順（降順）から始める
+  const isTimeField = (field: SortField) =>
+    field === 'start_time' || field === 'end_time' || field === 'created_at';
+
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
       setSortField(field);
-      setSortOrder('asc');
+      setSortOrder(isTimeField(field) ? 'desc' : 'asc');
     }
+    setCurrentPage(1);
   };
 
   const handleDeleteLog = async (logId: string) => {
@@ -618,9 +630,10 @@ export default function LearningLogsPage() {
       // 複数履歴がある場合は全て展開してCSVに含める
       const csvData: string[][] = [];
       filteredAndSortedLogs.forEach(log => {
-        if (log.history && log.history.length > 1) {
+        const history = log.history;
+        if (history && history.length > 1) {
           // 複数履歴がある場合は全て出力
-          log.history.forEach((historyLog, index) => {
+          history.forEach((historyLog, index) => {
             csvData.push([
               formatCompletionDate(historyLog.end_time || historyLog.created_at),
               historyLog.user_name,
@@ -635,7 +648,7 @@ export default function LearningLogsPage() {
               Math.round(historyLog.progress).toString(),
               historyLog.status === 'completed' ? '完了' :
               historyLog.status === 'in_progress' ? '受講中' : '未開始',
-              `${index + 1}/${log.history.length}`
+              `${index + 1}/${history.length}`
             ]);
           });
         } else {
@@ -767,10 +780,12 @@ export default function LearningLogsPage() {
             user_email: user.email || '',
             company: user.company || '',
             department: user.department || '',
-            course_id: video.course_id,
+            course_id: String(video.course_id),
             course_title: course?.title || 'Unknown Course',
-            video_id: video.id,
+            course_order: course?.order_index ?? 999999,
+            video_id: String(video.id),
             video_title: video.title || 'Unknown Video',
+            video_order: video.order_index ?? 999999,
             start_time: '',
             end_time: '',
             watch_duration: 0,
@@ -801,7 +816,7 @@ export default function LearningLogsPage() {
       
       const matchesStatus = filterStatus === 'all' || log.status === filterStatus;
       const matchesCompany = filterCompany === 'all' || log.company === filterCompany;
-      const matchesCourse = filterCourse === 'all' || log.course_id === filterCourse;
+      const matchesCourse = filterCourse === 'all' || String(log.course_id) === String(filterCourse);
       
       let matchesDate = true;
       if (dateRange.start && dateRange.end) {
@@ -815,29 +830,62 @@ export default function LearningLogsPage() {
       return matchesSearch && matchesStatus && matchesCompany && matchesCourse && matchesDate;
     })
     .sort((a, b) => {
+      // 空の日時は常に末尾へ（未開始ログなど）
+      const timeValue = (value: string) => {
+        const time = value ? new Date(value).getTime() : NaN;
+        return Number.isNaN(time) ? null : time;
+      };
+      const statusRank = { not_started: 0, in_progress: 1, completed: 2 } as const;
+
       let compareValue = 0;
-      
+
       switch (sortField) {
         case 'user_name':
-          compareValue = a.user_name.localeCompare(b.user_name);
+          compareValue = a.user_name.localeCompare(b.user_name, 'ja');
           break;
         case 'company':
-          compareValue = (a.company || '').localeCompare(b.company || '');
+          compareValue = (a.company || '').localeCompare(b.company || '', 'ja');
           break;
         case 'course_title':
-          compareValue = (a.course_title || '').localeCompare(b.course_title || '', 'ja');
+          // コースの表示順（order_index）で並べ、同一コース内は動画順
+          compareValue = a.course_order - b.course_order;
+          if (compareValue === 0) {
+            compareValue = (a.course_title || '').localeCompare(b.course_title || '', 'ja');
+          }
+          if (compareValue === 0) {
+            compareValue = a.video_order - b.video_order;
+          }
           break;
         case 'video_title':
-          compareValue = a.video_title.localeCompare(b.video_title);
+          compareValue = a.video_order - b.video_order;
+          if (compareValue === 0) {
+            compareValue = (a.video_title || '').localeCompare(b.video_title || '', 'ja');
+          }
           break;
         case 'progress':
           compareValue = a.progress - b.progress;
           break;
-        case 'created_at':
-          compareValue = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case 'watch_duration':
+          compareValue = a.watch_duration - b.watch_duration;
           break;
+        case 'status':
+          compareValue = statusRank[a.status] - statusRank[b.status];
+          break;
+        case 'start_time':
+        case 'end_time':
+        case 'created_at': {
+          const tx = timeValue(sortField === 'start_time' ? a.start_time : sortField === 'end_time' ? a.end_time : a.created_at);
+          const ty = timeValue(sortField === 'start_time' ? b.start_time : sortField === 'end_time' ? b.end_time : b.created_at);
+          // 昇順・降順にかかわらず、日時が無い行は常に末尾に置く
+          if (tx === null || ty === null) {
+            if (tx === null && ty === null) return 0;
+            return tx === null ? 1 : -1;
+          }
+          compareValue = tx - ty;
+          break;
+        }
       }
-      
+
       return sortOrder === 'asc' ? compareValue : -compareValue;
     });
 
@@ -1107,14 +1155,38 @@ export default function LearningLogsPage() {
                             )}
                           </div>
                         </th>
-                        <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                          開始時刻
+                        <th
+                          className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
+                          onClick={() => handleSort('start_time')}
+                        >
+                          <div className="flex items-center">
+                            開始時刻
+                            {sortField === 'start_time' && (
+                              sortOrder === 'asc' ? <ArrowUpIcon className="h-3 w-3 ml-1" /> : <ArrowDownIcon className="h-3 w-3 ml-1" />
+                            )}
+                          </div>
                         </th>
-                        <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                          終了時刻
+                        <th
+                          className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
+                          onClick={() => handleSort('end_time')}
+                        >
+                          <div className="flex items-center">
+                            終了時刻
+                            {sortField === 'end_time' && (
+                              sortOrder === 'asc' ? <ArrowUpIcon className="h-3 w-3 ml-1" /> : <ArrowDownIcon className="h-3 w-3 ml-1" />
+                            )}
+                          </div>
                         </th>
-                        <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                          視聴時間
+                        <th
+                          className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
+                          onClick={() => handleSort('watch_duration')}
+                        >
+                          <div className="flex items-center">
+                            視聴時間
+                            {sortField === 'watch_duration' && (
+                              sortOrder === 'asc' ? <ArrowUpIcon className="h-3 w-3 ml-1" /> : <ArrowDownIcon className="h-3 w-3 ml-1" />
+                            )}
+                          </div>
                         </th>
                         <th
                           className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
@@ -1127,8 +1199,16 @@ export default function LearningLogsPage() {
                             )}
                           </div>
                         </th>
-                        <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                          ステータス
+                        <th
+                          className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
+                          onClick={() => handleSort('status')}
+                        >
+                          <div className="flex items-center">
+                            ステータス
+                            {sortField === 'status' && (
+                              sortOrder === 'asc' ? <ArrowUpIcon className="h-3 w-3 ml-1" /> : <ArrowDownIcon className="h-3 w-3 ml-1" />
+                            )}
+                          </div>
                         </th>
                         <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           履歴
