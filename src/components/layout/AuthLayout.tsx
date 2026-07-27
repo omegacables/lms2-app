@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { 
   AcademicCapIcon,
@@ -27,8 +27,20 @@ export function AuthLayout({
   subtitle = '企業研修用eラーニングアプリ',
   className
 }: AuthLayoutProps) {
+  // ログイン等の認証画面は見た目を統一するため常にライトモードで表示する。
+  // Tailwind の dark: は祖先の .dark クラスで効くため、ここで打ち消して
+  // 配下の共通コンポーネント(Input/Button等)もライト表示に固定する。
+  useEffect(() => {
+    const root = document.documentElement;
+    const wasDark = root.classList.contains('dark');
+    if (wasDark) root.classList.remove('dark');
+    return () => {
+      if (wasDark) root.classList.add('dark');
+    };
+  }, []);
+
   return (
-    <div className={cn('min-h-screen bg-white dark:bg-black', className)}>
+    <div className={cn('min-h-screen bg-white', className)}>
       <div className="flex min-h-screen">
         {/* 左側：ブランディングエリア（白黒基調で可読性重視） */}
         <div className="hidden lg:flex lg:w-1/2 lg:items-center lg:justify-center bg-neutral-950 relative overflow-hidden">
@@ -93,7 +105,7 @@ export function AuthLayout({
         </div>
 
         {/* 右側：フォームエリア */}
-        <div className="flex-1 flex items-center justify-center px-5 py-10 sm:px-8 sm:py-12 bg-white dark:bg-black">
+        <div className="flex-1 flex items-center justify-center px-5 py-10 sm:px-8 sm:py-12 bg-white">
           <div className="w-full max-w-md">
             {/* モバイル用ヘッダー */}
             <div className="lg:hidden text-center mb-10">
@@ -103,16 +115,16 @@ export function AuthLayout({
                 alt="Minova"
                 className="w-16 h-16 rounded-2xl mx-auto mb-5"
               />
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{title}</h1>
-              <p className="text-sm text-gray-600 dark:text-gray-400">{subtitle}</p>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">{title}</h1>
+              <p className="text-sm text-gray-600">{subtitle}</p>
             </div>
 
             {/* iOSアプリ版の案内（スマホでは目立つカード、PCでは控えめに） */}
-            <div className="lg:hidden mb-8 rounded-xl border border-gray-300 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-900 p-5 text-center">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1">
+            <div className="lg:hidden mb-8 rounded-xl border border-gray-300 bg-gray-50 p-5 text-center">
+              <p className="text-sm font-semibold text-gray-900 mb-1">
                 iOS向けアプリ版はこちら
               </p>
-              <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+              <p className="text-xs text-gray-600 mb-3">
                 iPhone・iPadでより快適に学習できます
               </p>
               <a
@@ -138,7 +150,7 @@ export function AuthLayout({
 
             {/* PC向け: iOSアプリ版の案内 */}
             <div className="hidden lg:flex mt-8 items-center justify-center gap-3">
-              <span className="text-sm text-gray-600 dark:text-gray-400">
+              <span className="text-sm text-gray-600">
                 iOS向けアプリ版はこちら
               </span>
               <a
@@ -158,8 +170,8 @@ export function AuthLayout({
 
             {/* フッター */}
             <div className="mt-8 text-center">
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                © 2025 Minova. All rights reserved.
+              <p className="text-xs text-gray-500">
+                © 2026 Minova. All rights reserved.
               </p>
             </div>
           </div>
