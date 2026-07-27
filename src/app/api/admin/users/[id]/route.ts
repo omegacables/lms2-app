@@ -95,26 +95,40 @@ export async function PUT(
     const adminSupabase = createAdminSupabaseClient();
 
     const body = await request.json();
-    const { display_name, company, department, role, is_active } = body;
 
-    // ユーザープロフィールを更新
+    // 送られてきた項目だけを更新する（未指定の項目を null で上書きしない）
+    const updates: Record<string, unknown> = {};
+    if (typeof body.display_name === 'string') updates.display_name = body.display_name.trim();
+    if (typeof body.company === 'string') updates.company = body.company;
+    if (typeof body.department === 'string') updates.department = body.department;
+    if (typeof body.role === 'string') updates.role = body.role;
+    if (typeof body.is_active === 'boolean') updates.is_active = body.is_active;
+    if (typeof body.can_skip_videos === 'boolean') updates.can_skip_videos = body.can_skip_videos;
+
+    if ('display_name' in updates && !updates.display_name) {
+      return NextResponse.json({ error: '表示名は必須です' }, { status: 400 });
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: '更新する項目がありません' }, { status: 400 });
+    }
+
+    updates.updated_at = new Date().toISOString();
+
+    // ユーザープロフィールを更新（service role のため RLS の影響を受けない）
     const { data: updatedUser, error } = await adminSupabase
       .from('user_profiles')
-      .update({
-        display_name,
-        company,
-        department,
-        role,
-        is_active,
-        updated_at: new Date().toISOString()
-      })
+      .update(updates)
       .eq('id', targetId)
       .select()
       .single();
 
     if (error) {
       console.error('Error updating user:', error);
-      return NextResponse.json({ error: 'ユーザー情報の更新に失敗しました' }, { status: 500 });
+      return NextResponse.json(
+        { error: `ユーザー情報の更新に失敗しました: ${error.message}` },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({

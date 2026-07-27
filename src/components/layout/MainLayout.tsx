@@ -336,7 +336,7 @@ export function MainLayout({ children }: MainLayoutProps) {
             <span className="text-lg font-bold">S</span>
           </div>
           <div className="flex flex-col">
-            <span className="text-base font-semibold text-zinc-950 dark:text-white">STUDY US</span>
+            <span className="text-base font-semibold text-zinc-950 dark:text-white">Minova</span>
             <span className="text-xs text-zinc-500 dark:text-zinc-400">Learning Platform</span>
           </div>
           <button

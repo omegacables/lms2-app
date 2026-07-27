@@ -149,26 +149,40 @@ export default function EditUserPage() {
     setSaving(true);
     
     try {
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({
-          display_name: formData.display_name,
+      // RLS の影響を受けないよう、service role で動く管理API経由で更新する
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('認証セッションが見つかりません。再ログインしてください。');
+      }
+
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          display_name: formData.display_name.trim(),
           company: formData.company,
           department: formData.department,
           role: formData.role,
           is_active: formData.is_active,
-          can_skip_videos: formData.can_skip_videos,
-          updated_at: new Date().toISOString()
+          can_skip_videos: formData.can_skip_videos
         })
-        .eq('id', userId);
+      });
 
-      if (error) throw error;
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(result?.error || 'ユーザー情報の更新に失敗しました');
+      }
 
       alert('ユーザー情報を更新しました');
       router.push('/admin/users');
     } catch (error) {
       console.error('更新エラー:', error);
-      alert('ユーザー情報の更新に失敗しました');
+      alert(error instanceof Error ? error.message : 'ユーザー情報の更新に失敗しました');
     } finally {
       setSaving(false);
     }

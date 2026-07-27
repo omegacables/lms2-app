@@ -232,7 +232,7 @@ export default function CertificatesPage() {
         totalVideos: 0,
         totalWatchTime: 0,
         courseDescription: certificate.courses?.description || '',
-        organization: '企業研修LMS',
+        organization: 'Minova',
         company: userProfile?.company || undefined,
       };
 

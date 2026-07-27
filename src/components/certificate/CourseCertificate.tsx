@@ -228,7 +228,7 @@ export function CourseCertificate({
       totalVideos: progress.totalVideos,
       totalWatchTime: Math.round(progress.totalWatchTime / 60), // 分に変換
       courseDescription: course.description || '',
-      organization: '企業研修LMS',
+      organization: 'Minova',
       company: user.company_name || undefined,
       // システム設定から取得した署名情報
       issuerCompanyName: certificateSettings?.company_name || undefined,
@@ -364,7 +364,7 @@ export function CourseCertificate({
         totalVideos: progress.totalVideos,
         totalWatchTime: Math.round(progress.totalWatchTime / 60),
         courseDescription: course.description || '',
-        organization: '企業研修LMS',
+        organization: 'Minova',
         company: user.company_name || undefined,
         issuerCompanyName: settings?.company_name || undefined,
         signerName: settings?.signer_name || undefined,
@@ -442,7 +442,7 @@ export function CourseCertificate({
           totalVideos: progress.totalVideos,
           totalWatchTime: Math.round(progress.totalWatchTime / 60),
           courseDescription: course.description || '',
-          organization: '企業研修LMS',
+          organization: 'Minova',
           company: user.company_name || undefined,
           issuerCompanyName: settings?.company_name || undefined,
           signerName: settings?.signer_name || undefined,

@@ -17,11 +17,15 @@ interface AuthLayoutProps {
   className?: string;
 }
 
-export function AuthLayout({ 
-  children, 
-  title = '企業研修LMS',
-  subtitle = '効率的な学習管理システム',
-  className 
+/** App Store の公式ダウンロードリンク（iOSアプリ版） */
+const APP_STORE_URL =
+  'https://apps.apple.com/jp/app/minova-%E4%BC%81%E6%A5%AD%E7%A0%94%E4%BF%AE%E7%94%A8e%E3%83%A9%E3%83%BC%E3%83%8B%E3%83%B3%E3%82%B0%E3%82%A2%E3%83%97%E3%83%AA/id6789630514';
+
+export function AuthLayout({
+  children,
+  title = 'Minova',
+  subtitle = '企業研修用eラーニングアプリ',
+  className
 }: AuthLayoutProps) {
   return (
     <div className={cn('min-h-screen bg-gray-50 dark:bg-black', className)}>
@@ -39,7 +43,7 @@ export function AuthLayout({
               <div className="w-16 h-16 liquid-glass-interactive/20 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
                 <AcademicCapIcon className="h-8 w-8 text-white" />
               </div>
-              <div className="text-2xl font-bold">LMS</div>
+              <div className="text-2xl font-bold">Minova</div>
             </div>
             
             <h1 className="text-4xl font-bold mb-4 leading-tight">{title}</h1>
@@ -102,15 +106,59 @@ export function AuthLayout({
               <p className="text-gray-600 dark:text-gray-400">{subtitle}</p>
             </div>
 
+            {/* iOSアプリ版の案内（スマホでは目立つカード、PCでは控えめに） */}
+            <div className="lg:hidden mb-6 rounded-xl border border-blue-200 dark:border-blue-900/50 bg-blue-50 dark:bg-blue-900/20 p-4 text-center">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1">
+                iOS向けアプリ版はこちら
+              </p>
+              <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                iPhone・iPadでより快適に学習できます
+              </p>
+              <a
+                href={APP_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block"
+                aria-label="App Store でダウンロード"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/badges/app-store-badge-ja.svg"
+                  alt="App Store でダウンロード"
+                  className="h-12 w-auto mx-auto"
+                />
+              </a>
+            </div>
+
             {/* フォームコンテンツ */}
             <div className="liquid-glass-interactive">
               {children}
             </div>
-            
+
+            {/* PC向け: iOSアプリ版の案内 */}
+            <div className="hidden lg:flex mt-8 items-center justify-center gap-3">
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                iOS向けアプリ版はこちら
+              </span>
+              <a
+                href={APP_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="App Store でダウンロード"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/badges/app-store-badge-ja.svg"
+                  alt="App Store でダウンロード"
+                  className="h-10 w-auto"
+                />
+              </a>
+            </div>
+
             {/* フッター */}
             <div className="mt-8 text-center">
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                © 2025 企業研修LMS. All rights reserved.
+                © 2025 Minova. All rights reserved.
               </p>
             </div>
           </div>

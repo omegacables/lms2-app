@@ -294,7 +294,7 @@ export default function LaborConsultantCertificatesPage() {
         totalVideos: totalVideos,
         totalWatchTime: Math.round(totalWatchTime / 60),
         courseDescription: courseData?.description || '',
-        organization: '企業研修LMS',
+        organization: 'Minova',
         company: cert.company || undefined,
         issuerCompanyName: settings?.company_name || undefined,
         signerName: settings?.signer_name || undefined,

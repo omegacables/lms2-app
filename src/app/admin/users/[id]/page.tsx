@@ -79,6 +79,7 @@ export default function StudentDetailPage() {
   const [learningProgress, setLearningProgress] = useState<LearningProgress[]>([]);
   const [courseStats, setCourseStats] = useState<CourseStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState({
     display_name: '',
@@ -147,6 +148,9 @@ export default function StudentDetailPage() {
 
     } catch (error) {
       console.error('学生詳細取得エラー:', error);
+    } finally {
+      // ここで解除しないと、保存後の再取得でローディング表示から戻らなくなる
+      setLoading(false);
     }
   };
 
@@ -255,22 +259,41 @@ export default function StudentDetailPage() {
   const handleSaveEdit = async () => {
     if (!student) return;
 
+    if (!editForm.display_name.trim()) {
+      alert('表示名は必須です');
+      return;
+    }
+
+    setSaving(true);
     try {
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({
-          display_name: editForm.display_name,
+      // RLS の影響を受けないよう、service role で動く管理API経由で更新する
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        alert('認証セッションが見つかりません。再ログインしてください。');
+        return;
+      }
+
+      const response = await fetch(`/api/admin/users/${studentId}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          display_name: editForm.display_name.trim(),
           company: editForm.company,
           department: editForm.department,
           is_active: editForm.is_active,
-          can_skip_videos: editForm.can_skip_videos,
-          updated_at: new Date().toISOString()
+          can_skip_videos: editForm.can_skip_videos
         })
-        .eq('id', studentId);
+      });
 
-      if (error) {
-        console.error('更新エラー:', error);
-        alert('更新に失敗しました');
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        console.error('更新エラー:', result);
+        alert(`更新に失敗しました: ${result?.error || response.statusText}`);
         return;
       }
 
@@ -279,7 +302,9 @@ export default function StudentDetailPage() {
       alert('更新しました');
     } catch (error) {
       console.error('更新エラー:', error);
-      alert('更新に失敗しました');
+      alert(`更新に失敗しました: ${error instanceof Error ? error.message : ''}`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -439,6 +464,7 @@ export default function StudentDetailPage() {
                       <Button
                         size="sm"
                         variant="outline"
+                        disabled={saving}
                         onClick={() => {
                           setEditMode(false);
                           setEditForm({
@@ -452,8 +478,8 @@ export default function StudentDetailPage() {
                       >
                         キャンセル
                       </Button>
-                      <Button size="sm" onClick={handleSaveEdit}>
-                        保存
+                      <Button size="sm" onClick={handleSaveEdit} disabled={saving}>
+                        {saving ? '保存中...' : '保存'}
                       </Button>
                     </div>
                   ) : (

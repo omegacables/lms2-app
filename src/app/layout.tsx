@@ -23,7 +23,7 @@ const notoSansJP = Noto_Sans_JP({
 });
 
 export const metadata: Metadata = {
-  title: "企業研修LMS - 効率的な学習管理システム",
+  title: "Minova - 企業研修用eラーニングアプリ",
   description: "動画ベースの企業研修を効率的に管理するLMSプラットフォーム。進捗トラッキング、自動証明書発行、マルチデバイス対応。",
   keywords: ["LMS", "企業研修", "eラーニング", "動画学習", "証明書発行"],
 };
