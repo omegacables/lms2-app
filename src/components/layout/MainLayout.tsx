@@ -332,9 +332,12 @@ export function MainLayout({ children }: MainLayoutProps) {
       }`}>
         {/* Logo section */}
         <div className="flex items-center gap-x-3 px-6 py-5 border-b border-zinc-950/5 dark:border-white/5">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-sm">
-            <span className="text-lg font-bold">S</span>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/icon-192.png"
+            alt="Minova"
+            className="h-10 w-10 shrink-0 rounded-lg shadow-sm"
+          />
           <div className="flex flex-col">
             <span className="text-base font-semibold text-zinc-950 dark:text-white">Minova</span>
             <span className="text-xs text-zinc-500 dark:text-zinc-400">Learning Platform</span>

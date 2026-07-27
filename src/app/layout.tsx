@@ -24,6 +24,15 @@ const notoSansJP = Noto_Sans_JP({
 
 export const metadata: Metadata = {
   title: "Minova - 企業研修用eラーニングアプリ",
+  icons: {
+    icon: [
+      { url: "/favicon-16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
   description: "動画ベースの企業研修を効率的に管理するLMSプラットフォーム。進捗トラッキング、自動証明書発行、マルチデバイス対応。",
   keywords: ["LMS", "企業研修", "eラーニング", "動画学習", "証明書発行"],
 };

@@ -35,9 +35,12 @@ export function AuthLayout({
           <div className="relative max-w-md text-center text-white px-8">
             {/* ロゴ */}
             <div className="mb-8">
-              <div className="w-16 h-16 bg-white/10 border border-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <AcademicCapIcon className="h-8 w-8 text-white" />
-              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/icon-192.png"
+                alt="Minova"
+                className="w-16 h-16 rounded-2xl mx-auto mb-4"
+              />
               <div className="text-2xl font-bold">Minova</div>
             </div>
             
@@ -94,9 +97,12 @@ export function AuthLayout({
           <div className="w-full max-w-md">
             {/* モバイル用ヘッダー */}
             <div className="lg:hidden text-center mb-10">
-              <div className="w-14 h-14 bg-neutral-900 dark:bg-white rounded-xl flex items-center justify-center mx-auto mb-5">
-                <AcademicCapIcon className="h-7 w-7 text-white dark:text-neutral-900" />
-              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/icon-192.png"
+                alt="Minova"
+                className="w-16 h-16 rounded-2xl mx-auto mb-5"
+              />
               <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{title}</h1>
               <p className="text-sm text-gray-600 dark:text-gray-400">{subtitle}</p>
             </div>
