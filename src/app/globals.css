@@ -87,23 +87,43 @@ body {
   /* 認証画面(.auth-light配下)は常にライト表示に固定。
      上の .dark input ルールが !important で白文字を強制するため、
      ダークモード端末でも入力文字が読めるようここで打ち消す */
-  .auth-light input[type="text"],
-  .auth-light input[type="email"],
-  .auth-light input[type="password"],
-  .auth-light input[type="number"],
-  .auth-light input[type="search"],
-  .auth-light input[type="tel"],
-  .auth-light input[type="url"],
+  /* 詳細度を確実に上げるため html/.dark も含めて指定し、
+     Tailwindの dark:bg-gray-900 等より強く効かせる */
+  .auth-light input,
   .auth-light textarea,
-  .auth-light select {
+  .auth-light select,
+  html .auth-light input,
+  html .auth-light textarea,
+  html .auth-light select,
+  html.dark .auth-light input,
+  html.dark .auth-light textarea,
+  html.dark .auth-light select,
+  .dark .auth-light input,
+  .dark .auth-light textarea,
+  .dark .auth-light select {
     background-color: #ffffff !important;
+    background-image: none !important;
     color: #111827 !important; /* gray-900 */
     border-color: #d1d5db !important; /* gray-300 */
+    -webkit-text-fill-color: #111827 !important; /* iOS Safari対策 */
+    caret-color: #111827 !important;
   }
 
   .auth-light input::placeholder,
-  .auth-light textarea::placeholder {
+  .auth-light textarea::placeholder,
+  html.dark .auth-light input::placeholder,
+  .dark .auth-light input::placeholder {
     color: #9ca3af !important; /* gray-400 */
+    -webkit-text-fill-color: #9ca3af !important;
+  }
+
+  /* ブラウザの自動入力（オートフィル）で背景が青/黒くなるのも防ぐ */
+  .auth-light input:-webkit-autofill,
+  .auth-light input:-webkit-autofill:hover,
+  .auth-light input:-webkit-autofill:focus {
+    -webkit-text-fill-color: #111827 !important;
+    -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+    box-shadow: 0 0 0 1000px #ffffff inset !important;
   }
 
   .dark input::placeholder {
