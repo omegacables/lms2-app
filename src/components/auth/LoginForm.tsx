@@ -83,17 +83,17 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
   return (
     <div className={cn('w-full max-w-md', className)}>
       {/* ヘッダー */}
-      <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+      <div className="text-center mb-8 px-2">
+        <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-3">
           ログイン
         </h2>
-        <p className="text-gray-600 dark:text-gray-400">
+        <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 leading-relaxed">
           アカウントにログインして学習を続けましょう
         </p>
       </div>
 
       {/* フォーム */}
-      <div className="liquid-glass-interactive dark:bg-neutral-900 rounded-lg shadow-sm dark:shadow-gray-900/20 border border-gray-200 dark:border-neutral-800 p-6">
+      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-sm dark:shadow-gray-900/20 border border-gray-200 dark:border-neutral-800 p-5 sm:p-6">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6" method="POST" action="#">
           {error && (
             <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 p-4">
@@ -140,7 +140,7 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
 
           <Button
             type="submit"
-            className="w-full"
+            className="w-full bg-neutral-900 hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-neutral-900"
             size="lg"
             loading={isLoading}
             disabled={isSubmitting || isLoading}
@@ -152,10 +152,10 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
         {/* フッターリンク */}
         <div className="mt-6 text-center space-y-4">
           {/* 管理者ログインリンク */}
-          <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3">
+          <div className="rounded-lg bg-gray-50 dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 p-3">
             <Link
               href="/admin/login"
-              className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-500 font-medium flex items-center justify-center gap-2"
+              className="text-sm text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-white font-medium flex items-center justify-center gap-2"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
@@ -166,7 +166,7 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
 
           <Link
             href="/auth/reset-password"
-            className="text-sm text-blue-600 hover:text-blue-500"
+            className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white underline underline-offset-4"
           >
             パスワードを忘れた場合
           </Link>
@@ -175,7 +175,7 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
             アカウントをお持ちでないですか？{' '}
             <Link
               href="/auth/signup"
-              className="text-blue-600 hover:text-blue-500 font-medium"
+              className="text-gray-900 dark:text-white hover:opacity-70 font-medium underline underline-offset-4"
             >
               新規登録
             </Link>

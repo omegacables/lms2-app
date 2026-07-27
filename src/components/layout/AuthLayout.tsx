@@ -28,66 +28,61 @@ export function AuthLayout({
   className
 }: AuthLayoutProps) {
   return (
-    <div className={cn('min-h-screen bg-gray-50 dark:bg-black', className)}>
+    <div className={cn('min-h-screen bg-white dark:bg-black', className)}>
       <div className="flex min-h-screen">
-        {/* 左側：ブランディングエリア */}
-        <div className="hidden lg:flex lg:w-1/2 lg:items-center lg:justify-center bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 relative overflow-hidden">
-          {/* 背景デコレーション */}
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-600/20 to-transparent" />
-          <div className="absolute top-10 left-10 w-32 h-32 liquid-glass-interactive dark:bg-neutral-900/10 rounded-full blur-xl" />
-          <div className="absolute bottom-20 right-20 w-40 h-40 liquid-glass-interactive/5 rounded-full blur-xl" />
-          
+        {/* 左側：ブランディングエリア（白黒基調で可読性重視） */}
+        <div className="hidden lg:flex lg:w-1/2 lg:items-center lg:justify-center bg-neutral-950 relative overflow-hidden">
           <div className="relative max-w-md text-center text-white px-8">
             {/* ロゴ */}
             <div className="mb-8">
-              <div className="w-16 h-16 liquid-glass-interactive/20 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
+              <div className="w-16 h-16 bg-white/10 border border-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <AcademicCapIcon className="h-8 w-8 text-white" />
               </div>
               <div className="text-2xl font-bold">Minova</div>
             </div>
             
             <h1 className="text-4xl font-bold mb-4 leading-tight">{title}</h1>
-            <p className="text-xl mb-8 text-blue-100 leading-relaxed">{subtitle}</p>
+            <p className="text-xl mb-8 text-neutral-300 leading-relaxed">{subtitle}</p>
             
             {/* 特徴リスト */}
             <div className="space-y-6 text-left">
               <div className="flex items-start space-x-4">
-                <div className="w-8 h-8 liquid-glass-interactive/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
+                <div className="w-8 h-8 bg-white/10 border border-white/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
                   <PlayIcon className="h-4 w-4 text-white" />
                 </div>
                 <div>
                   <h3 className="font-semibold mb-1">動画ベースの効率的な研修</h3>
-                  <p className="text-sm text-blue-100 opacity-90">高品質な動画コンテンツで学習効果を最大化</p>
+                  <p className="text-sm text-neutral-400">高品質な動画コンテンツで学習効果を最大化</p>
                 </div>
               </div>
               
               <div className="flex items-start space-x-4">
-                <div className="w-8 h-8 liquid-glass-interactive/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
+                <div className="w-8 h-8 bg-white/10 border border-white/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
                   <ChartBarIcon className="h-4 w-4 text-white" />
                 </div>
                 <div>
                   <h3 className="font-semibold mb-1">詳細な進捗管理</h3>
-                  <p className="text-sm text-blue-100 opacity-90">リアルタイムで学習状況を可視化</p>
+                  <p className="text-sm text-neutral-400">リアルタイムで学習状況を可視化</p>
                 </div>
               </div>
               
               <div className="flex items-start space-x-4">
-                <div className="w-8 h-8 liquid-glass-interactive/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
+                <div className="w-8 h-8 bg-white/10 border border-white/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
                   <CheckCircleIcon className="h-4 w-4 text-white" />
                 </div>
                 <div>
                   <h3 className="font-semibold mb-1">自動証明書発行</h3>
-                  <p className="text-sm text-blue-100 opacity-90">完了時に即座に証明書を生成</p>
+                  <p className="text-sm text-neutral-400">完了時に即座に証明書を生成</p>
                 </div>
               </div>
               
               <div className="flex items-start space-x-4">
-                <div className="w-8 h-8 liquid-glass-interactive/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
+                <div className="w-8 h-8 bg-white/10 border border-white/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
                   <DevicePhoneMobileIcon className="h-4 w-4 text-white" />
                 </div>
                 <div>
                   <h3 className="font-semibold mb-1">マルチデバイス対応</h3>
-                  <p className="text-sm text-blue-100 opacity-90">PC・タブレット・スマートフォンで学習</p>
+                  <p className="text-sm text-neutral-400">PC・タブレット・スマートフォンで学習</p>
                 </div>
               </div>
             </div>
@@ -95,19 +90,19 @@ export function AuthLayout({
         </div>
 
         {/* 右側：フォームエリア */}
-        <div className="flex-1 flex items-center justify-center p-8 liquid-glass-interactive">
+        <div className="flex-1 flex items-center justify-center px-5 py-10 sm:px-8 sm:py-12 bg-white dark:bg-black">
           <div className="w-full max-w-md">
             {/* モバイル用ヘッダー */}
-            <div className="lg:hidden text-center mb-8">
-              <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
-                <AcademicCapIcon className="h-6 w-6 text-white" />
+            <div className="lg:hidden text-center mb-10">
+              <div className="w-14 h-14 bg-neutral-900 dark:bg-white rounded-xl flex items-center justify-center mx-auto mb-5">
+                <AcademicCapIcon className="h-7 w-7 text-white dark:text-neutral-900" />
               </div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">{title}</h1>
-              <p className="text-gray-600 dark:text-gray-400">{subtitle}</p>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{title}</h1>
+              <p className="text-sm text-gray-600 dark:text-gray-400">{subtitle}</p>
             </div>
 
             {/* iOSアプリ版の案内（スマホでは目立つカード、PCでは控えめに） */}
-            <div className="lg:hidden mb-6 rounded-xl border border-blue-200 dark:border-blue-900/50 bg-blue-50 dark:bg-blue-900/20 p-4 text-center">
+            <div className="lg:hidden mb-8 rounded-xl border border-gray-300 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-900 p-5 text-center">
               <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1">
                 iOS向けアプリ版はこちら
               </p>
@@ -131,7 +126,7 @@ export function AuthLayout({
             </div>
 
             {/* フォームコンテンツ */}
-            <div className="liquid-glass-interactive">
+            <div>
               {children}
             </div>
 
