@@ -40,7 +40,7 @@ export function AuthLayout({
   }, []);
 
   return (
-    <div className={cn('min-h-screen bg-white', className)}>
+    <div className={cn('auth-light min-h-screen bg-white', className)}>
       <div className="flex min-h-screen">
         {/* 左側：ブランディングエリア（白黒基調で可読性重視） */}
         <div className="hidden lg:flex lg:w-1/2 lg:items-center lg:justify-center bg-neutral-950 relative overflow-hidden">

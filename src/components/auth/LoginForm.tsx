@@ -170,16 +170,6 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
           >
             パスワードを忘れた場合
           </Link>
-
-          <div className="text-sm text-gray-600">
-            アカウントをお持ちでないですか？{' '}
-            <Link
-              href="/auth/signup"
-              className="text-gray-900 hover:opacity-70 font-medium underline underline-offset-4"
-            >
-              新規登録
-            </Link>
-          </div>
         </div>
       </div>
     </div>

@@ -84,6 +84,28 @@ body {
   
   /* Fix for dark mode placeholder text */
   .dark textarea::placeholder,
+  /* 認証画面(.auth-light配下)は常にライト表示に固定。
+     上の .dark input ルールが !important で白文字を強制するため、
+     ダークモード端末でも入力文字が読めるようここで打ち消す */
+  .auth-light input[type="text"],
+  .auth-light input[type="email"],
+  .auth-light input[type="password"],
+  .auth-light input[type="number"],
+  .auth-light input[type="search"],
+  .auth-light input[type="tel"],
+  .auth-light input[type="url"],
+  .auth-light textarea,
+  .auth-light select {
+    background-color: #ffffff !important;
+    color: #111827 !important; /* gray-900 */
+    border-color: #d1d5db !important; /* gray-300 */
+  }
+
+  .auth-light input::placeholder,
+  .auth-light textarea::placeholder {
+    color: #9ca3af !important; /* gray-400 */
+  }
+
   .dark input::placeholder {
     color: rgb(107 114 128); /* gray-500 */
   }
