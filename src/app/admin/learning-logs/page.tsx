@@ -343,8 +343,9 @@ export default function LearningLogsPage() {
       });
 
       if (response.ok) {
+        // 楽観的更新: 全ログ再取得せずローカル state から該当行を除外
+        setLearningLogs(prev => prev.filter(log => log.id !== logId));
         alert('学習ログを削除しました');
-        fetchLearningLogs();
       } else {
         const data = await response.json();
         alert(`削除に失敗しました: ${data.error}`);
@@ -393,8 +394,9 @@ export default function LearningLogsPage() {
       }
 
       alert(`削除完了: 成功 ${successCount} 件、失敗 ${failCount} 件`);
+      // 楽観的更新: 選択されていた ID をローカル state から除外
+      setLearningLogs(prev => prev.filter(log => !selectedLogs.has(log.id)));
       setSelectedLogs(new Set());
-      fetchLearningLogs();
     } catch (error) {
       console.error('一括削除エラー:', error);
       alert('一括削除中にエラーが発生しました');
@@ -552,42 +554,59 @@ export default function LearningLogsPage() {
       });
 
       if (response.ok) {
-        // ログ更新後、コースが完了したか確認して証明書生成を試みる
-        if (editingLog.user_id && editingLog.course_id) {
-          try {
-            console.log('学習ログ更新後、コース完了・証明書生成を確認中...');
-            const { data: { session: certSession } } = await supabase.auth.getSession();
-            const certResponse = await fetch('/api/certificates/generate', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${certSession?.access_token ?? ''}`,
-              },
-              body: JSON.stringify({
-                userId: editingLog.user_id,
-                courseId: parseInt(editingLog.course_id),
-                access_token: certSession?.access_token,
-              })
-            });
-            const certResult = await certResponse.json();
-            if (certResult.success) {
-              console.log('証明書が発行されました:', certResult.certificateId);
-              alert('学習ログを更新しました。コース完了により証明書が発行されました。');
-            } else {
-              console.log('証明書発行条件未達:', certResult.error);
-              alert('学習ログを更新しました');
-            }
-          } catch (certError) {
-            console.error('証明書生成確認エラー:', certError);
-            alert('学習ログを更新しました');
+        // 🚀 楽観的更新: 全ログを再取得せず、編集したログだけローカル state を書き換える
+        const editedId = editingLog.id;
+        const updated = { ...editingLog, watch_duration: Math.round(calculatedDuration) };
+        setLearningLogs(prev => prev.map(log => {
+          if (log.id === editedId) return updated;
+          // ユーザー名/会社/コース名等が変わっている可能性 → 同じ user_id / course_id / video_id のログにも反映
+          const patches: Partial<typeof log> = {};
+          if (log.user_id === updated.user_id) {
+            patches.user_name = updated.user_name;
+            patches.user_email = updated.user_email;
+            patches.company = updated.company;
+            patches.department = updated.department;
           }
-        } else {
-          alert('学習ログを更新しました');
-        }
+          if (String(log.course_id) === String(updated.course_id)) {
+            patches.course_title = updated.course_title;
+          }
+          if (String(log.video_id) === String(updated.video_id)) {
+            patches.video_title = updated.video_title;
+          }
+          return Object.keys(patches).length > 0 ? { ...log, ...patches } : log;
+        }));
+
         setEditingLog(null);
         setSelectedCourseForEdit('');
         setSelectedVideoForEdit('');
-        fetchLearningLogs();
+        alert('学習ログを更新しました');
+
+        // 証明書生成はバックグラウンドで実行（UIをブロックしない）
+        if (updated.user_id && updated.course_id) {
+          (async () => {
+            try {
+              const { data: { session: certSession } } = await supabase.auth.getSession();
+              const certResponse = await fetch('/api/certificates/generate', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${certSession?.access_token ?? ''}`,
+                },
+                body: JSON.stringify({
+                  userId: updated.user_id,
+                  courseId: parseInt(updated.course_id),
+                  access_token: certSession?.access_token,
+                }),
+              });
+              const certResult = await certResponse.json();
+              if (certResult.success) {
+                console.log('[BG] 証明書が発行されました:', certResult.certificateId);
+              }
+            } catch (certError) {
+              console.error('[BG] 証明書生成エラー:', certError);
+            }
+          })();
+        }
       } else {
         const data = await response.json();
         console.error('更新エラー詳細:', data);
