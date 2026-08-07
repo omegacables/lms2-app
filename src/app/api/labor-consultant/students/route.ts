@@ -124,15 +124,17 @@ export async function GET(request: NextRequest) {
       (coursesData ?? []).forEach(c => courseById.set(c.id, c));
     }
 
-    // 6. 各コースの動画数を一括取得
+    // 6. 各コースの動画数を一括取得（status='active'のみを進捗の分母にする）
     const videoCountByCourse = new Map<number, number>();
     const videoIdsByCourse = new Map<number, number[]>();
     if (allCourseIds.length > 0) {
       const { data: videosData } = await adminClient
         .from('videos')
-        .select('id, course_id')
+        .select('id, course_id, status')
         .in('course_id', allCourseIds);
       (videosData ?? []).forEach(v => {
+        // 非公開動画は進捗計算から除外
+        if (v.status && v.status !== 'active') return;
         videoCountByCourse.set(v.course_id, (videoCountByCourse.get(v.course_id) ?? 0) + 1);
         if (!videoIdsByCourse.has(v.course_id)) videoIdsByCourse.set(v.course_id, []);
         videoIdsByCourse.get(v.course_id)!.push(v.id);
@@ -150,16 +152,18 @@ export async function GET(request: NextRequest) {
       video_id: number;
       progress_percent: number | null;
       status: string | null;
+      last_updated: string | null;
+      created_at: string | null;
     };
     let viewLogs: ViewLogRow[] = [];
     if (allVideoIds.length > 0) {
       const pageSize = 1000;
       let offset = 0;
-      const maxIterations = 100; // 念のため上限（100万行まで）
+      const maxIterations = 100;
       for (let i = 0; i < maxIterations; i++) {
         const { data: pageData, error: pageError } = await adminClient
           .from('video_view_logs')
-          .select('user_id, video_id, progress_percent, status')
+          .select('user_id, video_id, progress_percent, status, last_updated, created_at')
           .in('user_id', studentIds)
           .in('video_id', allVideoIds)
           .range(offset, offset + pageSize - 1);
@@ -176,15 +180,26 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // user_id + video_id → 最新の completed フラグ
-    const completedSet = new Set<string>(); // key: `${userId}-${videoId}`
+    // 🎯 (user_id, video_id) ごとに最新ログだけを採用（生徒画面と同じロジック）
+    //    - last_updated（無ければ created_at）で最新を判定
+    //    - 最新ログの status='completed' か progress_percent>=THRESHOLD を完了とみなす
+    //    - 最新ログの progress_percent を「その動画の進捗」として保持
+    type LatestLog = { progressPercent: number; isCompleted: boolean };
+    const latestByKey = new Map<string, { time: number; row: ViewLogRow }>();
     viewLogs.forEach(log => {
-      const isCompleted =
-        log.status === 'completed' ||
-        (log.progress_percent ?? 0) >= COMPLETION_THRESHOLD;
-      if (isCompleted) {
-        completedSet.add(`${log.user_id}-${log.video_id}`);
+      const key = `${log.user_id}-${log.video_id}`;
+      const t = new Date(log.last_updated ?? log.created_at ?? 0).getTime();
+      const existing = latestByKey.get(key);
+      if (!existing || t > existing.time) {
+        latestByKey.set(key, { time: t, row: log });
       }
+    });
+
+    const latestLogMap = new Map<string, LatestLog>();
+    latestByKey.forEach(({ row }, key) => {
+      const pct = row.progress_percent ?? 0;
+      const isCompleted = row.status === 'completed' || pct >= COMPLETION_THRESHOLD;
+      latestLogMap.set(key, { progressPercent: pct, isCompleted });
     });
 
     // 8. 各生徒のコース進捗を組み立てる
@@ -214,16 +229,25 @@ export async function GET(request: NextRequest) {
 
           const videosInCourse = videoIdsByCourse.get(courseId) ?? [];
           const totalVideos = videosInCourse.length;
-          const completedVideos = videosInCourse.filter(vid =>
-            completedSet.has(`${student.id}-${vid}`)
-          ).length;
 
+          // 🎯 各動画の最新ログから完了数と平均進捗を計算（生徒画面と同ロジック）
+          let completedVideos = 0;
+          let sumProgress = 0;
+          for (const vid of videosInCourse) {
+            const latest = latestLogMap.get(`${student.id}-${vid}`);
+            if (latest) {
+              if (latest.isCompleted) completedVideos++;
+              sumProgress += latest.isCompleted ? 100 : latest.progressPercent;
+            }
+          }
+
+          // コース進捗 = 各動画の最新進捗の平均（未視聴動画は 0 として扱う）
           const progress =
-            totalVideos === 0 ? 0 : Math.round((completedVideos / totalVideos) * 100);
+            totalVideos === 0 ? 0 : Math.round(sumProgress / totalVideos);
 
           let status: 'completed' | 'in_progress' | 'not_started' = 'not_started';
           if (totalVideos > 0 && completedVideos === totalVideos) status = 'completed';
-          else if (completedVideos > 0) status = 'in_progress';
+          else if (sumProgress > 0) status = 'in_progress';
 
           return {
             courseId,
