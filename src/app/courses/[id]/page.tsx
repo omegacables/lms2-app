@@ -14,8 +14,22 @@ import type { Tables } from '@/lib/database/supabase';
 import {
   ChevronDownIcon,
   ChevronRightIcon,
-  BookOpenIcon
+  BookOpenIcon,
+  LockClosedIcon,
+  CheckCircleIcon,
+  DocumentTextIcon
 } from '@heroicons/react/24/outline';
+
+interface QuizStep {
+  type: 'video' | 'quiz';
+  id: number;
+  title: string;
+  quiz_type?: 'choice' | 'essay';
+  after_video_id?: number | null;
+  passed: boolean;
+  unlocked: boolean;
+  lockReason?: string;
+}
 
 type Course = Tables<'courses'>;
 type Video = Tables<'videos'>;
@@ -43,12 +57,87 @@ export default function CourseDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
   const [totalVideoCount, setTotalVideoCount] = useState<number>(0);
+  // 学習パス（動画＋小テスト）の解放・通過状況
+  const [quizSteps, setQuizSteps] = useState<QuizStep[]>([]);
 
   useEffect(() => {
     if (courseId && user) {
       fetchCourseDetails();
+      fetchLearningPath();
     }
   }, [courseId, user]);
+
+  const fetchLearningPath = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/courses/${courseId}/learning-path`, {
+        headers: { Authorization: session?.access_token ? `Bearer ${session.access_token}` : '' },
+      });
+      if (!res.ok) return;
+      const json = await res.json();
+      setQuizSteps((json.steps || []).filter((s: QuizStep) => s.type === 'quiz'));
+    } catch {
+      // 学習パス取得失敗時は小テストを表示しないだけ（動画一覧は従来どおり表示）
+    }
+  };
+
+  // 指定位置（動画の直後 / コース末=null）に配置された小テストを描画する
+  const renderQuizzesAfter = (afterVideoId: number | null) => {
+    const items = quizSteps.filter((q) => (q.after_video_id ?? null) === afterVideoId);
+    if (items.length === 0) return null;
+    return items.map((q) => (
+      <div
+        key={`quiz-${q.id}`}
+        className={`rounded-xl p-4 border ${
+          q.passed
+            ? 'border-green-300 bg-green-50 dark:bg-green-900/10'
+            : q.unlocked
+            ? 'border-blue-300 bg-blue-50 dark:bg-blue-900/10'
+            : 'border-gray-200 bg-gray-50 dark:bg-neutral-900/40'
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex-shrink-0">
+            {q.passed ? (
+              <CheckCircleIcon className="w-6 h-6 text-green-600" />
+            ) : q.unlocked ? (
+              <DocumentTextIcon className="w-6 h-6 text-blue-600" />
+            ) : (
+              <LockClosedIcon className="w-6 h-6 text-gray-400" />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-gray-900 dark:text-white">
+                ★ {q.title}
+              </span>
+              <span className={`text-xs px-2 py-0.5 rounded ${q.quiz_type === 'essay' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                {q.quiz_type === 'essay' ? '記述式最終テスト' : '選択式小テスト'}
+              </span>
+            </div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              {q.passed ? '通過済み' : q.unlocked ? '受験可能' : `未解放（先に${q.lockReason || '前のステップ'}を完了）`}
+            </div>
+          </div>
+          <div className="flex-shrink-0">
+            {q.quiz_type === 'essay' ? (
+              <Link href="/homework">
+                <Button size="sm" variant={q.passed ? 'outline' : 'primary'} disabled={!q.unlocked}>
+                  {q.passed ? '結果を見る' : '受験する'}
+                </Button>
+              </Link>
+            ) : (
+              <Link href={`/courses/${courseId}/quiz/${q.id}`}>
+                <Button size="sm" variant={q.passed ? 'outline' : 'primary'} disabled={!q.unlocked}>
+                  {q.passed ? '結果を見る' : '受験する'}
+                </Button>
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+    ));
+  };
 
   const fetchCourseDetails = async () => {
     try {
@@ -530,8 +619,8 @@ export default function CourseDetailPage() {
                   const status = getVideoStatus(video.id);
 
                   return (
+                    <div key={video.id} className="space-y-4">
                     <div
-                      key={video.id}
                       className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-4 sm:p-6 hover:shadow-lg dark:shadow-gray-900/50 hover:border-blue-300 transition-all duration-200"
                     >
                       <div className="flex items-start gap-4 sm:gap-6">
@@ -637,9 +726,71 @@ export default function CourseDetailPage() {
                         </div>
                       </div>
                     </div>
+                    {renderQuizzesAfter(video.id)}
+                    </div>
                   );
                 })}
+                {chapters.length === 0 && renderQuizzesAfter(null)}
               </>
+            )}
+
+            {/* 章立てコースでは小テストを一覧セクションで表示（動画順への割り込み表示は行わない） */}
+            {chapters.length > 0 && quizSteps.length > 0 && (
+              <div className="mt-6">
+                <h3 className="text-base font-bold text-gray-900 dark:text-white mb-3">確認テスト・最終テスト</h3>
+                <div className="space-y-3">
+                  {quizSteps.map((q) => (
+                    <div
+                      key={`quiz-list-${q.id}`}
+                      className={`rounded-xl p-4 border ${
+                        q.passed
+                          ? 'border-green-300 bg-green-50 dark:bg-green-900/10'
+                          : q.unlocked
+                          ? 'border-blue-300 bg-blue-50 dark:bg-blue-900/10'
+                          : 'border-gray-200 bg-gray-50 dark:bg-neutral-900/40'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex-shrink-0">
+                          {q.passed ? (
+                            <CheckCircleIcon className="w-6 h-6 text-green-600" />
+                          ) : q.unlocked ? (
+                            <DocumentTextIcon className="w-6 h-6 text-blue-600" />
+                          ) : (
+                            <LockClosedIcon className="w-6 h-6 text-gray-400" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-gray-900 dark:text-white">★ {q.title}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded ${q.quiz_type === 'essay' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                              {q.quiz_type === 'essay' ? '記述式最終テスト' : '選択式小テスト'}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {q.passed ? '通過済み' : q.unlocked ? '受験可能' : `未解放（先に${q.lockReason || '前のステップ'}を完了）`}
+                          </div>
+                        </div>
+                        <div className="flex-shrink-0">
+                          {q.quiz_type === 'essay' ? (
+                            <Link href="/homework">
+                              <Button size="sm" variant={q.passed ? 'outline' : 'primary'} disabled={!q.unlocked}>
+                                {q.passed ? '結果を見る' : '受験する'}
+                              </Button>
+                            </Link>
+                          ) : (
+                            <Link href={`/courses/${courseId}/quiz/${q.id}`}>
+                              <Button size="sm" variant={q.passed ? 'outline' : 'primary'} disabled={!q.unlocked}>
+                                {q.passed ? '結果を見る' : '受験する'}
+                              </Button>
+                            </Link>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 

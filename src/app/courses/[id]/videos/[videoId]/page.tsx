@@ -74,6 +74,8 @@ export default function VideoPlayerPage() {
   const [playbackUrl, setPlaybackUrl] = useState<string>('');
   // 同一ドメイン経由の配信URL（社内フィルタ等でSupabase直アクセスが遮断される場合の復旧用）
   const [sameOriginUrl, setSameOriginUrl] = useState<string>('');
+  // サーバーサイドゲート：小テスト未通過等で視聴がロックされている場合の情報
+  const [gateLock, setGateLock] = useState<{ reason?: string; pending?: { type: string; id: number; title: string; quiz_type?: string } | null } | null>(null);
 
   const sessionId = useRef<string>(generateUUID());
   const progressUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -123,52 +125,69 @@ export default function VideoPlayerPage() {
     return null;
   };
 
-  // video.file_url から、bucket が public/private いずれでも再生できる URL を取得
+  // 再生URLはサーバーサイドゲートAPIから取得する。
+  // ゲートAPIは「直前までの動画完了＋配置済み小テスト全通過」を検証し、
+  // 通過時のみ署名付きURL（＋storageパス）を返す。未通過なら 403（gateLock を設定）。
+  // これにより、フロントの表示制御だけでなくURL発行自体をサーバーで制御する。
   useEffect(() => {
     if (!video?.file_url) {
       setPlaybackUrl('');
       setSameOriginUrl('');
       return;
     }
-    const path = extractStoragePath(video.file_url);
-    if (!path) {
-      // Supabase 外の URL（外部リンク等）。そのまま使う
-      setPlaybackUrl(video.file_url);
-      setSameOriginUrl('');
-      return;
-    }
-
-    // 同一ドメイン経由の配信URL（/media/videos/... → 配信元への中継）
-    // 社内ネットワークで配信元が遮断される場合の復旧経路として使う
-    const encodedPath = path.split('/').map(encodeURIComponent).join('/');
-    setSameOriginUrl(`/media/videos/${encodedPath}`);
-
-    // 配信ベース（R2 の media.stus-lms.com 等）が設定されていれば、そこから直接配信する。
-    // Vercel/Supabase の転送費を回避（2026-07 の転送費高騰対策）。未設定なら従来の署名付きURL。
-    const mediaUrl = buildMediaUrl(path);
-    if (mediaUrl) {
-      setPlaybackUrl(mediaUrl);
-      return;
-    }
-
     let cancelled = false;
     (async () => {
-      // 署名付き URL を作る（bucket が private でも再生可能）。失敗時は public URL にフォールバック
-      const { data, error } = await supabase.storage
-        .from('videos')
-        .createSignedUrl(path, 60 * 60 * 24 * 7); // 7日（長時間開いたタブでも期限切れしないように）
-      if (cancelled) return;
-      if (!error && data?.signedUrl) {
-        setPlaybackUrl(data.signedUrl);
-      } else {
-        const { data: pub } = supabase.storage.from('videos').getPublicUrl(path);
-        setPlaybackUrl(pub?.publicUrl ?? video.file_url);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch(`/api/videos/${videoId}/playback-url`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: session?.access_token ? `Bearer ${session.access_token}` : '',
+          },
+          body: JSON.stringify({}),
+        });
+        const json = await res.json();
+        if (cancelled) return;
+
+        if (res.status === 403 && json.locked) {
+          setGateLock({ reason: json.reason, pending: json.pending });
+          setPlaybackUrl('');
+          setSameOriginUrl('');
+          return;
+        }
+        setGateLock(null);
+
+        if (!res.ok || !json.allowed) {
+          // 予期しない失敗時は file_url をそのまま試す（従来挙動へのフォールバック）
+          setPlaybackUrl(video.file_url);
+          setSameOriginUrl('');
+          return;
+        }
+
+        const path: string | null = json.path;
+        if (path) {
+          const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+          setSameOriginUrl(`/media/videos/${encodedPath}`);
+          // 配信ベース（R2）が設定されていればそこから直接配信（転送費回避）。未設定なら署名付きURL。
+          const mediaUrl = buildMediaUrl(path);
+          setPlaybackUrl(mediaUrl || json.signedUrl);
+        } else {
+          // 外部URL
+          setPlaybackUrl(json.signedUrl);
+          setSameOriginUrl('');
+        }
+      } catch {
+        if (!cancelled) {
+          setPlaybackUrl(video.file_url);
+          setSameOriginUrl('');
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [video?.file_url]);
+  }, [video?.file_url, videoId]);
 
   // タイムスタンプを取得する関数（日本時間・タイムゾーン付きISO 8601形式）
   const getJSTTimestamp = () => {
@@ -1027,6 +1046,31 @@ export default function VideoPlayerPage() {
         {/* ビデオプレイヤー */}
         <div className="relative bg-black">
           <div className="aspect-video max-h-[70vh]">
+            {gateLock ? (
+              <div className="w-full h-full flex items-center justify-center bg-neutral-900 text-center p-6">
+                <div className="max-w-md">
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-yellow-100">
+                    <svg className="h-8 w-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                  </div>
+                  <h2 className="text-lg font-bold text-white mb-2">この動画はまだ視聴できません</h2>
+                  <p className="text-sm text-gray-300 mb-4">
+                    先に{gateLock.reason || '前のステップ'}を完了してください。
+                  </p>
+                  {gateLock.pending?.type === 'quiz' && (
+                    <Button onClick={() => router.push(`/courses/${courseId}/quiz/${gateLock.pending!.id}`)}>
+                      {gateLock.pending.title} を受ける
+                    </Button>
+                  )}
+                  {gateLock.pending?.type === 'video' && gateLock.pending.id !== videoId && (
+                    <Button onClick={() => router.push(`/courses/${courseId}/videos/${gateLock.pending!.id}`)}>
+                      「{gateLock.pending.title}」を視聴する
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ) : (
             <EnhancedVideoPlayer
               videoUrl={playbackUrl || video.file_url}
               fallbackVideoUrl={sameOriginUrl || undefined}
@@ -1043,6 +1087,7 @@ export default function VideoPlayerPage() {
               showViewingNotice={course?.show_viewing_notice !== false} // コース設定で注意事項ポップアップのON/OFF
               autoStart={autoStart}
             />
+            )}
 
             {/* 次の動画への自動遷移オーバーレイ */}
             {showNextOverlay && nextVideoTarget && (

@@ -112,25 +112,39 @@ export default function CourseLearnPage() {
       return;
     }
 
-    // 配信ベース（R2 の media.stus-lms.com 等）が設定されていれば、そこから直接配信する。
-    // Vercel/Supabase の転送費を回避（2026-07 の転送費高騰対策）。未設定なら従来の署名付きURL。
-    const mediaUrl = buildMediaUrl(path);
-    if (mediaUrl) {
-      setPlaybackUrl(mediaUrl);
-      return;
-    }
-
+    // 再生URLはサーバーサイドゲートAPIから取得する（小テスト未通過なら再生URLを発行しない）。
+    // 通過時は R2 配信URL（設定時）または署名付きURLを使う。
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase.storage
-        .from('videos')
-        .createSignedUrl(path!, 60 * 60 * 24);
-      if (cancelled) return;
-      if (!error && data?.signedUrl) {
-        setPlaybackUrl(data.signedUrl);
-      } else {
-        const { data: pub } = supabase.storage.from('videos').getPublicUrl(path!);
-        setPlaybackUrl(pub?.publicUrl ?? fileUrl);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch(`/api/videos/${currentVideo.id}/playback-url`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: session?.access_token ? `Bearer ${session.access_token}` : '',
+          },
+          body: JSON.stringify({}),
+        });
+        const json = await res.json();
+        if (cancelled) return;
+        if (res.status === 403 && json.locked) {
+          setPlaybackUrl('');
+          return;
+        }
+        if (!res.ok || !json.allowed) {
+          setPlaybackUrl(fileUrl);
+          return;
+        }
+        const resolvedPath: string | null = json.path;
+        if (resolvedPath) {
+          const mediaUrl = buildMediaUrl(resolvedPath);
+          setPlaybackUrl(mediaUrl || json.signedUrl);
+        } else {
+          setPlaybackUrl(json.signedUrl);
+        }
+      } catch {
+        if (!cancelled) setPlaybackUrl(fileUrl);
       }
     })();
     return () => {

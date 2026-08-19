@@ -606,6 +606,84 @@ CREATE POLICY "Public can view thumbnails" ON storage.objects
 
 CREATE POLICY "Users can view own certificates" ON storage.objects
   FOR SELECT USING (
-    bucket_id = 'certificates' AND 
+    bucket_id = 'certificates' AND
     auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+-- ============================================================================
+-- 通信制対応：小テスト・記述式最終テスト・添削（2026-08 追加）
+-- 詳細な設計コメントは migrations/20260819_add_quiz_essay_tables.sql を参照。
+-- schema.sql は現況反映のためのミラー（IF NOT EXISTS で冪等）。
+-- ============================================================================
+
+-- courses への追加カラム
+ALTER TABLE courses
+  ADD COLUMN IF NOT EXISTS standard_learning_minutes INTEGER,
+  ADD COLUMN IF NOT EXISTS standard_learning_period  VARCHAR(100),
+  ADD COLUMN IF NOT EXISTS test_required             BOOLEAN DEFAULT false NOT NULL,
+  ADD COLUMN IF NOT EXISTS training_type_note        TEXT;
+
+-- 小テスト / 最終テスト定義
+CREATE TABLE IF NOT EXISTS quizzes (
+  id            SERIAL PRIMARY KEY,
+  course_id     INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  after_video_id INTEGER REFERENCES videos(id) ON DELETE CASCADE,
+  title         VARCHAR(200) NOT NULL,
+  quiz_type     VARCHAR(20) NOT NULL DEFAULT 'choice' CHECK (quiz_type IN ('choice', 'essay')),
+  pass_policy   VARCHAR(20) NOT NULL DEFAULT 'all_correct' CHECK (pass_policy IN ('all_correct')),
+  sort_order    INTEGER NOT NULL DEFAULT 0,
+  status        VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
+  created_by    UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at    TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at    TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 設問（correct_index / explanation は受講者に非公開）
+CREATE TABLE IF NOT EXISTS quiz_questions (
+  id            SERIAL PRIMARY KEY,
+  quiz_id       INTEGER NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+  question_text TEXT NOT NULL,
+  choices       JSONB NOT NULL DEFAULT '[]'::jsonb,
+  correct_index INTEGER,
+  explanation   TEXT,
+  sort_order    INTEGER NOT NULL DEFAULT 0,
+  created_at    TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at    TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 回答ログ（追記のみ）
+CREATE TABLE IF NOT EXISTS quiz_attempts (
+  id             SERIAL PRIMARY KEY,
+  user_id        UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  quiz_id        INTEGER NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+  question_id    INTEGER NOT NULL REFERENCES quiz_questions(id) ON DELETE CASCADE,
+  selected_index INTEGER,
+  answer_text    TEXT,
+  is_correct     BOOLEAN,
+  attempt_no     INTEGER NOT NULL DEFAULT 1,
+  answered_at    TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 添削（追記のみ・指導者の関与記録）
+CREATE TABLE IF NOT EXISTS essay_reviews (
+  id             SERIAL PRIMARY KEY,
+  quiz_id        INTEGER NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+  user_id        UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  reviewer_id    UUID NOT NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  review_comment TEXT,
+  explanation    TEXT,
+  result         VARCHAR(20) NOT NULL CHECK (result IN ('passed', 'needs_revision')),
+  ai_assisted    BOOLEAN DEFAULT false,
+  reviewed_at    TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE OR REPLACE VIEW quiz_questions_student AS
+  SELECT id, quiz_id, question_text, choices, sort_order, created_at
+  FROM quiz_questions;
+
+ALTER TABLE quizzes        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE quiz_questions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE quiz_attempts  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE essay_reviews  ENABLE ROW LEVEL SECURITY;
+-- ポリシー定義は migrations/20260819_add_quiz_essay_tables.sql を参照（DROP/CREATE で冪等）
   );

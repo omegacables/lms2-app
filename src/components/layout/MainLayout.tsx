@@ -135,6 +135,24 @@ const adminNavigation: NavigationItem[] = [
     iconActive: ClipboardDocumentListIconSolid
   },
   {
+    name: '小テスト管理',
+    href: '/admin/quizzes',
+    icon: DocumentTextIcon,
+    iconActive: DocumentTextIconSolid
+  },
+  {
+    name: '添削',
+    href: '/admin/essay-reviews',
+    icon: QuestionMarkCircleIcon,
+    iconActive: QuestionMarkCircleIcon
+  },
+  {
+    name: '帳票・記録',
+    href: '/admin/records',
+    icon: DocumentTextIcon,
+    iconActive: DocumentTextIconSolid
+  },
+  {
     name: '社労士事務所管理',
     href: '/admin/labor-consultants',
     icon: UserGroupIcon,
@@ -190,6 +208,9 @@ const laborConsultantNavigation: NavigationItem[] = [
 export function MainLayout({ children }: MainLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
   const { user, isAdmin, isLaborConsultant, signOut } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -286,11 +307,48 @@ export function MainLayout({ children }: MainLayoutProps) {
     }
   };
 
+  // 通知を取得（notifications テーブル。RLSで自分の行のみ）
+  const fetchNotifications = async () => {
+    if (!user?.id) return;
+    try {
+      const { data } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      setNotifications(data || []);
+      setUnreadNotifications((data || []).filter((n: any) => !n.is_read).length);
+    } catch (error) {
+      console.error('通知取得エラー:', error);
+    }
+  };
+
+  const markNotificationsRead = async () => {
+    if (!user?.id) return;
+    const unreadIds = notifications.filter((n) => !n.is_read).map((n) => n.id);
+    if (unreadIds.length === 0) return;
+    try {
+      await supabase
+        .from('notifications')
+        .update({ is_read: true, read_at: new Date().toISOString() })
+        .in('id', unreadIds);
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      setUnreadNotifications(0);
+    } catch (error) {
+      console.error('通知既読エラー:', error);
+    }
+  };
+
   useEffect(() => {
     fetchUnreadMessages();
+    fetchNotifications();
 
-    // 30秒ごとに未読メッセージ数を更新
-    const interval = setInterval(fetchUnreadMessages, 30000); // 30秒ごとにチェック（パフォーマンス最適化）
+    // 30秒ごとに未読メッセージ数・通知を更新
+    const interval = setInterval(() => {
+      fetchUnreadMessages();
+      fetchNotifications();
+    }, 30000); // 30秒ごとにチェック（パフォーマンス最適化）
 
     // メッセージ既読イベントをリッスン
     const handleMessageRead = () => {
@@ -485,9 +543,45 @@ export function MainLayout({ children }: MainLayoutProps) {
                 )}
               </Link>
 
-              <button className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-950/5 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-zinc-300 transition-colors">
-                <BellIcon className="h-5 w-5" />
-              </button>
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    const next = !showNotifications;
+                    setShowNotifications(next);
+                    if (next) markNotificationsRead();
+                  }}
+                  className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-950/5 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-zinc-300 transition-colors"
+                >
+                  <BellIcon className="h-5 w-5" />
+                  {unreadNotifications > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                      {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                    </span>
+                  )}
+                </button>
+
+                {showNotifications && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
+                    <div className="absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg z-50">
+                      <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-200">通知</div>
+                      {notifications.length === 0 ? (
+                        <div className="px-4 py-6 text-sm text-gray-500 text-center">通知はありません</div>
+                      ) : (
+                        <ul className="divide-y divide-gray-100 dark:divide-gray-700">
+                          {notifications.map((n) => (
+                            <li key={n.id} className="px-4 py-3">
+                              <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{n.title}</div>
+                              <div className="text-xs text-gray-600 dark:text-gray-300 mt-0.5 whitespace-pre-wrap">{n.message}</div>
+                              <div className="text-[10px] text-gray-400 mt-1">{new Date(n.created_at).toLocaleString('ja-JP')}</div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
 
               <ThemeToggleSwitch />
 
