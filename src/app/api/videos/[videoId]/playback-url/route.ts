@@ -73,12 +73,21 @@ export async function POST(
     return NextResponse.json({ allowed: true, signedUrl: video.file_url, path: null });
   }
 
-  // 署名付きURLを発行
+  // R2（外部CDN）配信が設定されているか。設定時はクライアントが buildMediaUrl(path) で
+  // R2 から直接再生するため、Supabase Storage に実ファイルが無くても再生できる。
+  const mediaConfigured = !!(process.env.NEXT_PUBLIC_MEDIA_BASE_URL || '').trim();
+
+  // 署名付きURLを発行（R2未設定＝Supabase配信のときの再生経路）
   const { data: signed, error: signError } = await admin.storage
     .from('videos')
     .createSignedUrl(path, 60 * 60 * 6); // 6時間
 
   if (signError || !signed) {
+    // R2配信なら署名URLが取れなくてもOK（path を返してクライアントは R2 から再生）。
+    // Supabase から動画を削除済みでも本番再生は維持される。
+    if (mediaConfigured) {
+      return NextResponse.json({ allowed: true, signedUrl: null, path });
+    }
     return NextResponse.json(
       { error: '再生URLの発行に失敗しました', details: signError?.message },
       { status: 500 }
