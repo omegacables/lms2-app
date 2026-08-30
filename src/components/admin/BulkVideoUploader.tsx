@@ -158,42 +158,87 @@ export function BulkVideoUploader({
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('認証セッションが見つかりません');
 
-      const timestamp = Date.now();
-      const safeName = item.file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-      const filePath = `course_${courseId}/${timestamp}_${safeName}`;
-      const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+      // 配信先の切替: NEXT_PUBLIC_USE_R2_UPLOAD=true なら Cloudflare R2 へ直接アップロード。
+      // 未設定なら従来どおり Supabase Storage（TUS）へ。
+      const useR2 = process.env.NEXT_PUBLIC_USE_R2_UPLOAD === 'true';
+      let publicUrl: string;
+      let supabaseFilePath: string | null = null;
 
-      await new Promise<void>((resolve, reject) => {
-        const upload = new tus.Upload(item.file, {
-          endpoint: `${projectUrl}/storage/v1/upload/resumable`,
-          retryDelays: [0, 3000, 5000, 10000, 20000],
+      if (useR2) {
+        // R2（S3互換）への presigned PUT を取得して直接アップロード
+        const res = await fetch('/api/videos/get-r2-upload-url', {
+          method: 'POST',
           headers: {
-            authorization: `Bearer ${session.access_token}`,
-            'x-upsert': 'false',
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
           },
-          uploadDataDuringCreation: true,
-          removeFingerprintOnSuccess: true,
-          metadata: {
-            bucketName: 'videos',
-            objectName: filePath,
-            contentType: item.file.type,
-            cacheControl: '3600',
-          },
-          chunkSize: 6 * 1024 * 1024,
-          onError: reject,
-          onProgress: (uploaded, total) => {
-            const pct = Math.floor((uploaded / total) * 95);
-            setQueue(prev => prev.map(q => (q.id === item.id ? { ...q, progress: pct } : q)));
-          },
-          onSuccess: () => resolve(),
+          body: JSON.stringify({
+            fileName: item.file.name,
+            contentType: item.file.type || 'video/mp4',
+            courseId,
+          }),
         });
-        upload.findPreviousUploads().then(prev => {
-          if (prev.length) upload.resumeFromPreviousUpload(prev[0]);
-          upload.start();
-        });
-      });
+        const uj = await res.json();
+        if (!res.ok) throw new Error(uj.error || 'アップロードURLの取得に失敗しました');
 
-      const { data: { publicUrl } } = supabase.storage.from('videos').getPublicUrl(filePath);
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', uj.uploadUrl);
+          xhr.setRequestHeader('Content-Type', item.file.type || 'video/mp4');
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+              const pct = Math.floor((e.loaded / e.total) * 95);
+              setQueue(prev => prev.map(q => (q.id === item.id ? { ...q, progress: pct } : q)));
+            }
+          };
+          xhr.onload = () =>
+            xhr.status >= 200 && xhr.status < 300
+              ? resolve()
+              : reject(new Error(`アップロード失敗 (HTTP ${xhr.status})`));
+          xhr.onerror = () => reject(new Error('アップロード中にネットワークエラーが発生しました'));
+          xhr.send(item.file);
+        });
+        publicUrl = uj.fileUrl;
+      } else {
+        const timestamp = Date.now();
+        const safeName = item.file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+        const filePath = `course_${courseId}/${timestamp}_${safeName}`;
+        supabaseFilePath = filePath;
+        const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+
+        await new Promise<void>((resolve, reject) => {
+          const upload = new tus.Upload(item.file, {
+            endpoint: `${projectUrl}/storage/v1/upload/resumable`,
+            retryDelays: [0, 3000, 5000, 10000, 20000],
+            headers: {
+              authorization: `Bearer ${session.access_token}`,
+              'x-upsert': 'false',
+            },
+            uploadDataDuringCreation: true,
+            removeFingerprintOnSuccess: true,
+            metadata: {
+              bucketName: 'videos',
+              objectName: filePath,
+              contentType: item.file.type,
+              cacheControl: '3600',
+            },
+            chunkSize: 6 * 1024 * 1024,
+            onError: reject,
+            onProgress: (uploaded, total) => {
+              const pct = Math.floor((uploaded / total) * 95);
+              setQueue(prev => prev.map(q => (q.id === item.id ? { ...q, progress: pct } : q)));
+            },
+            onSuccess: () => resolve(),
+          });
+          upload.findPreviousUploads().then(prev => {
+            if (prev.length) upload.resumeFromPreviousUpload(prev[0]);
+            upload.start();
+          });
+        });
+
+        const { data: { publicUrl: pub } } = supabase.storage.from('videos').getPublicUrl(filePath);
+        publicUrl = pub;
+      }
 
       const { error: dbError } = await supabase.from('videos').insert({
         course_id: courseId,
@@ -208,8 +253,8 @@ export function BulkVideoUploader({
       });
 
       if (dbError) {
-        // 失敗時はストレージから削除（孤児防止）
-        await supabase.storage.from('videos').remove([filePath]);
+        // 失敗時、Supabaseへ上げていた場合のみストレージから削除（孤児防止）
+        if (supabaseFilePath) await supabase.storage.from('videos').remove([supabaseFilePath]);
         throw new Error(`データベース保存失敗: ${dbError.message}`);
       }
 
