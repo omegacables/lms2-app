@@ -349,6 +349,14 @@ export default function CourseVideosPage() {
       return;
     }
 
+    // R2配信が設定されていれば R2 から直接プレビュー（Supabaseに実体が無くても再生可能）
+    const mediaBase = (process.env.NEXT_PUBLIC_MEDIA_BASE_URL || '').replace(/\/+$/, '');
+    if (mediaBase) {
+      const encoded = path.split('/').map(encodeURIComponent).join('/');
+      window.open(`${mediaBase}/${encoded}`, '_blank');
+      return;
+    }
+
     try {
       const { data, error } = await supabase.storage
         .from('videos')

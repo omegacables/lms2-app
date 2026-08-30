@@ -130,57 +130,92 @@ export function VideoUploader({ courseId, onSuccess, onError }: VideoUploaderPro
         filePath: filePath
       });
 
-      // Supabaseプロジェクトの情報を取得
-      const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+      // 配信先の切替: NEXT_PUBLIC_USE_R2_UPLOAD=true なら Cloudflare R2 へ直接アップロード。
+      // 未設定なら従来どおり Supabase Storage（TUS）へ。
+      const useR2 = process.env.NEXT_PUBLIC_USE_R2_UPLOAD === 'true';
+      let publicUrl: string;
 
-      // TUSプロトコルでアップロード
-      await new Promise<void>((resolve, reject) => {
-        const upload = new tus.Upload(file, {
-          endpoint: `${projectUrl}/storage/v1/upload/resumable`,
-          retryDelays: [0, 3000, 5000, 10000, 20000],
+      if (useR2) {
+        // R2（S3互換）への presigned PUT で直接アップロード
+        const res = await fetch('/api/videos/get-r2-upload-url', {
+          method: 'POST',
           headers: {
-            authorization: `Bearer ${session.access_token}`,
-            'x-upsert': 'false'
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
           },
-          uploadDataDuringCreation: true,
-          removeFingerprintOnSuccess: true,
-          metadata: {
-            bucketName: 'videos',
-            objectName: filePath,
-            contentType: file.type,
-            cacheControl: '3600'
-          },
-          chunkSize: 6 * 1024 * 1024, // 6MB chunks
-          onError: (error) => {
-            console.error('TUS upload error:', error);
-            reject(error);
-          },
-          onProgress: (bytesUploaded, bytesTotal) => {
-            const percentage = (bytesUploaded / bytesTotal) * 90;
-            setUploadProgress(Math.floor(percentage));
-          },
-          onSuccess: () => {
-            console.log('TUS upload successful');
-            resolve();
-          }
+          body: JSON.stringify({
+            fileName: file.name,
+            contentType: file.type || 'video/mp4',
+            courseId,
+          }),
+        });
+        const uj = await res.json();
+        if (!res.ok) throw new Error(uj.error || 'アップロードURLの取得に失敗しました');
+
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', uj.uploadUrl);
+          xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) setUploadProgress(Math.floor((e.loaded / e.total) * 90));
+          };
+          xhr.onload = () =>
+            xhr.status >= 200 && xhr.status < 300
+              ? resolve()
+              : reject(new Error(`アップロード失敗 (HTTP ${xhr.status})`));
+          xhr.onerror = () => reject(new Error('アップロード中にネットワークエラーが発生しました'));
+          xhr.send(file);
+        });
+        publicUrl = uj.fileUrl;
+        console.log('R2アップロード成功:', publicUrl);
+      } else {
+        const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+
+        await new Promise<void>((resolve, reject) => {
+          const upload = new tus.Upload(file, {
+            endpoint: `${projectUrl}/storage/v1/upload/resumable`,
+            retryDelays: [0, 3000, 5000, 10000, 20000],
+            headers: {
+              authorization: `Bearer ${session.access_token}`,
+              'x-upsert': 'false'
+            },
+            uploadDataDuringCreation: true,
+            removeFingerprintOnSuccess: true,
+            metadata: {
+              bucketName: 'videos',
+              objectName: filePath,
+              contentType: file.type,
+              cacheControl: '3600'
+            },
+            chunkSize: 6 * 1024 * 1024, // 6MB chunks
+            onError: (error) => {
+              console.error('TUS upload error:', error);
+              reject(error);
+            },
+            onProgress: (bytesUploaded, bytesTotal) => {
+              const percentage = (bytesUploaded / bytesTotal) * 90;
+              setUploadProgress(Math.floor(percentage));
+            },
+            onSuccess: () => {
+              console.log('TUS upload successful');
+              resolve();
+            }
+          });
+
+          upload.findPreviousUploads().then((previousUploads) => {
+            if (previousUploads.length) {
+              upload.resumeFromPreviousUpload(previousUploads[0]);
+            }
+            upload.start();
+          });
         });
 
-        upload.findPreviousUploads().then((previousUploads) => {
-          if (previousUploads.length) {
-            upload.resumeFromPreviousUpload(previousUploads[0]);
-          }
-          upload.start();
-        });
-      });
-
-      console.log('アップロード成功');
-
-      // 公開URLを取得
-      const { data: { publicUrl } } = supabase.storage
-        .from('videos')
-        .getPublicUrl(filePath);
-
-      console.log('公開URL:', publicUrl);
+        const { data: { publicUrl: pub } } = supabase.storage
+          .from('videos')
+          .getPublicUrl(filePath);
+        publicUrl = pub;
+        console.log('公開URL:', publicUrl);
+      }
 
       // データベースに動画情報を保存（基本スキーマのカラムのみ）
       const videoData = {
@@ -205,8 +240,8 @@ export function VideoUploader({ courseId, onSuccess, onError }: VideoUploaderPro
 
       if (dbError) {
         console.error('データベースエラー:', dbError);
-        // エラー時はアップロードしたファイルを削除
-        await supabase.storage.from('videos').remove([filePath]);
+        // エラー時、Supabaseへ上げていた場合のみ削除（R2は対象外）
+        if (!useR2) await supabase.storage.from('videos').remove([filePath]);
         throw new Error(`データベースへの保存に失敗しました: ${dbError.message}`);
       }
 
