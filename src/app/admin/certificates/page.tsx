@@ -56,6 +56,30 @@ export default function CertificatesManagement() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [reissuingId, setReissuingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [backfilling, setBackfilling] = useState(false);
+
+  // 完了済みなのに未発行の受講者へ、まとめて証明書を発行する
+  const runBackfill = async () => {
+    if (!confirm('コースを完了しているのに証明書が未発行の受講者へ、まとめて発行します。よろしいですか？')) return;
+    setBackfilling(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/admin/certificates/backfill', {
+        method: 'POST',
+        headers: { Authorization: session?.access_token ? `Bearer ${session.access_token}` : '' },
+      });
+      const json = await res.json();
+      if (res.ok) {
+        alert(`一括発行が完了しました。\n対象: ${json.checked}件 / 新規発行: ${json.issued}件 / スキップ: ${json.skipped}件`);
+        fetchCertificates();
+      } else {
+        alert(json.error || '一括発行に失敗しました');
+      }
+    } catch (e) {
+      alert('一括発行に失敗しました: ' + String(e));
+    }
+    setBackfilling(false);
+  };
   const [bulkProcessing, setBulkProcessing] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, action: '' });
 
@@ -721,6 +745,9 @@ export default function CertificatesManagement() {
                 <Button onClick={fetchCertificates} variant="outline" className="flex items-center">
                   <ArrowPathIcon className="h-4 w-4 mr-2" />
                   更新
+                </Button>
+                <Button onClick={runBackfill} variant="primary" loading={backfilling} className="flex items-center">
+                  未発行を一括発行
                 </Button>
                 <Link href="/admin">
                   <Button variant="outline">

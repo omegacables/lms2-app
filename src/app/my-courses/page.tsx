@@ -169,6 +169,27 @@ export default function MyCoursesPage() {
       const totalWatchTime = coursesWithProgress.reduce((sum, c) => sum + (c.total_watch_time || 0), 0);
 
       setCourses(sortedCourses);
+
+      // 自動補完（再発防止）: 100%完了しているコースは証明書の発行を裏で確認・生成する。
+      // 発行APIは冪等（既に有れば何もしない）。完了時の1回きり発行に失敗した取りこぼしを回収する。
+      (async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const token = session?.access_token;
+          if (!token || !user) return;
+          const done = sortedCourses.filter((c) => c.progress === 100);
+          for (const c of done) {
+            fetch('/api/certificates/generate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ userId: user.id, courseId: c.id, access_token: token }),
+            }).catch(() => {});
+          }
+        } catch {
+          /* 補完失敗はUIに影響させない */
+        }
+      })();
+
       setStats({
         totalCourses,
         completedCourses,
