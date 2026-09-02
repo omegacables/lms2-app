@@ -1,6 +1,34 @@
 import { jsPDF } from 'jspdf';
 import { generateCertificateId } from './index';
 
+/**
+ * 証明書PDFのファイル名を生成する。
+ * - 日本語（コース名・氏名）はそのまま保持する
+ * - ファイル名に使えない文字（\ / : * ? " < > | と制御文字）のみ _ に置換
+ * - 末尾に証明書番号を付与し、ZIP内で必ず一意になるようにする
+ *   （同姓同名・同一人物の複数コース・同名コースでも衝突しない）
+ */
+export function buildCertificateFileName(
+  courseName: string | undefined,
+  userName: string | undefined,
+  certificateNumber: string
+): string {
+  const sanitize = (s: string, fallback: string) => {
+    const cleaned = (s || fallback)
+      // ファイル名に使えない文字・空白のみ _ に置換（日本語はそのまま残す）
+      .replace(/[\\/:*?"<>|]/g, '_')
+      .replace(/\s+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 60);
+    return cleaned || fallback;
+  };
+  const course = sanitize(courseName || '', 'コース');
+  const user = sanitize(userName || '', 'ユーザー');
+  const id = (certificateNumber || '').replace(/[^A-Za-z0-9_-]/g, '') || 'NOID';
+  return `修了証_${course}_${user}_${id}.pdf`;
+}
+
 export interface CertificateData {
   certificateId?: string;
   courseName: string;
@@ -373,9 +401,14 @@ export async function generateCertificatePDFBlob(certificateData: CertificateDat
   const imgData = canvas.toDataURL('image/png');
   doc.addImage(imgData, 'PNG', 0, 0, 297, 210);
 
-  const safeCourseName = (certificateData.courseName || 'certificate').replace(/[^a-zA-Z0-9]/g, '_');
-  const safeUserName = (certificateData.userName || 'user').replace(/[^a-zA-Z0-9\u3000-\u9FFF\uF900-\uFAFF]/g, '_');
-  const fileName = `certificate_${safeCourseName}_${safeUserName}.pdf`;
+  // \u30D5\u30A1\u30A4\u30EB\u540D\u306F\u65E5\u672C\u8A9E\u3092\u4FDD\u6301\u3057\u3001\u8A3C\u660E\u66F8\u756A\u53F7\u3092\u4ED8\u3051\u3066\u4E00\u610F\u306B\u3059\u308B\u3002
+  // \uFF08\u65E5\u672C\u8A9E\u3092 _ \u306B\u6F70\u3059\u3068\u300C\u30D9\u30FC\u30B7\u30C3\u30AF\u30B3\u30FC\u30B9\u300D\u7B49\u304C\u5168\u3066\u540C\u3058\u540D\u524D\u306B\u306A\u308A\u3001
+  //   ZIP\u4E00\u62EC\u51FA\u529B\u3067\u540C\u540D\u30D5\u30A1\u30A4\u30EB\u304C\u4E0A\u66F8\u304D\u3055\u308C\u3066\u4EF6\u6570\u304C\u6E1B\u308B\u305F\u3081\uFF09
+  const fileName = buildCertificateFileName(
+    certificateData.courseName,
+    certificateData.userName,
+    certificateNumber
+  );
 
   const blob = doc.output('blob');
   return { blob, fileName };

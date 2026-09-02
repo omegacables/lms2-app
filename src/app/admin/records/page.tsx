@@ -131,11 +131,20 @@ export default function AdminRecordsPage() {
     setBusy('zip');
     try {
       const zip = new JSZip();
+      const usedFolders = new Set<string>();
       for (const uid of selected) {
         const row = rows.find((r) => r.user_id === uid);
         const data = await fetchRecord(uid);
         if (!data) continue;
-        const folder = zip.folder((row?.name || uid).replace(/[\\/:*?"<>|]/g, '_')) || zip;
+        // 同姓同名でもフォルダが衝突しないよう一意化する
+        let folderName = (row?.name || uid).replace(/[\\/:*?"<>|]/g, '_');
+        if (usedFolders.has(folderName)) {
+          let n = 2;
+          while (usedFolders.has(`${folderName}_${n}`)) n++;
+          folderName = `${folderName}_${n}`;
+        }
+        usedFolders.add(folderName);
+        const folder = zip.folder(folderName) || zip;
 
         // 実施記録PDF
         const rec = await generateLearningRecordPDFBlob(data);

@@ -521,6 +521,22 @@ export default function CertificatesManagement() {
     };
   };
 
+  // ZIP内でファイル名が衝突した場合に連番を付けて一意化する（上書き＝件数欠落の防止）
+  const uniqueZipName = (fileName: string, used: Set<string>): string => {
+    if (!used.has(fileName)) {
+      used.add(fileName);
+      return fileName;
+    }
+    const dot = fileName.lastIndexOf('.');
+    const base = dot > 0 ? fileName.slice(0, dot) : fileName;
+    const ext = dot > 0 ? fileName.slice(dot) : '';
+    let n = 2;
+    while (used.has(`${base}_${n}${ext}`)) n++;
+    const nextName = `${base}_${n}${ext}`;
+    used.add(nextName);
+    return nextName;
+  };
+
   // 一括PDF出力
   const handleBulkDownload = async () => {
     const selectedCerts = filteredCertificates.filter(c => selectedIds.has(c.id));
@@ -536,13 +552,27 @@ export default function CertificatesManagement() {
     try {
       const settings = await fetchCertificateSettings();
       const zip = new JSZip();
+      const usedNames = new Set<string>();
+      const failures: string[] = [];
 
       for (let i = 0; i < selectedCerts.length; i++) {
         setBulkProgress({ current: i + 1, total: selectedCerts.length, action: 'PDF一括出力' });
         const cert = selectedCerts[i];
-        const certData = await buildCertificateData(cert, settings);
-        const { blob, fileName } = await generateCertificatePDFBlob(certData);
-        zip.file(fileName, blob);
+        try {
+          const certData = await buildCertificateData(cert, settings);
+          const { blob, fileName } = await generateCertificatePDFBlob(certData);
+          zip.file(uniqueZipName(fileName, usedNames), blob);
+        } catch (e) {
+          // 1件失敗しても残りは出力する（従来は途中で中断していた）
+          console.error('証明書PDF生成に失敗:', cert.id, e);
+          failures.push(`${cert.user_name} / ${cert.course_title}`);
+        }
+      }
+
+      const successCount = selectedCerts.length - failures.length;
+      if (successCount === 0) {
+        alert('証明書PDFの生成にすべて失敗しました。');
+        return;
       }
 
       const zipBlob = await zip.generateAsync({ type: 'blob' });
@@ -555,7 +585,11 @@ export default function CertificatesManagement() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      alert(`${selectedCerts.length}件の証明書PDFをダウンロードしました。`);
+      alert(
+        failures.length === 0
+          ? `${successCount}件の証明書PDFをダウンロードしました。`
+          : `${successCount}件をダウンロードしました。\n${failures.length}件は生成に失敗しました:\n${failures.slice(0, 10).join('\n')}`
+      );
     } catch (error) {
       console.error('一括ダウンロードエラー:', error);
       alert('一括ダウンロードに失敗しました: ' + (error instanceof Error ? error.message : '不明なエラー'));
@@ -579,6 +613,7 @@ export default function CertificatesManagement() {
 
     const settings = await fetchCertificateSettings();
     const zip = new JSZip();
+    const usedNames = new Set<string>();
     let successCount = 0;
     let failCount = 0;
 
@@ -637,7 +672,7 @@ export default function CertificatesManagement() {
           // 5. PDFを生成してZIPに追加
           const certData = await buildCertificateData({ ...newCert, manual_issue_date: null, user_profiles: userProfile, courses: courseData }, settings);
           const { blob, fileName } = await generateCertificatePDFBlob(certData);
-          zip.file(fileName, blob);
+          zip.file(uniqueZipName(fileName, usedNames), blob);
 
           successCount++;
         } catch (err) {
