@@ -18,7 +18,8 @@ import {
   DocumentArrowDownIcon,
   PencilIcon,
   CheckIcon,
-  XMarkIcon
+  XMarkIcon,
+  ArrowPathIcon
 } from '@heroicons/react/24/outline';
 
 interface Certificate {
@@ -48,6 +49,7 @@ export default function LaborConsultantCertificatesPage() {
   const [editingIssueDateId, setEditingIssueDateId] = useState<string | null>(null);
   const [editingIssueDate, setEditingIssueDate] = useState<string>('');
   const [savingIssueDate, setSavingIssueDate] = useState(false);
+  const [reissuingId, setReissuingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchCertificates();
@@ -131,25 +133,36 @@ export default function LaborConsultantCertificatesPage() {
     return date.toLocaleDateString('ja-JP');
   };
 
-  // 日付をISO形式から入力用形式に変換
+  // 日付をISO形式から入力用形式 (YYYY-MM-DD) に変換
+  // manual_issue_date は JST 0時 (= UTC 15:00) で保存されているため、
+  // toISOString() で UTC 日付を切り出すと前日にズレる。JST で整形する。
   const formatDateForInput = (dateString: string) => {
     if (!dateString) return '';
     const date = new Date(dateString);
-    return date.toISOString().slice(0, 10);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('sv-SE', {
+      timeZone: 'Asia/Tokyo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
   };
 
-  // 証明書の有効な発行日を取得（手動設定日を優先）
+  // 証明書の有効な終了日を取得（手動設定日を優先）
   const getEffectiveIssueDate = (cert: Certificate) => {
     return cert.manual_issue_date || cert.completion_date;
   };
 
-  // 発行日編集を開始
+  // 終了日編集を開始
   const startEditingIssueDate = (cert: Certificate) => {
     setEditingIssueDateId(cert.id);
     setEditingIssueDate(formatDateForInput(getEffectiveIssueDate(cert)));
   };
 
-  // 発行日の保存
+  // 終了日の保存
+  // certificates テーブルには labor_consultant 用の UPDATE ポリシーが無いため、
+  // クライアントから直接 update すると 0 件更新で無言のまま失敗する。
+  // service role で処理するサーバー API を経由する。
   const handleSaveIssueDate = async (cert: Certificate) => {
     if (!editingIssueDate) {
       setEditingIssueDateId(null);
@@ -158,27 +171,92 @@ export default function LaborConsultantCertificatesPage() {
 
     setSavingIssueDate(true);
     try {
-      // 日付を ISO 形式に変換（時刻は00:00:00を設定）
-      const newIssueDate = new Date(editingIssueDate + 'T00:00:00').toISOString();
-
-      const { error } = await supabase
-        .from('certificates')
-        .update({ manual_issue_date: newIssueDate })
-        .eq('id', cert.id);
-
-      if (error) {
-        console.error('発行日更新エラー:', error);
-        alert('発行日の更新に失敗しました。');
-      } else {
-        alert('発行日を更新しました。');
-        setEditingIssueDateId(null);
-        fetchCertificates();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        alert('認証セッションが見つかりません。再ログインしてください。');
+        return;
       }
+
+      const response = await fetch('/api/labor-consultant/certificates', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          certificateId: cert.id,
+          completionDate: editingIssueDate,
+        }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        console.error('終了日更新エラー:', result);
+        alert(`終了日の更新に失敗しました。${result?.error ? `\n${result.error}` : ''}`);
+        return;
+      }
+
+      alert('終了日を更新しました。');
+      setEditingIssueDateId(null);
+      await fetchCertificates();
     } catch (error) {
-      console.error('発行日更新エラー:', error);
-      alert('発行日の更新に失敗しました。');
+      console.error('終了日更新エラー:', error);
+      alert('終了日の更新に失敗しました。');
     } finally {
       setSavingIssueDate(false);
+    }
+  };
+
+  // 証明書の再発行（新しい証明書番号を採番し、PDFをダウンロード）
+  // 終了日は現在の有効日付を引き継ぐため、視聴ログから再計算されて巻き戻ることはない。
+  const handleReissueCertificate = async (cert: Certificate) => {
+    if (reissuingId) return;
+    if (!confirm('既存の証明書を削除して、新しい証明書番号で再発行します。終了日は現在の日付を引き継ぎます。よろしいですか？')) return;
+
+    setReissuingId(cert.id);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        alert('認証セッションが見つかりません。再ログインしてください。');
+        return;
+      }
+
+      const response = await fetch('/api/labor-consultant/certificates', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ certificateId: cert.id }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        console.error('再発行エラー:', result);
+        alert(`証明書の再発行に失敗しました。${result?.error ? `\n${result.error}` : ''}`);
+        return;
+      }
+
+      const newCert: Certificate = {
+        ...cert,
+        ...result.certificate,
+        user_name: cert.user_name,
+        user_email: cert.user_email,
+        company: cert.company,
+        department: cert.department,
+        course_title: cert.course_title,
+      };
+
+      await fetchCertificates();
+      await handleDownloadCertificate(newCert);
+      alert('証明書を再発行しました。PDFがダウンロードされます。');
+    } catch (error) {
+      console.error('再発行エラー:', error);
+      alert('証明書の再発行に失敗しました。');
+    } finally {
+      setReissuingId(null);
     }
   };
 
@@ -457,7 +535,7 @@ export default function LaborConsultantCertificatesPage() {
                           コース
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                          発行日
+                          終了日
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           ステータス
@@ -535,7 +613,7 @@ export default function LaborConsultantCertificatesPage() {
                                   <button
                                     onClick={() => startEditingIssueDate(cert)}
                                     className="p-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                                    title="発行日を編集"
+                                    title="終了日を編集"
                                   >
                                     <PencilIcon className="h-4 w-4" />
                                   </button>
@@ -554,16 +632,29 @@ export default function LaborConsultantCertificatesPage() {
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="flex items-center text-blue-600 hover:text-blue-700"
-                                onClick={() => handleDownloadCertificate(cert)}
-                                disabled={downloadingId === cert.id}
-                              >
-                                <DocumentArrowDownIcon className="h-4 w-4 mr-1" />
-                                {downloadingId === cert.id ? '生成中...' : 'PDF'}
-                              </Button>
+                              <div className="flex items-center space-x-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="flex items-center text-blue-600 hover:text-blue-700"
+                                  onClick={() => handleDownloadCertificate(cert)}
+                                  disabled={downloadingId === cert.id || reissuingId === cert.id}
+                                >
+                                  <DocumentArrowDownIcon className="h-4 w-4 mr-1" />
+                                  {downloadingId === cert.id ? '生成中...' : 'PDF'}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="flex items-center text-orange-600 hover:text-orange-700"
+                                  onClick={() => handleReissueCertificate(cert)}
+                                  disabled={reissuingId !== null || downloadingId === cert.id}
+                                  title="新しい証明書番号で再発行します"
+                                >
+                                  <ArrowPathIcon className="h-4 w-4 mr-1" />
+                                  {reissuingId === cert.id ? '再発行中...' : '再発行'}
+                                </Button>
+                              </div>
                             </td>
                           </tr>
                         ))
