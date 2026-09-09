@@ -8,10 +8,12 @@ import { useAuth } from '@/stores/auth';
 import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { supabase } from '@/lib/database/supabase';
+import { parseCSV } from '@/lib/utils/csv';
 import {
   MagnifyingGlassIcon,
   FunnelIcon,
   DocumentArrowDownIcon,
+  DocumentArrowUpIcon,
   ClockIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
@@ -73,6 +75,7 @@ export default function LearningLogsPage() {
   const [sortField, setSortField] = useState<SortField>('start_time');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [exportingCSV, setExportingCSV] = useState(false);
+  const [importingCSV, setImportingCSV] = useState(false);
   const [companies, setCompanies] = useState<string[]>([]);
   const [courses, setCourses] = useState<{ id: string; title: string; order_index?: number }[]>([]);
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
@@ -695,6 +698,309 @@ export default function LearningLogsPage() {
     }
   };
 
+  // CSVインポート用テンプレート（エクスポートと同じ列構成）
+  const downloadImportTemplate = () => {
+    const rows = [
+      [
+        '完了日',
+        '氏名',
+        'メールアドレス',
+        '会社名',
+        '部署',
+        'コース名',
+        '動画名',
+        '開始時刻',
+        '終了時刻',
+        '視聴時間',
+        '進捗率（%）',
+        '受講状況',
+        '履歴番号'
+      ],
+      [
+        '',
+        '山田太郎',
+        'user1@example.com',
+        '株式会社サンプル',
+        '営業部',
+        'コンプライアンス研修',
+        '第1回 ハラスメント防止',
+        '2025/04/01 10:00:00',
+        '2025/04/01 10:35:00',
+        '35分00秒',
+        '100',
+        '完了',
+        '1/1'
+      ]
+    ];
+
+    const csvContent = rows.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `学習ログインポートテンプレート_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // 「2025/04/01 10:00:00」「2025-04-01T10:00:00Z」等をISO文字列に変換
+  const parseDateTimeToISO = (value: string): string | null => {
+    const text = (value || '').trim();
+    if (!text || text === '-') return null;
+
+    // ISO形式はそのまま解釈
+    if (/^\d{4}-\d{2}-\d{2}T/.test(text)) {
+      const isoDate = new Date(text);
+      return isNaN(isoDate.getTime()) ? null : isoDate.toISOString();
+    }
+
+    // エクスポートのja-JP表記（区切りが特殊空白の場合もあるため許容）
+    const matched = text.match(
+      /^(\d{4})[/\-\u5e74](\d{1,2})[/\-\u6708](\d{1,2})\u65e5?[\s\u3000\u202fT]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/
+    );
+    if (matched) {
+      const parsed = new Date(
+        Number(matched[1]),
+        Number(matched[2]) - 1,
+        Number(matched[3]),
+        Number(matched[4]),
+        Number(matched[5]),
+        Number(matched[6] ?? 0)
+      );
+      return isNaN(parsed.getTime()) ? null : parsed.toISOString();
+    }
+
+    const fallback = new Date(text);
+    return isNaN(fallback.getTime()) ? null : fallback.toISOString();
+  };
+
+  // 「1時間02分03秒」「5分00秒」「01:02:03」「3723」を秒数に変換
+  const parseDurationToSeconds = (value: string): number => {
+    const text = (value || '').trim();
+    if (!text || text === '-') return 0;
+
+    if (/^\d+(\.\d+)?$/.test(text)) return Math.round(Number(text));
+
+    const jp = text.match(/(?:(\d+)\s*時間)?\s*(?:(\d+)\s*分)?\s*(?:(\d+)\s*秒)?/);
+    if (jp && (jp[1] || jp[2] || jp[3])) {
+      return Number(jp[1] || 0) * 3600 + Number(jp[2] || 0) * 60 + Number(jp[3] || 0);
+    }
+
+    const hms = text.match(/^(?:(\d+):)?(\d{1,2}):(\d{1,2})$/);
+    if (hms) {
+      return Number(hms[1] || 0) * 3600 + Number(hms[2]) * 60 + Number(hms[3]);
+    }
+
+    return 0;
+  };
+
+  const parseStatusValue = (value: string): 'not_started' | 'in_progress' | 'completed' | null => {
+    const text = (value || '').trim();
+    if (text === '完了' || text === 'completed') return 'completed';
+    if (text === '受講中' || text === '視聴中' || text === '進行中' || text === 'in_progress') return 'in_progress';
+    if (text === '未開始' || text === 'not_started' || text === '') return 'not_started';
+    return null;
+  };
+
+  const handleCSVImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.target;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    setImportingCSV(true);
+    const reader = new FileReader();
+
+    reader.onload = async (e) => {
+      try {
+        const rows = parseCSV((e.target?.result as string) || '');
+        if (rows.length < 2) {
+          alert('CSVファイルにデータ行がありません。');
+          return;
+        }
+
+        const headers = rows[0].map(h => h.trim());
+        const indexOf = (name: string) => headers.indexOf(name);
+
+        const emailIndex = indexOf('メールアドレス');
+        const courseIndex = indexOf('コース名');
+        const videoIndex = indexOf('動画名');
+
+        const missing: string[] = [];
+        if (emailIndex < 0) missing.push('メールアドレス');
+        if (courseIndex < 0) missing.push('コース名');
+        if (videoIndex < 0) missing.push('動画名');
+        if (missing.length > 0) {
+          alert(`必須列が見つかりません: ${missing.join('、')}\n\nエクスポートしたCSV、またはテンプレートの列構成でインポートしてください。`);
+          return;
+        }
+
+        const startIndex = indexOf('開始時刻');
+        const endIndex = indexOf('終了時刻');
+        const durationIndex = indexOf('視聴時間');
+        const progressIndex = indexOf('進捗率（%）') >= 0 ? indexOf('進捗率（%）') : indexOf('進捗率');
+        const statusIndex = indexOf('受講状況');
+        const historyColumnIndex = indexOf('履歴番号');
+
+        const parseErrors: string[] = [];
+        const importRows: {
+          rowNumber: number;
+          email: string;
+          courseTitle: string;
+          videoTitle: string;
+          startTime: string | null;
+          endTime: string | null;
+          watchDuration: number;
+          progress: number;
+          status: 'not_started' | 'in_progress' | 'completed';
+          historyIndex?: number;
+        }[] = [];
+
+        rows.slice(1).forEach((row, i) => {
+          const rowNumber = i + 2; // ヘッダー行を含む実際の行番号
+          const cell = (index: number) => (index >= 0 ? (row[index] ?? '').trim() : '');
+
+          // 完全な空行はスキップ
+          if (row.every(c => !c.trim())) return;
+
+          const email = cell(emailIndex);
+          const courseTitle = cell(courseIndex);
+          const videoTitle = cell(videoIndex);
+
+          if (!email || !courseTitle || !videoTitle) {
+            parseErrors.push(`${rowNumber}行目: メールアドレス・コース名・動画名は必須です`);
+            return;
+          }
+
+          const status = parseStatusValue(cell(statusIndex));
+          if (status === null) {
+            parseErrors.push(`${rowNumber}行目: 受講状況「${cell(statusIndex)}」を認識できません（完了／受講中／未開始）`);
+            return;
+          }
+
+          const progressText = cell(progressIndex).replace('%', '').trim();
+          const progressValue = progressText === '' ? (status === 'completed' ? 100 : 0) : Number(progressText);
+          if (isNaN(progressValue)) {
+            parseErrors.push(`${rowNumber}行目: 進捗率「${cell(progressIndex)}」を数値として読み取れません`);
+            return;
+          }
+
+          const historyText = cell(historyColumnIndex);
+          const historyNo = historyText.match(/^(\d+)\s*\//);
+
+          importRows.push({
+            rowNumber,
+            email,
+            courseTitle,
+            videoTitle,
+            startTime: parseDateTimeToISO(cell(startIndex)),
+            endTime: parseDateTimeToISO(cell(endIndex)),
+            watchDuration: parseDurationToSeconds(cell(durationIndex)),
+            progress: Math.min(100, Math.max(0, Math.round(progressValue))),
+            status,
+            historyIndex: historyNo ? Number(historyNo[1]) : undefined
+          });
+        });
+
+        if (importRows.length === 0) {
+          alert(
+            parseErrors.length > 0
+              ? `インポートできる行がありません。\n\n${parseErrors.slice(0, 10).join('\n')}`
+              : 'インポートできる行がありません。'
+          );
+          return;
+        }
+
+        if (parseErrors.length > 0) {
+          const proceed = confirm(
+            `以下のエラーが見つかりました:\n\n${parseErrors.slice(0, 5).join('\n')}${parseErrors.length > 5 ? `\n...他${parseErrors.length - 5}件` : ''}\n\n正常な ${importRows.length} 件のみインポートしますか？`
+          );
+          if (!proceed) return;
+        }
+
+        const targetPairs = new Set(importRows.map(r => `${r.email}::${r.videoTitle}`));
+        const confirmed = confirm(
+          `${importRows.length} 件の学習ログをインポートします。\n\n` +
+          `対象の「ユーザー×動画」${targetPairs.size} 組について、既存の学習ログはすべて削除され、CSVの内容で上書きされます。\n\n` +
+          '続行しますか？'
+        );
+        if (!confirmed) return;
+
+        const { data: { session } } = await supabase.auth.getSession();
+        const response = await fetch('/api/admin/learning-logs/import', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': session?.access_token ? `Bearer ${session.access_token}` : ''
+          },
+          body: JSON.stringify({ rows: importRows })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          const detail = Array.isArray(result?.errors) && result.errors.length > 0
+            ? `\n\n${result.errors.slice(0, 5).join('\n')}`
+            : '';
+          alert(`インポートに失敗しました: ${result?.error || '不明なエラー'}${detail}`);
+          return;
+        }
+
+        // 上書き後にコース完了・証明書発行を再判定する
+        let certificateCount = 0;
+        for (const pair of (result.affectedPairs || []) as { userId: string; courseId: number }[]) {
+          try {
+            const certResponse = await fetch('/api/certificates/generate', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session?.access_token ?? ''}`
+              },
+              body: JSON.stringify({
+                userId: pair.userId,
+                courseId: Number(pair.courseId),
+                access_token: session?.access_token
+              })
+            });
+            const certResult = await certResponse.json();
+            if (certResult.success) certificateCount++;
+          } catch (certError) {
+            console.error('証明書生成確認エラー:', certError);
+          }
+        }
+
+        let message = `インポート完了:\n登録 ${result.imported} 件（既存ログ ${result.deleted} 件を上書き）`;
+        if (certificateCount > 0) {
+          message += `\nコース完了により証明書 ${certificateCount} 件を発行しました`;
+        }
+        const serverErrors: string[] = result.errors || [];
+        if (serverErrors.length > 0) {
+          message += `\n\nスキップ ${serverErrors.length} 件:\n${serverErrors.slice(0, 5).join('\n')}`;
+          if (serverErrors.length > 5) message += `\n...他${serverErrors.length - 5}件`;
+        }
+        alert(message);
+
+        fetchLearningLogs();
+      } catch (error) {
+        console.error('CSVインポートエラー:', error);
+        alert('CSVインポート中にエラーが発生しました。');
+      } finally {
+        setImportingCSV(false);
+        input.value = '';
+      }
+    };
+
+    reader.onerror = () => {
+      alert('ファイルの読み込みに失敗しました。');
+      setImportingCSV(false);
+      input.value = '';
+    };
+
+    reader.readAsText(file, 'UTF-8');
+  };
+
   const toggleRowExpansion = (logId: string) => {
     setExpandedRows(prev => {
       const newSet = new Set(prev);
@@ -970,6 +1276,31 @@ export default function LearningLogsPage() {
                 >
                   <DocumentArrowDownIcon className="h-4 w-4 mr-2 flex-shrink-0" />
                   <span className="whitespace-nowrap">{exportingCSV ? 'エクスポート中...' : 'CSVエクスポート'}</span>
+                </Button>
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleCSVImport}
+                  style={{ display: 'none' }}
+                  id="learning-logs-csv-import"
+                />
+                <Button
+                  variant="outline"
+                  disabled={importingCSV}
+                  onClick={() => document.getElementById('learning-logs-csv-import')?.click()}
+                  title="CSVの内容で既存の学習ログを上書きします"
+                  className="flex items-center justify-center w-full sm:w-auto whitespace-nowrap"
+                >
+                  <DocumentArrowUpIcon className="h-4 w-4 mr-2 flex-shrink-0" />
+                  <span className="whitespace-nowrap">{importingCSV ? 'インポート中...' : 'CSVインポート'}</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={downloadImportTemplate}
+                  className="flex items-center justify-center w-full sm:w-auto whitespace-nowrap"
+                >
+                  <DocumentArrowDownIcon className="h-4 w-4 mr-2 flex-shrink-0" />
+                  <span className="whitespace-nowrap">テンプレート</span>
                 </Button>
               </div>
             </div>
