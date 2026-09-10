@@ -41,7 +41,7 @@ export async function GET(
 }
 
 // PATCH /api/admin/quizzes/[id]
-// クイズのメタ情報を更新（title / quiz_type / after_video_id / sort_order / status）
+// クイズのメタ情報を更新（title / quiz_type / grading_mode / after_video_id / sort_order / status）
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -55,6 +55,9 @@ export async function PATCH(
 
   if (typeof body.title === 'string') update.title = body.title.slice(0, 200);
   if (body.quiz_type && ['choice', 'essay'].includes(body.quiz_type)) update.quiz_type = body.quiz_type;
+  if (body.grading_mode && ['auto', 'review'].includes(body.grading_mode)) update.grading_mode = body.grading_mode;
+  // 記述式は常に提出→添削
+  if (update.quiz_type === 'essay') update.grading_mode = 'review';
   if ('after_video_id' in body) update.after_video_id = body.after_video_id ? Number(body.after_video_id) : null;
   if (Number.isFinite(body.sort_order)) update.sort_order = Number(body.sort_order);
   if (body.status && ['draft', 'published'].includes(body.status)) update.status = body.status;

@@ -5,9 +5,9 @@ import { submitForReview } from '@/lib/quiz/submitForReview';
 
 export const runtime = 'nodejs';
 
-// POST /api/quizzes/[id]/submit-essay
-// 旧エンドポイント（記述式専用の名前）。実体は /api/quizzes/[id]/submit と同じ。
-// 既存の呼び出し元との互換のために残している。新規は /submit を使うこと。
+// POST /api/quizzes/[id]/submit
+// body: { access_token?, answers: [{ question_id, selected_index? , answer_text? }] }
+// 提出制テスト（記述式／選択式 grading_mode='review'）の提出。採点はせず、指導者の添削待ちにする。
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

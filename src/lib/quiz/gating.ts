@@ -4,8 +4,8 @@
 // 順序: [動画1, 動画1直後のクイズ..., 動画2, 動画2直後のクイズ..., ..., コース末クイズ...]
 // 通過条件:
 //   - 動画: video_view_logs に status='completed' の行がある
-//   - 選択式クイズ: 全設問に is_correct=true の attempt がある（all_correct）
-//   - 記述式クイズ: essay_reviews に result='passed' がある
+//   - 選択式クイズ（grading_mode='auto'）: 全設問に is_correct=true の attempt がある（all_correct）
+//   - 提出制クイズ（記述式 または grading_mode='review' の選択式）: essay_reviews に result='passed' がある
 // 解放条件: そのステップより前の全ステップが通過済み（先頭動画は常に解放）
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -17,6 +17,7 @@ export interface GateStep {
   id: number;          // video_id または quiz_id
   title: string;
   quiz_type?: 'choice' | 'essay';
+  grading_mode?: 'auto' | 'review';
   after_video_id?: number | null;
   passed: boolean;
   unlocked: boolean;
@@ -62,7 +63,7 @@ export async function computeGateState(
   const { data: quizzes } = testEnabled
     ? await admin
         .from('quizzes')
-        .select('id, title, quiz_type, after_video_id, sort_order')
+        .select('id, title, quiz_type, grading_mode, after_video_id, sort_order')
         .eq('course_id', courseId)
         .eq('status', 'published')
         .order('sort_order', { ascending: true })
@@ -107,7 +108,7 @@ export async function computeGateState(
       correctByQuiz.get(a.quiz_id)!.add(a.question_id);
     });
 
-    // 記述式：合格レビュー
+    // 提出制（記述式 / grading_mode='review'）：合格レビュー
     const { data: passedReviews } = await admin
       .from('essay_reviews')
       .select('quiz_id')
@@ -117,7 +118,8 @@ export async function computeGateState(
     const essayPassedQuizIds = new Set((passedReviews || []).map((r) => r.quiz_id));
 
     for (const q of quizList) {
-      if (q.quiz_type === 'essay') {
+      // 提出制テストは指導者の添削合格をもって通過（選択式でも即時採点しない）
+      if (q.quiz_type === 'essay' || q.grading_mode === 'review') {
         quizPassed[q.id] = essayPassedQuizIds.has(q.id);
       } else {
         const need = quizQuestionIds.get(q.id) || new Set<number>();
@@ -145,6 +147,7 @@ export async function computeGateState(
         id: q.id,
         title: q.title,
         quiz_type: q.quiz_type,
+        grading_mode: q.grading_mode,
         after_video_id: q.after_video_id,
         passed: !!quizPassed[q.id],
         unlocked: false,

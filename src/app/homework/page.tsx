@@ -13,6 +13,7 @@ import {
   LockClosedIcon,
   ExclamationTriangleIcon,
   DocumentTextIcon,
+  XCircleIcon,
 } from '@heroicons/react/24/outline';
 
 type HomeworkStatus = 'locked' | 'not_submitted' | 'under_review' | 'needs_revision' | 'passed';
@@ -22,12 +23,20 @@ interface HwQuestion {
   question_text: string;
   my_answer: string;
   answered_at: string | null;
+  // 選択式（提出→添削）
+  choices: string[];
+  selected_index: number | null;
+  selected_text: string;
+  review_is_correct: boolean | null;
+  review_comment: string | null;
 }
 interface HwItem {
   quiz_id: number;
   course_id: number;
   course_title: string;
   title: string;
+  quiz_type: 'choice' | 'essay';
+  grading_mode: 'auto' | 'review';
   status: HomeworkStatus;
   lock_reason: string | null;
   questions: HwQuestion[];
@@ -111,7 +120,7 @@ export default function HomeworkPage() {
     if (!confirm('提出後は添削が返るまで編集できません。提出しますか？')) return;
     setSubmitting(item.quiz_id);
     try {
-      const res = await fetch(`/api/quizzes/${item.quiz_id}/submit-essay`, {
+      const res = await fetch(`/api/quizzes/${item.quiz_id}/submit`, {
         method: 'POST',
         headers: await authHeaders(),
         body: JSON.stringify({ answers }),
@@ -133,22 +142,23 @@ export default function HomeworkPage() {
       <MainLayout>
         <div className="max-w-3xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between mb-1">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">添削課題（記述式最終テスト）</h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">課題（最終テスト・添削）</h1>
             <Link href="/messages" className="text-sm text-blue-600 hover:underline">質問する（質疑応答）</Link>
           </div>
-          <p className="text-sm text-gray-500 mb-6">通信制コースの記述式最終テストの提出・添削結果を確認できます。</p>
+          <p className="text-sm text-gray-500 mb-6">提出した最終テストの内容と、指導者からの添削結果を確認できます。</p>
 
           {loading ? (
             <div className="py-16 flex justify-center"><LoadingSpinner size="lg" /></div>
           ) : (
             <>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-3">記述式最終テスト</h2>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-3">最終テスト（提出・添削）</h2>
             {items.length === 0 ? (
-              <p className="text-sm text-gray-500 py-4">現在、対象の記述式テストはありません。</p>
+              <p className="text-sm text-gray-500 py-4">現在、対象の最終テストはありません。</p>
             ) : (
             <div className="space-y-4">
               {items.map((item) => {
                 const meta = statusMeta[item.status];
+                const isChoice = item.quiz_type === 'choice';
                 return (
                   <div key={item.quiz_id} className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
                     <div className="flex items-center justify-between gap-3 mb-2">
@@ -203,7 +213,42 @@ export default function HomeworkPage() {
                         {item.questions.map((q, qi) => (
                           <div key={q.id}>
                             <div className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">問{qi + 1}. {q.question_text}</div>
-                            {item.can_submit ? (
+
+                            {isChoice ? (
+                              /* 選択式：提出内容は読み取り専用。回答・再提出はテストページで行う */
+                              <div className="space-y-1">
+                                {q.choices.map((c, ci) => {
+                                  const selected = q.selected_index === ci;
+                                  return (
+                                    <div
+                                      key={ci}
+                                      className={`text-sm rounded border px-2 py-1 ${
+                                        selected
+                                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-gray-900 dark:text-gray-100'
+                                          : 'border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-400'
+                                      }`}
+                                    >
+                                      {ci + 1}. {c}
+                                      {selected && <span className="ml-2 text-xs text-blue-600">あなたの回答</span>}
+                                    </div>
+                                  );
+                                })}
+                                {q.selected_index === null && (
+                                  <div className="text-sm text-gray-500">（未回答）</div>
+                                )}
+                                {q.review_is_correct !== null && (
+                                  <div className={`flex items-center gap-1 text-sm font-medium mt-1 ${q.review_is_correct ? 'text-green-700' : 'text-red-700'}`}>
+                                    {q.review_is_correct ? <CheckCircleIcon className="w-4 h-4" /> : <XCircleIcon className="w-4 h-4" />}
+                                    {q.review_is_correct ? '正解' : '不正解'}
+                                  </div>
+                                )}
+                                {q.review_comment && (
+                                  <div className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap mt-1">
+                                    添削：{q.review_comment}
+                                  </div>
+                                )}
+                              </div>
+                            ) : item.can_submit ? (
                               <textarea
                                 className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm"
                                 rows={4}
@@ -212,18 +257,39 @@ export default function HomeworkPage() {
                                 placeholder="回答を入力"
                               />
                             ) : (
-                              <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap bg-gray-50 dark:bg-gray-900 rounded p-2 border border-gray-100 dark:border-gray-700">
-                                {q.my_answer || '（未回答）'}
-                              </div>
+                              <>
+                                <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap bg-gray-50 dark:bg-gray-900 rounded p-2 border border-gray-100 dark:border-gray-700">
+                                  {q.my_answer || '（未回答）'}
+                                </div>
+                                {q.review_is_correct !== null && (
+                                  <div className={`flex items-center gap-1 text-sm font-medium mt-1 ${q.review_is_correct ? 'text-green-700' : 'text-red-700'}`}>
+                                    {q.review_is_correct ? <CheckCircleIcon className="w-4 h-4" /> : <XCircleIcon className="w-4 h-4" />}
+                                    {q.review_is_correct ? '正解' : '不正解'}
+                                  </div>
+                                )}
+                                {q.review_comment && (
+                                  <div className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap mt-1">
+                                    添削：{q.review_comment}
+                                  </div>
+                                )}
+                              </>
                             )}
                           </div>
                         ))}
 
                         {item.can_submit && (
                           <div className="flex justify-end">
-                            <Button size="sm" onClick={() => submit(item)} loading={submitting === item.quiz_id}>
-                              {item.status === 'needs_revision' ? '再提出する' : '提出する'}
-                            </Button>
+                            {isChoice ? (
+                              <Link href={`/courses/${item.course_id}/quiz/${item.quiz_id}`}>
+                                <Button size="sm">
+                                  {item.status === 'needs_revision' ? 'テストページで再提出する' : 'テストページで回答する'}
+                                </Button>
+                              </Link>
+                            ) : (
+                              <Button size="sm" onClick={() => submit(item)} loading={submitting === item.quiz_id}>
+                                {item.status === 'needs_revision' ? '再提出する' : '提出する'}
+                              </Button>
+                            )}
                           </div>
                         )}
                         {item.status === 'under_review' && (

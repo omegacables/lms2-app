@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
   // クイズ
   const { data: quizzes } = await admin
     .from('quizzes')
-    .select('id, title, quiz_type, after_video_id, sort_order, status')
+    .select('id, title, quiz_type, grading_mode, after_video_id, sort_order, status')
     .eq('course_id', courseId)
     .eq('status', 'published')
     .order('sort_order', { ascending: true })
@@ -118,7 +118,10 @@ export async function GET(request: NextRequest) {
       .eq('user_id', userId)
       .order('attempt_no', { ascending: true });
 
-    if (quiz.quiz_type === 'choice') {
+    // 提出制（記述式／選択式 grading_mode='review'）は添削記録として出力する
+    const isReviewQuiz = quiz.quiz_type === 'essay' || quiz.grading_mode === 'review';
+
+    if (!isReviewQuiz) {
       choiceQuizzes.push({
         title: quiz.title,
         questions: (questions || []).map((q) => {
@@ -142,7 +145,7 @@ export async function GET(request: NextRequest) {
     } else {
       const { data: reviews } = await admin
         .from('essay_reviews')
-        .select('result, review_comment, explanation, reviewer_id, reviewed_at')
+        .select('result, review_comment, explanation, question_reviews, reviewer_id, reviewed_at')
         .eq('quiz_id', quiz.id)
         .eq('user_id', userId)
         .order('reviewed_at', { ascending: true });
@@ -156,17 +159,41 @@ export async function GET(request: NextRequest) {
           .in('id', reviewerIds as string[]);
         (reviewers || []).forEach((r) => reviewerMap.set(r.id, r.display_name || r.email || r.id));
       }
+      // 最新添削の設問ごとの正誤・コメント
+      const latestReview = reviews && reviews.length > 0 ? reviews[reviews.length - 1] : null;
+      const questionReviewMap = new Map<number, { is_correct: boolean | null; comment: string | null }>();
+      if (latestReview && Array.isArray(latestReview.question_reviews)) {
+        (latestReview.question_reviews as any[]).forEach((r) => {
+          if (r && r.question_id !== undefined) {
+            questionReviewMap.set(Number(r.question_id), {
+              is_correct: typeof r.is_correct === 'boolean' ? r.is_correct : null,
+              comment: r.comment ?? null,
+            });
+          }
+        });
+      }
+
       essayQuizzes.push({
         title: quiz.title,
+        type_label: quiz.quiz_type === 'choice' ? '最終テスト（選択式）' : '記述式最終テスト',
         questions: (questions || []).map((q) => {
           const qAttempts = (attempts || []).filter((a) => a.question_id === q.id);
+          const choices: string[] = Array.isArray(q.choices) ? (q.choices as string[]) : [];
+          const mark = questionReviewMap.get(q.id) || null;
           return {
             question_text: q.question_text,
             answers: qAttempts.map((a) => ({
               attempt_no: a.attempt_no,
-              answer_text: a.answer_text,
+              // 選択式は「選んだ選択肢」を回答として記録する
+              answer_text:
+                quiz.quiz_type === 'choice'
+                  ? a.selected_index !== null && a.selected_index !== undefined
+                    ? `${a.selected_index + 1}. ${choices[a.selected_index] ?? ''}`
+                    : '（未回答）'
+                  : a.answer_text,
               answered_at: a.answered_at,
             })),
+            review_mark: mark,
           };
         }),
         reviews: (reviews || []).map((r) => ({

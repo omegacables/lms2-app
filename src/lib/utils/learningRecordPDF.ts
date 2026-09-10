@@ -35,7 +35,14 @@ export interface LearningRecordData {
   }[];
   essayQuizzes: {
     title: string;
-    questions: { question_text: string; answers: { attempt_no: number; answer_text: string; answered_at: string }[] }[];
+    /** 「記述式最終テスト」／「最終テスト（選択式）」など、見出しに使う表記 */
+    type_label?: string;
+    questions: {
+      question_text: string;
+      answers: { attempt_no: number; answer_text: string; answered_at: string }[];
+      /** 指導者が設問ごとに付けた正誤・コメント */
+      review_mark?: { is_correct: boolean | null; comment: string | null } | null;
+    }[];
     reviews: { result: string; comment: string | null; explanation?: string | null; reviewer_name: string; reviewed_at: string }[];
   }[];
   testsPassed: boolean | null;
@@ -115,7 +122,15 @@ export function buildRecordHTML(d: LearningRecordData): string {
               (a) => `<div class="ans"><span class="ans-no">提出${a.attempt_no}（${fmtDateTime(a.answered_at)}）</span><div class="ans-body">${esc(a.answer_text)}</div></div>`
             )
             .join('');
-          return `<div class="q"><div class="qh">問${qi + 1}. ${esc(qq.question_text)}</div>${answers || '<div class="ans-body">未提出</div>'}</div>`;
+          const mark = qq.review_mark;
+          const markHtml = mark
+            ? `<div class="ans-body" style="margin-top:2px;">${
+                mark.is_correct === null || mark.is_correct === undefined
+                  ? ''
+                  : `<b>添削：${mark.is_correct ? '正解' : '不正解'}</b>`
+              }${mark.comment ? `${mark.is_correct === null || mark.is_correct === undefined ? '<b>添削：</b>' : '　'}${esc(mark.comment)}` : ''}</div>`
+            : '';
+          return `<div class="q"><div class="qh">問${qi + 1}. ${esc(qq.question_text)}</div>${answers || '<div class="ans-body">未提出</div>'}${markHtml}</div>`;
         })
         .join('');
       const stampImg = d.seal?.stampUrl
@@ -132,7 +147,7 @@ export function buildRecordHTML(d: LearningRecordData): string {
           </div>`
         )
         .join('');
-      return `<div class="quiz"><div class="quiz-title">■ 記述式最終テスト：${esc(q.title)}</div>${qs}<div class="reviews-h">添削記録</div>${reviews || '<div>添削記録なし</div>'}</div>`;
+      return `<div class="quiz"><div class="quiz-title">■ ${esc(q.type_label || '記述式最終テスト')}：${esc(q.title)}</div>${qs}<div class="reviews-h">添削記録</div>${reviews || '<div>添削記録なし</div>'}</div>`;
     })
     .join('');
 
@@ -182,7 +197,7 @@ export function buildRecordHTML(d: LearningRecordData): string {
     </table>
 
     ${d.choiceQuizzes.length > 0 ? `<div class="section">2. 小テスト記録</div>${choiceSections}` : ''}
-    ${d.essayQuizzes.length > 0 ? `<div class="section">3. 記述式最終テスト・添削記録</div>${essaySections}` : ''}
+    ${d.essayQuizzes.length > 0 ? `<div class="section">3. 最終テスト・添削記録</div>${essaySections}` : ''}
 
     <div class="footer">出力日: ${new Date().toLocaleString('ja-JP')}</div>
   </div>`;

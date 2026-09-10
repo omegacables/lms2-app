@@ -6,8 +6,12 @@ import { issueCertificateIfEligible } from '@/lib/certificate/issue';
 
 export const runtime = 'nodejs';
 
+// 添削対象＝提出制テスト（記述式 quiz_type='essay' ／ 選択式 grading_mode='review'）
+const REVIEW_TARGET_FILTER = 'quiz_type.eq.essay,grading_mode.eq.review';
+
 // GET /api/admin/essay-reviews?status=pending|all
-// 記述式最終テストの提出一覧（添削待ち／全件）を返す。
+// 提出制テストの提出一覧（添削待ち／全件）を返す。
+// 選択式（提出→添削）は、設問・選択肢・受講者が選んだ選択肢・正答（参考）も返す。
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, ['admin', 'instructor']);
   if (!auth.ok) return auth.response;
@@ -15,12 +19,11 @@ export async function GET(request: NextRequest) {
   const statusFilter = request.nextUrl.searchParams.get('status') || 'pending';
   const admin = createAdminSupabaseClient();
 
-  // 公開中の記述式クイズ
   const { data: quizzes } = await admin
     .from('quizzes')
-    .select('id, course_id, title')
-    .eq('quiz_type', 'essay')
-    .eq('status', 'published');
+    .select('id, course_id, title, quiz_type, grading_mode')
+    .eq('status', 'published')
+    .or(REVIEW_TARGET_FILTER);
   if (!quizzes || quizzes.length === 0) return NextResponse.json({ submissions: [] });
 
   // コース名
@@ -31,22 +34,24 @@ export async function GET(request: NextRequest) {
   const submissions: any[] = [];
 
   for (const quiz of quizzes) {
+    const isChoice = quiz.quiz_type === 'choice';
+
     const { data: questions } = await admin
       .from('quiz_questions')
-      .select('id, question_text, sort_order')
+      .select('id, question_text, choices, correct_index, explanation, sort_order')
       .eq('quiz_id', quiz.id)
       .order('sort_order', { ascending: true });
 
     const { data: attempts } = await admin
       .from('quiz_attempts')
-      .select('user_id, question_id, answer_text, attempt_no, answered_at')
+      .select('user_id, question_id, answer_text, selected_index, attempt_no, answered_at')
       .eq('quiz_id', quiz.id)
       .order('answered_at', { ascending: false });
     if (!attempts || attempts.length === 0) continue;
 
     const { data: reviews } = await admin
       .from('essay_reviews')
-      .select('user_id, result, review_comment, explanation, reviewed_at')
+      .select('user_id, result, review_comment, explanation, question_reviews, reviewed_at')
       .eq('quiz_id', quiz.id)
       .order('reviewed_at', { ascending: false });
 
@@ -85,14 +90,40 @@ export async function GET(request: NextRequest) {
         course_id: quiz.course_id,
         course_title: courseMap.get(quiz.course_id) || '',
         quiz_title: quiz.title,
+        quiz_type: quiz.quiz_type,
+        grading_mode: quiz.grading_mode,
         submitted_at: latestAttemptTime,
         status, // 'pending' | 'passed' | 'needs_revision'
-        questions: (questions || []).map((q) => ({
-          id: q.id,
-          question_text: q.question_text,
-          answer_text: latestAnswer.get(q.id)?.answer_text ?? '',
-        })),
-        latest_review: latestReview,
+        questions: (questions || []).map((q) => {
+          const choices: string[] = Array.isArray(q.choices) ? (q.choices as string[]) : [];
+          const a = latestAnswer.get(q.id);
+          const selectedIndex = a?.selected_index ?? null;
+          return {
+            id: q.id,
+            question_text: q.question_text,
+            answer_text: a?.answer_text ?? '',
+            // 選択式（提出→添削）用
+            choices: isChoice ? choices : [],
+            correct_index: isChoice ? q.correct_index : null,
+            explanation: q.explanation || '',
+            selected_index: selectedIndex,
+            selected_text:
+              isChoice && selectedIndex !== null && selectedIndex !== undefined
+                ? choices[selectedIndex] ?? ''
+                : '',
+            // 正答が設定されていれば正誤の初期値として使う（最終判断は指導者）
+            auto_is_correct:
+              isChoice && q.correct_index !== null && q.correct_index !== undefined && selectedIndex !== null
+                ? selectedIndex === q.correct_index
+                : null,
+          };
+        }),
+        latest_review: latestReview
+          ? {
+              ...latestReview,
+              question_reviews: Array.isArray(latestReview.question_reviews) ? latestReview.question_reviews : [],
+            }
+          : null,
       });
     }
   }
@@ -104,13 +135,19 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/admin/essay-reviews
-// body: { quiz_id, user_id, result: 'passed'|'needs_revision', review_comment, ai_assisted? }
+// body: {
+//   quiz_id, user_id,
+//   result: 'passed'|'needs_revision',
+//   review_comment, explanation,
+//   question_reviews?: [{ question_id, is_correct, comment }],  // 設問ごとの正誤・コメント
+//   ai_assisted?
+// }
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, ['admin', 'instructor']);
   if (!auth.ok) return auth.response;
 
   const body = await request.json().catch(() => ({}));
-  const { quiz_id, user_id, result, review_comment, explanation, ai_assisted } = body;
+  const { quiz_id, user_id, result, review_comment, explanation, question_reviews, ai_assisted } = body;
 
   if (!quiz_id || !user_id || !['passed', 'needs_revision'].includes(result)) {
     return NextResponse.json({ error: 'quiz_id / user_id / result が不正です' }, { status: 400 });
@@ -120,11 +157,11 @@ export async function POST(request: NextRequest) {
 
   const { data: quiz } = await admin
     .from('quizzes')
-    .select('id, course_id, title, quiz_type')
+    .select('id, course_id, title, quiz_type, grading_mode')
     .eq('id', Number(quiz_id))
     .single();
-  if (!quiz || quiz.quiz_type !== 'essay') {
-    return NextResponse.json({ error: '記述式テストが見つかりません' }, { status: 404 });
+  if (!quiz || (quiz.quiz_type !== 'essay' && quiz.grading_mode !== 'review')) {
+    return NextResponse.json({ error: '添削対象のテストが見つかりません' }, { status: 404 });
   }
 
   // 対象受講者の提出があることを確認
@@ -137,6 +174,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'この受講者の提出が見つかりません' }, { status: 400 });
   }
 
+  // 設問ごとの添削（このクイズに属する設問のみ受け付ける）
+  const { data: questionRows } = await admin
+    .from('quiz_questions')
+    .select('id')
+    .eq('quiz_id', Number(quiz_id));
+  const validQuestionIds = new Set((questionRows || []).map((q) => q.id));
+  const cleanedQuestionReviews = (Array.isArray(question_reviews) ? question_reviews : [])
+    .filter((r: any) => validQuestionIds.has(Number(r?.question_id)))
+    .map((r: any) => ({
+      question_id: Number(r.question_id),
+      is_correct: typeof r.is_correct === 'boolean' ? r.is_correct : null,
+      comment: r.comment ? String(r.comment) : null,
+    }));
+
   // 添削を追記（reviewer_id は指導者本人）
   const { error: insErr } = await admin.from('essay_reviews').insert({
     quiz_id: Number(quiz_id),
@@ -144,6 +195,7 @@ export async function POST(request: NextRequest) {
     reviewer_id: auth.user.id,
     review_comment: review_comment ? String(review_comment) : null,
     explanation: explanation ? String(explanation) : null,
+    question_reviews: cleanedQuestionReviews,
     result,
     ai_assisted: !!ai_assisted,
     reviewed_at: new Date().toISOString(),
@@ -154,11 +206,11 @@ export async function POST(request: NextRequest) {
 
   // 受講者へ通知
   await notifyUsers(admin, [user_id], {
-    title: result === 'passed' ? '記述式テストに合格しました' : '記述式テストの再提出のお願い',
+    title: result === 'passed' ? 'テストに合格しました' : 'テストの再提出のお願い',
     message:
       result === 'passed'
-        ? `「${quiz.title}」の添削が完了し、合格となりました。`
-        : `「${quiz.title}」の添削が完了しました。コメントを確認して再提出してください。`,
+        ? `「${quiz.title}」の添削が完了し、合格となりました。課題ページで確認できます。`
+        : `「${quiz.title}」の添削が完了しました。課題ページでコメントを確認して再提出してください。`,
     type: 'essay_review',
     related_type: 'quiz',
     related_id: Number(quiz_id),

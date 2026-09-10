@@ -630,6 +630,7 @@ CREATE TABLE IF NOT EXISTS quizzes (
   after_video_id INTEGER REFERENCES videos(id) ON DELETE CASCADE,
   title         VARCHAR(200) NOT NULL,
   quiz_type     VARCHAR(20) NOT NULL DEFAULT 'choice' CHECK (quiz_type IN ('choice', 'essay')),
+  grading_mode  VARCHAR(20) NOT NULL DEFAULT 'auto' CHECK (grading_mode IN ('auto', 'review')), -- auto=即時採点 / review=提出→添削
   pass_policy   VARCHAR(20) NOT NULL DEFAULT 'all_correct' CHECK (pass_policy IN ('all_correct')),
   sort_order    INTEGER NOT NULL DEFAULT 0,
   status        VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
@@ -673,6 +674,7 @@ CREATE TABLE IF NOT EXISTS essay_reviews (
   review_comment TEXT,
   explanation    TEXT,
   result         VARCHAR(20) NOT NULL CHECK (result IN ('passed', 'needs_revision')),
+  question_reviews JSONB NOT NULL DEFAULT '[]'::jsonb, -- 設問ごとの添削 [{question_id, is_correct, comment}]
   ai_assisted    BOOLEAN DEFAULT false,
   reviewed_at    TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

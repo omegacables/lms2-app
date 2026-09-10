@@ -1,6 +1,8 @@
 // 通信制対応：小テスト／記述式最終テスト 関連の共有型定義
 
 export type QuizType = 'choice' | 'essay';
+/** 採点方式: auto=回答時に即時採点（小テスト） / review=提出のみ・指導者が添削（最終テスト） */
+export type GradingMode = 'auto' | 'review';
 export type QuizStatus = 'draft' | 'published';
 export type EssayResult = 'passed' | 'needs_revision';
 
@@ -10,6 +12,7 @@ export interface Quiz {
   after_video_id: number | null; // NULL ならコース末
   title: string;
   quiz_type: QuizType;
+  grading_mode: GradingMode;
   pass_policy: 'all_correct';
   sort_order: number;
   status: QuizStatus;
@@ -52,12 +55,20 @@ export interface QuizAttempt {
   answered_at: string;
 }
 
+/** 設問ごとの添削（選択式の正誤付け・個別コメント） */
+export interface QuestionReview {
+  question_id: number;
+  is_correct: boolean | null;
+  comment: string | null;
+}
+
 export interface EssayReview {
   id: number;
   quiz_id: number;
   user_id: string;
   reviewer_id: string | null;
   review_comment: string | null;
+  question_reviews: QuestionReview[];
   result: EssayResult;
   ai_assisted: boolean;
   reviewed_at: string;
@@ -70,3 +81,10 @@ export interface GradeResult {
   correct_index: number | null; // 不正解時のみ返す
   explanation: string | null;   // 不正解時のみ返す
 }
+
+/** 提出制テスト（記述式／選択式 grading_mode='review'）の受講者から見た状態 */
+export type SubmissionStatus =
+  | 'not_submitted'
+  | 'under_review'
+  | 'needs_revision'
+  | 'passed';

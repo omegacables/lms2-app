@@ -25,6 +25,7 @@ interface QuizStep {
   id: number;
   title: string;
   quiz_type?: 'choice' | 'essay';
+  grading_mode?: 'auto' | 'review';
   after_video_id?: number | null;
   passed: boolean;
   unlocked: boolean;
@@ -81,6 +82,18 @@ export default function CourseDetailPage() {
     }
   };
 
+  // テスト種別のラベル（提出→添削のものは「最終テスト」として見せる）
+  const quizTypeLabel = (q: QuizStep) => {
+    if (q.quiz_type === 'essay') return '記述式最終テスト';
+    return q.grading_mode === 'review' ? '選択式最終テスト（提出→添削）' : '選択式小テスト';
+  };
+  const quizTypeClass = (q: QuizStep) =>
+    q.quiz_type === 'essay'
+      ? 'bg-purple-100 text-purple-700'
+      : q.grading_mode === 'review'
+      ? 'bg-amber-100 text-amber-700'
+      : 'bg-blue-100 text-blue-700';
+
   // 指定位置（動画の直後 / コース末=null）に配置された小テストを描画する
   const renderQuizzesAfter = (afterVideoId: number | null) => {
     const items = quizSteps.filter((q) => (q.after_video_id ?? null) === afterVideoId);
@@ -111,8 +124,8 @@ export default function CourseDetailPage() {
               <span className="text-sm font-bold text-gray-900 dark:text-white">
                 ★ {q.title}
               </span>
-              <span className={`text-xs px-2 py-0.5 rounded ${q.quiz_type === 'essay' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
-                {q.quiz_type === 'essay' ? '記述式最終テスト' : '選択式小テスト'}
+              <span className={`text-xs px-2 py-0.5 rounded ${quizTypeClass(q)}`}>
+                {quizTypeLabel(q)}
               </span>
             </div>
             <div className="text-xs text-gray-500 mt-0.5">
@@ -763,8 +776,8 @@ export default function CourseDetailPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-bold text-gray-900 dark:text-white">★ {q.title}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded ${q.quiz_type === 'essay' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
-                              {q.quiz_type === 'essay' ? '記述式最終テスト' : '選択式小テスト'}
+                            <span className={`text-xs px-2 py-0.5 rounded ${quizTypeClass(q)}`}>
+                              {quizTypeLabel(q)}
                             </span>
                           </div>
                           <div className="text-xs text-gray-500 mt-0.5">

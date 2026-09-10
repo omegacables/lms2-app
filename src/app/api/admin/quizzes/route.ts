@@ -44,19 +44,23 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/admin/quizzes
-// { course_id, title, quiz_type, after_video_id, sort_order, status }
+// { course_id, title, quiz_type, grading_mode, after_video_id, sort_order, status }
+// grading_mode: 'auto'=即時採点（小テスト） / 'review'=提出→指導者が添削（最終テスト）
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, ['admin', 'instructor']);
   if (!auth.ok) return auth.response;
 
   const body = await request.json();
-  const { course_id, title, quiz_type, after_video_id, sort_order, status } = body;
+  const { course_id, title, quiz_type, grading_mode, after_video_id, sort_order, status } = body;
 
   if (!course_id || !title) {
     return NextResponse.json({ error: 'course_id と title は必須です' }, { status: 400 });
   }
   if (quiz_type && !['choice', 'essay'].includes(quiz_type)) {
     return NextResponse.json({ error: 'quiz_type が不正です' }, { status: 400 });
+  }
+  if (grading_mode && !['auto', 'review'].includes(grading_mode)) {
+    return NextResponse.json({ error: 'grading_mode が不正です' }, { status: 400 });
   }
 
   const admin = createAdminSupabaseClient();
@@ -66,6 +70,8 @@ export async function POST(request: NextRequest) {
       course_id: Number(course_id),
       title: String(title).slice(0, 200),
       quiz_type: quiz_type || 'choice',
+      // 記述式は常に添削（提出制）。選択式は指定に従う（既定は即時採点）
+      grading_mode: quiz_type === 'essay' ? 'review' : grading_mode === 'review' ? 'review' : 'auto',
       after_video_id: after_video_id ? Number(after_video_id) : null,
       sort_order: Number.isFinite(sort_order) ? Number(sort_order) : 0,
       status: status === 'published' ? 'published' : 'draft',

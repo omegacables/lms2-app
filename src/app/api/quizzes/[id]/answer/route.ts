@@ -22,7 +22,7 @@ export async function POST(
 
   const { data: quiz } = await admin
     .from('quizzes')
-    .select('id, course_id, quiz_type, status')
+    .select('id, course_id, quiz_type, grading_mode, status')
     .eq('id', quizId)
     .single();
   if (!quiz || quiz.status !== 'published') {
@@ -30,6 +30,13 @@ export async function POST(
   }
   if (quiz.quiz_type !== 'choice') {
     return NextResponse.json({ error: 'このエンドポイントは選択式小テスト専用です' }, { status: 400 });
+  }
+  // 提出制（添削）の選択式テストは即時採点しない。/submit へ回す。
+  if (quiz.grading_mode === 'review') {
+    return NextResponse.json(
+      { error: 'このテストは提出後に指導者が添削します。提出用APIを利用してください', review_required: true },
+      { status: 400 }
+    );
   }
 
   // ゲート判定（未解放なら回答不可）
