@@ -26,6 +26,7 @@ interface QuizRow {
   title: string;
   quiz_type: 'choice' | 'essay';
   grading_mode: 'auto' | 'review';
+  answer_style: 'plain' | 'generated';
   status: 'draft' | 'published';
   sort_order: number;
   question_count: number;
@@ -72,6 +73,8 @@ export default function AdminQuizzesPage() {
   const [newType, setNewType] = useState<'choice' | 'essay'>('choice');
   // 'auto' = 即時採点 / 'review' = 提出→指導者が添削
   const [newGradingMode, setNewGradingMode] = useState<'auto' | 'review'>('auto');
+  // 'plain' = 選択肢をそのまま表示 / 'generated' = 受験ごとに回答文を生成して提示
+  const [newAnswerStyle, setNewAnswerStyle] = useState<'plain' | 'generated'>('plain');
   const [newAfterVideo, setNewAfterVideo] = useState<string>('end'); // 'end' or video id
 
   // 設問エディタ
@@ -184,6 +187,7 @@ export default function AdminQuizzesPage() {
         title: newTitle.trim(),
         quiz_type: newType,
         grading_mode: newType === 'essay' ? 'review' : newGradingMode,
+        answer_style: newType === 'essay' ? 'plain' : newAnswerStyle,
         after_video_id: newAfterVideo === 'end' ? null : Number(newAfterVideo),
       }),
     });
@@ -194,6 +198,7 @@ export default function AdminQuizzesPage() {
       setNewAfterVideo('end');
       setNewType('choice');
       setNewGradingMode('auto');
+      setNewAnswerStyle('plain');
       loadCourseData(courseId);
     } else {
       alert(json.error || '作成に失敗しました');
@@ -201,6 +206,17 @@ export default function AdminQuizzesPage() {
   };
 
   // --- 採点方式の切替（選択式のみ。即時採点 <-> 提出→添削）---
+  const changeAnswerStyle = async (q: QuizRow, style: 'plain' | 'generated') => {
+    const res = await fetch(`/api/admin/quizzes/${q.id}`, {
+      method: 'PATCH',
+      headers: await authHeaders(),
+      body: JSON.stringify({ answer_style: style }),
+    });
+    const json = await res.json();
+    if (res.ok) loadCourseData(courseId!);
+    else alert(json.error || '更新に失敗しました');
+  };
+
   const changeGradingMode = async (q: QuizRow, mode: 'auto' | 'review') => {
     const res = await fetch(`/api/admin/quizzes/${q.id}`, {
       method: 'PATCH',
@@ -291,9 +307,9 @@ export default function AdminQuizzesPage() {
   // --- CSVインポート ---
   const downloadTemplate = () => {
     downloadCSV('小テスト_インポート雛形.csv', [
-      ['コースID', '配置動画ID', 'テスト名', '設問', '選択肢1', '選択肢2', '選択肢3', '選択肢4', '正答番号', '解説', '採点方式'],
-      [courseId ?? 1, videos[0]?.id ?? '', '小テスト1', '例）正しいものはどれ？', '選択肢A', '選択肢B', '選択肢C', '選択肢D', 2, '解説文（不正解時に表示）', '即時採点'],
-      [courseId ?? 1, '', '最終テスト', '例）正しいものはどれ？', '選択肢A', '選択肢B', '選択肢C', '選択肢D', 1, '解説文', '提出添削'],
+      ['コースID', '配置動画ID', 'テスト名', '設問', '選択肢1', '選択肢2', '選択肢3', '選択肢4', '正答番号', '解説', '採点方式', '回答形式'],
+      [courseId ?? 1, videos[0]?.id ?? '', '小テスト1', '例）正しいものはどれ？', '回答パターンA', '回答パターンB', '回答パターンC', '回答パターンD', 2, '解説文（不正解時に表示）', '即時採点', '生成'],
+      [courseId ?? 1, '', '最終テスト', '例）正しいものはどれ？', '回答パターンA', '回答パターンB', '回答パターンC', '回答パターンD', 1, '解説文', '提出添削', '生成'],
     ]);
   };
 
@@ -490,7 +506,8 @@ export default function AdminQuizzesPage() {
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
                   列: コースID, 配置動画ID(動画の数値ID。空欄=コース末), テスト名, 設問, 選択肢1〜4, 正答番号(1始まり), 解説,
-                  採点方式(空欄/即時採点 = その場で採点／提出添削 = 提出後に指導者が添削)。取込後は「下書き」で作成されます。
+                  採点方式(空欄/即時採点 = その場で採点／提出添削 = 提出後に指導者が添削),
+                  回答形式(空欄/固定 = 選択肢をそのまま表示／生成 = 選択肢を回答パターンとして、受験ごとに回答文を生成)。取込後は「下書き」で作成されます。
                 </p>
                 {importResult && (
                   <pre className="mt-3 text-xs whitespace-pre-wrap text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 p-3 rounded border border-gray-200 dark:border-gray-700">{importResult}</pre>
@@ -520,6 +537,9 @@ export default function AdminQuizzesPage() {
                           <span className={`text-xs px-2 py-0.5 rounded ${q.grading_mode === 'review' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
                             {q.grading_mode === 'review' ? '提出→添削' : '即時採点'}
                           </span>
+                          {q.quiz_type === 'choice' && q.answer_style === 'generated' && (
+                            <span className="text-xs px-2 py-0.5 rounded bg-rose-100 text-rose-700">回答文生成</span>
+                          )}
                           <span className={`text-xs px-2 py-0.5 rounded ${q.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
                             {q.status === 'published' ? '公開中' : '下書き'}
                           </span>
@@ -538,6 +558,17 @@ export default function AdminQuizzesPage() {
                           >
                             <option value="auto">即時採点（小テスト）</option>
                             <option value="review">提出→添削（最終テスト）</option>
+                          </select>
+                        )}
+                        {q.quiz_type === 'choice' && (
+                          <select
+                            className="text-xs border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1.5 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200"
+                            value={q.answer_style}
+                            onChange={(e) => changeAnswerStyle(q, e.target.value as 'plain' | 'generated')}
+                            title="回答形式"
+                          >
+                            <option value="plain">選択肢をそのまま表示</option>
+                            <option value="generated">回答文を毎回生成</option>
                           </select>
                         )}
                         <Button variant="outline" size="sm" onClick={() => openEditor(q)}>
@@ -640,6 +671,22 @@ export default function AdminQuizzesPage() {
                     「提出→添削」は、受講者が回答を提出したあと指導者が正誤とコメントを付けて返却します。合格で通過扱いになります。
                   </p>
                 </div>
+                {newType === 'choice' && (
+                  <div>
+                    <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">回答形式</label>
+                    <select
+                      className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                      value={newAnswerStyle}
+                      onChange={(e) => setNewAnswerStyle(e.target.value as 'plain' | 'generated')}
+                    >
+                      <option value="plain">選択肢をそのまま表示</option>
+                      <option value="generated">回答文を毎回生成（記述回答のような文章で出題）</option>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      「回答文を毎回生成」は、登録した選択肢を回答パターン（要旨）として扱い、受験のたびにAIが言い回しの異なる回答文にして表示します。
+                    </p>
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm text-gray-600 dark:text-gray-300 mb-1">配置位置</label>
                   <select className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
@@ -669,6 +716,12 @@ export default function AdminQuizzesPage() {
                   <span className="ml-2 text-xs text-gray-500">{editingQuiz.quiz_type === 'choice' ? '選択式' : '記述式'}</span>
                 </h2>
               </div>
+              {editingQuiz.quiz_type === 'choice' && editingQuiz.answer_style === 'generated' && (
+                <p className="mb-4 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded p-2">
+                  回答文を毎回生成するテストです。選択肢には「回答パターンの要旨」を入力してください（受講者には、これをもとにAIが書き起こした回答文が表示されます）。
+                  正答のパターンと、よくある誤りのパターンを用意すると効果的です。
+                </p>
+              )}
 
               <div className="space-y-5">
                 {questionDrafts.map((d, qi) => (
@@ -697,7 +750,7 @@ export default function AdminQuizzesPage() {
                                 setQuestionDrafts(next);
                               }} />
                             <input className="flex-1 border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm"
-                              placeholder={`選択肢${ci + 1}`} value={c}
+                              placeholder={editingQuiz.answer_style === 'generated' ? `回答パターン${ci + 1}（要旨）` : `選択肢${ci + 1}`} value={c}
                               onChange={(e) => {
                                 const next = [...questionDrafts];
                                 const choices = [...d.choices];

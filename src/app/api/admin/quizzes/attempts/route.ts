@@ -64,10 +64,12 @@ export async function GET(request: NextRequest) {
     const quiz = quizMap.get(a.quiz_id);
     const user = userMap.get(a.user_id);
     const choices: string[] = Array.isArray(q?.choices) ? (q!.choices as string[]) : [];
+    // 回答文生成の場合は選んだ回答文（answer_text）を優先する
     const selectedText =
-      a.selected_index !== null && a.selected_index !== undefined
+      a.answer_text ||
+      (a.selected_index !== null && a.selected_index !== undefined
         ? choices[a.selected_index] ?? `選択肢${a.selected_index + 1}`
-        : a.answer_text ?? '';
+        : '');
     return {
       id: a.id,
       user_id: a.user_id,

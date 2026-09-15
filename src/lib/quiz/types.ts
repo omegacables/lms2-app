@@ -1,8 +1,12 @@
+import type { RedPenSegment } from './redpen';
+
 // 通信制対応：小テスト／記述式最終テスト 関連の共有型定義
 
 export type QuizType = 'choice' | 'essay';
 /** 採点方式: auto=回答時に即時採点（小テスト） / review=提出のみ・指導者が添削（最終テスト） */
 export type GradingMode = 'auto' | 'review';
+/** 回答形式: plain=選択肢をそのまま表示 / generated=選択肢を回答パターンとして扱い、受験ごとに回答文を生成して提示 */
+export type AnswerStyle = 'plain' | 'generated';
 export type QuizStatus = 'draft' | 'published';
 export type EssayResult = 'passed' | 'needs_revision';
 
@@ -13,6 +17,7 @@ export interface Quiz {
   title: string;
   quiz_type: QuizType;
   grading_mode: GradingMode;
+  answer_style: AnswerStyle;
   pass_policy: 'all_correct';
   sort_order: number;
   status: QuizStatus;
@@ -52,6 +57,7 @@ export interface QuizAttempt {
   answer_text: string | null;
   is_correct: boolean | null;
   attempt_no: number;
+  choice_set_id: string | null;
   answered_at: string;
 }
 
@@ -60,6 +66,8 @@ export interface QuestionReview {
   question_id: number;
   is_correct: boolean | null;
   comment: string | null;
+  /** 赤ペン添削（回答文に対する取り消し線・書き足し・吹き出し）。無い場合は null */
+  markup?: RedPenSegment[] | null;
 }
 
 export interface EssayReview {

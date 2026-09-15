@@ -7,14 +7,19 @@ import { AuthGuard } from '@/components/auth/AuthGuard';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { RedPenView } from '@/components/quiz/RedPenView';
 import { supabase } from '@/lib/database/supabase';
+import type { RedPenSegment } from '@/lib/quiz/redpen';
 import { CheckCircleIcon, XCircleIcon, ClockIcon } from '@heroicons/react/24/solid';
 
 interface StudentQuestion {
   id: number;
   question_text: string;
   choices: string[];
+  /** 回答文生成のときの選択肢（key は表示位置） */
+  options: { key: number; text: string }[] | null;
   sort_order: number;
+  solved: boolean;
   my_answer: {
     selected_index: number | null;
     answer_text: string | null;
@@ -29,18 +34,21 @@ interface QuizMeta {
   title: string;
   quiz_type: 'choice' | 'essay';
   grading_mode: 'auto' | 'review';
+  answer_style: 'plain' | 'generated';
   after_video_id: number | null;
 }
 interface GradeResult {
   question_id: number;
   is_correct: boolean;
   correct_index?: number | null;
+  correct_text?: string | null;
   explanation?: string | null;
 }
 interface QuestionReview {
   question_id: number;
   is_correct: boolean | null;
   comment: string | null;
+  markup?: RedPenSegment[] | null;
 }
 interface ReviewInfo {
   result: 'passed' | 'needs_revision';
@@ -68,6 +76,7 @@ export default function QuizPage() {
   const [loading, setLoading] = useState(true);
   const [quiz, setQuiz] = useState<QuizMeta | null>(null);
   const [questions, setQuestions] = useState<StudentQuestion[]>([]);
+  const [choiceSetId, setChoiceSetId] = useState<string | null>(null);
   const [passed, setPassed] = useState(false);
   const [lockedMsg, setLockedMsg] = useState<string | null>(null);
 
@@ -82,6 +91,8 @@ export default function QuizPage() {
   const [results, setResults] = useState<Record<number, GradeResult>>({});
   const [submitting, setSubmitting] = useState(false);
   const [justPassed, setJustPassed] = useState(false);
+
+  const generated = quiz?.answer_style === 'generated';
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -101,19 +112,23 @@ export default function QuizPage() {
       }
       setQuiz(json.quiz);
       setQuestions(json.questions || []);
+      setChoiceSetId(json.choice_set_id || null);
       setPassed(!!json.passed);
       setReviewMode(!!json.review_mode);
       setSubmissionStatus(json.submission_status || 'not_submitted');
       setCanSubmit(!!json.can_submit);
       setReview(json.review || null);
-      // 既存回答を初期選択に反映
+      // 固定選択肢のときだけ、既存回答を初期選択に反映（回答文生成は毎回文章が変わるので引き継がない）
       const init: Record<number, number> = {};
-      (json.questions || []).forEach((q: StudentQuestion) => {
-        if (q.my_answer?.selected_index !== null && q.my_answer?.selected_index !== undefined) {
-          init[q.id] = q.my_answer.selected_index;
-        }
-      });
+      if (json.quiz?.answer_style !== 'generated') {
+        (json.questions || []).forEach((q: StudentQuestion) => {
+          if (q.my_answer?.selected_index !== null && q.my_answer?.selected_index !== undefined) {
+            init[q.id] = q.my_answer.selected_index;
+          }
+        });
+      }
       setSelections(init);
+      setResults({});
     } catch {
       setLockedMsg('読み込みに失敗しました');
     }
@@ -122,20 +137,24 @@ export default function QuizPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const allAnswered = questions.length > 0 && questions.every((q) => selections[q.id] !== undefined);
+  // これから回答が必要な設問（回答文生成の即時採点では、正解済みの設問は除く）
+  const pendingQuestions = questions.filter((q) => !(generated && !reviewMode && q.solved));
+  const allAnswered = pendingQuestions.length > 0 && pendingQuestions.every((q) => selections[q.id] !== undefined);
+
+  const buildAnswers = () =>
+    pendingQuestions
+      .filter((q) => selections[q.id] !== undefined)
+      .map((q) => ({ question_id: q.id, selected_index: selections[q.id] }));
 
   // 即時採点（小テスト）
   const submit = async () => {
     setSubmitting(true);
     setResults({});
     try {
-      const answers = questions
-        .filter((q) => selections[q.id] !== undefined)
-        .map((q) => ({ question_id: q.id, selected_index: selections[q.id] }));
       const res = await fetch(`/api/quizzes/${quizId}/answer`, {
         method: 'POST',
         headers: await authHeaders(),
-        body: JSON.stringify({ answers }),
+        body: JSON.stringify({ answers: buildAnswers(), choice_set_id: choiceSetId }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -161,13 +180,10 @@ export default function QuizPage() {
     if (!confirm('回答を提出して添削を依頼します。提出後は添削が返るまで変更できません。よろしいですか？')) return;
     setSubmitting(true);
     try {
-      const answers = questions
-        .filter((q) => selections[q.id] !== undefined)
-        .map((q) => ({ question_id: q.id, selected_index: selections[q.id] }));
       const res = await fetch(`/api/quizzes/${quizId}/submit`, {
         method: 'POST',
         headers: await authHeaders(),
-        body: JSON.stringify({ answers }),
+        body: JSON.stringify({ answers: buildAnswers(), choice_set_id: choiceSetId }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -183,15 +199,20 @@ export default function QuizPage() {
     setSubmitting(false);
   };
 
-  const retryWrong = () => {
-    // 不正解の設問だけ選択をクリアして再挑戦
+  const retryWrong = async () => {
+    setJustPassed(false);
+    if (generated) {
+      // 回答文生成：新しい回答文で出し直す（正解済みの設問は出題されない）
+      await load();
+      return;
+    }
+    // 固定選択肢：不正解の設問だけ選択をクリアして再挑戦
     const next = { ...selections };
     Object.values(results).forEach((r) => {
       if (!r.is_correct) delete next[r.question_id];
     });
     setSelections(next);
     setResults({});
-    setJustPassed(false);
   };
 
   const questionReview = (questionId: number): QuestionReview | null =>
@@ -231,6 +252,46 @@ export default function QuizPage() {
     );
   };
 
+  // 選択肢（固定 or 生成された回答文）を描画
+  const renderChoices = (q: StudentQuestion, editable: boolean, result?: GradeResult) => {
+    const items: { key: number; text: string }[] = q.options ?? q.choices.map((c, i) => ({ key: i, text: c }));
+    const essayLike = !!q.options;
+    return (
+      <div className={essayLike ? 'space-y-3' : 'space-y-2'}>
+        {items.map((opt) => {
+          const selected = selections[q.id] === opt.key;
+          const isCorrectShown = result && !result.is_correct && result.correct_index === opt.key;
+          return (
+            <label
+              key={opt.key}
+              className={`flex items-start gap-3 rounded border ${essayLike ? 'p-3' : 'p-2 items-center'} ${
+                editable ? 'cursor-pointer' : 'cursor-default'
+              } ${selected ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'} ${
+                isCorrectShown ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : ''
+              }`}
+            >
+              <input
+                type="radio"
+                className={essayLike ? 'mt-1.5' : ''}
+                name={`q-${q.id}`}
+                checked={selected}
+                disabled={!editable}
+                onChange={() => setSelections({ ...selections, [q.id]: opt.key })}
+              />
+              <span
+                className={`text-gray-800 dark:text-gray-200 ${essayLike ? 'text-[15px] leading-7' : 'text-sm'}`}
+                style={essayLike ? { fontFamily: '"Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif' } : undefined}
+              >
+                {opt.text}
+              </span>
+              {isCorrectShown && <span className="text-xs text-green-600 ml-auto whitespace-nowrap">正しい回答</span>}
+            </label>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <AuthGuard>
       <MainLayout>
@@ -241,7 +302,10 @@ export default function QuizPage() {
           </div>
 
           {loading ? (
-            <div className="py-16 flex justify-center"><LoadingSpinner size="lg" /></div>
+            <div className="py-16 flex flex-col items-center gap-3">
+              <LoadingSpinner size="lg" />
+              <p className="text-sm text-gray-500">問題を準備しています…</p>
+            </div>
           ) : lockedMsg ? (
             <div className="p-6 rounded-lg border border-yellow-300 bg-yellow-50 text-yellow-800">
               {lockedMsg}
@@ -264,43 +328,37 @@ export default function QuizPage() {
               </div>
               <p className="text-sm text-gray-500 mb-6">
                 {reviewMode
-                  ? `全${questions.length}問。回答を提出すると指導者が添削します。添削結果は課題ページで確認できます。`
+                  ? `全${questions.length}問。回答を選んで提出すると、講師が添削します。添削結果は課題ページで確認できます。`
                   : `全${questions.length}問。すべて正解すると次のステップが解放されます。`}
+                {generated && ' 回答の文章は受験のたびに変わるので、内容をよく読んで選んでください。'}
               </p>
 
               {/* 提出直後 */}
               {reviewMode && justSubmitted && (
                 <div className="mb-6 p-4 rounded-lg border border-blue-300 bg-blue-50 text-blue-800">
-                  回答を提出しました。指導者の添削をお待ちください。結果は課題ページに表示されます。
+                  回答を提出しました。講師の添削をお待ちください。結果は課題ページに表示されます。
                   <div className="mt-3">
                     <Link href="/homework"><Button size="sm">課題ページへ</Button></Link>
                   </div>
                 </div>
               )}
 
-              {/* 添削結果 */}
+              {/* 添削結果（全体） */}
               {reviewMode && review && (
                 <div className={`mb-6 p-4 rounded-lg border text-sm ${
                   review.result === 'passed' ? 'border-green-300 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800'
                 }`}>
                   <div className="font-medium mb-1">
                     添削結果: {review.result === 'passed' ? '合格' : '要再提出'}
-                    {review.reviewer_name && <span className="ml-2 text-xs">（添削者: {review.reviewer_name}）</span>}
                     <span className="ml-2 text-xs text-gray-500">{new Date(review.reviewed_at).toLocaleString('ja-JP')}</span>
                   </div>
                   {review.comment && (
-                    <div className="mt-1">
-                      <div className="text-xs font-semibold text-gray-500">添削</div>
-                      <div className="whitespace-pre-wrap text-gray-700">{review.comment}</div>
-                    </div>
+                    <div className="mt-1 whitespace-pre-wrap text-gray-700">{review.comment}</div>
                   )}
-                  {review.explanation && (
-                    <div className="mt-2">
-                      <div className="text-xs font-semibold text-gray-500">解説</div>
-                      <div className="whitespace-pre-wrap text-gray-700">{review.explanation}</div>
-                    </div>
+                  {review.reviewer_name && (
+                    <div className="mt-2 text-right text-red-600 font-bold">講師　{review.reviewer_name}</div>
                   )}
-                  <div className="mt-3">
+                  <div className="mt-2">
                     <Link href="/homework" className="text-blue-600 hover:underline text-xs">課題ページで詳しく見る →</Link>
                   </div>
                 </div>
@@ -309,41 +367,42 @@ export default function QuizPage() {
               <div className="space-y-6">
                 {questions.map((q, qi) => {
                   const result = results[q.id];
-                  const myCorrect = !reviewMode && passed && q.my_answer?.is_correct;
                   const qr = questionReview(q.id);
-                  const editable = reviewMode ? canSubmit : !(passed && !result);
+                  const solvedLocked = generated && !reviewMode && q.solved;
+                  const editable = reviewMode ? canSubmit : !(passed && !result) && !result;
+                  // 回答文生成で、提出済み（添削待ち・添削済み）なら選んだ文章だけを見せる
+                  const showSubmittedText = generated && reviewMode && !canSubmit;
                   return (
                     <div key={q.id} className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
                       <div className="font-medium text-gray-900 dark:text-gray-100 mb-3">
                         問{qi + 1}. {q.question_text}
                       </div>
-                      <div className="space-y-2">
-                        {q.choices.map((c, ci) => {
-                          const selected = selections[q.id] === ci;
-                          const isResolvedWrong = result && !result.is_correct && result.correct_index === ci;
-                          return (
-                            <label
-                              key={ci}
-                              className={`flex items-center gap-2 p-2 rounded border ${editable ? 'cursor-pointer' : 'cursor-default'} ${
-                                selected ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'
-                              } ${isResolvedWrong ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : ''}`}
-                            >
-                              <input
-                                type="radio"
-                                name={`q-${q.id}`}
-                                checked={selected}
-                                disabled={!editable}
-                                onChange={() => setSelections({ ...selections, [q.id]: ci })}
-                              />
-                              <span className="text-sm text-gray-800 dark:text-gray-200">{c}</span>
-                              {isResolvedWrong && <span className="text-xs text-green-600 ml-auto">正答</span>}
-                            </label>
-                          );
-                        })}
-                      </div>
 
-                      {/* 指導者による設問ごとの添削 */}
-                      {reviewMode && qr && (
+                      {solvedLocked ? (
+                        <div>
+                          <div className="text-sm text-green-700 flex items-center gap-1 mb-2">
+                            <CheckCircleIcon className="w-5 h-5" /> 正解済み
+                          </div>
+                          {q.my_answer?.answer_text && (
+                            <div className="text-sm text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 rounded p-3 border border-gray-100 dark:border-gray-700">
+                              {q.my_answer.answer_text}
+                            </div>
+                          )}
+                        </div>
+                      ) : showSubmittedText ? (
+                        qr?.markup && qr.markup.length > 0 ? (
+                          <RedPenView segments={qr.markup} reviewerName={review?.reviewer_name} reviewedAt={review?.reviewed_at} showSignature={false} />
+                        ) : (
+                          <div className="text-[15px] leading-7 text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 rounded p-3 border border-gray-100 dark:border-gray-700">
+                            {q.my_answer?.answer_text || '（未回答）'}
+                          </div>
+                        )
+                      ) : (
+                        renderChoices(q, editable, result)
+                      )}
+
+                      {/* 講師による設問ごとの正誤・コメント */}
+                      {reviewMode && qr && (qr.is_correct !== null || qr.comment) && (
                         <div className="mt-3 text-sm">
                           {qr.is_correct !== null && (
                             <div className={`flex items-center gap-1 font-medium ${qr.is_correct ? 'text-green-700' : 'text-red-700'}`}>
@@ -375,7 +434,7 @@ export default function QuizPage() {
                         </div>
                       )}
 
-                      {myCorrect && !result && (
+                      {!generated && !reviewMode && passed && q.my_answer?.is_correct && !result && (
                         <div className="mt-3 text-sm text-green-700 flex items-center gap-1">
                           <CheckCircleIcon className="w-5 h-5" /> 正解（{q.my_answer && new Date(q.my_answer.answered_at).toLocaleString('ja-JP')}）
                         </div>
@@ -407,12 +466,12 @@ export default function QuizPage() {
                     </div>
                   )}
                   {submissionStatus === 'under_review' && !justSubmitted && (
-                    <p className="mt-6 text-sm text-gray-500">指導者が添削中です。結果が出るまでお待ちください。</p>
+                    <p className="mt-6 text-sm text-gray-500">講師が添削中です。結果が出るまでお待ちください。</p>
                   )}
                 </>
               ) : (
                 <>
-                  {!passed && (
+                  {!passed && Object.keys(results).length === 0 && (
                     <div className="mt-6 flex justify-end">
                       <Button onClick={submit} loading={submitting} disabled={!allAnswered}>
                         採点する
@@ -420,8 +479,10 @@ export default function QuizPage() {
                     </div>
                   )}
                   {!passed && Object.keys(results).length > 0 && Object.values(results).some((r) => !r.is_correct) && (
-                    <div className="mt-3 flex justify-end">
-                      <Button variant="outline" size="sm" onClick={retryWrong}>不正解の問題をやり直す</Button>
+                    <div className="mt-6 flex justify-end">
+                      <Button variant="outline" size="sm" onClick={retryWrong}>
+                        {generated ? '不正解の問題にもう一度挑戦する' : '不正解の問題をやり直す'}
+                      </Button>
                     </div>
                   )}
                 </>

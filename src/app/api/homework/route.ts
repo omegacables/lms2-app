@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
 
       const { data: cqAttempts } = await admin
         .from('quiz_attempts')
-        .select('question_id, selected_index, is_correct, answered_at')
+        .select('question_id, selected_index, answer_text, is_correct, answered_at')
         .eq('quiz_id', cq.id)
         .eq('user_id', user.id)
         .order('answered_at', { ascending: false });
@@ -85,7 +85,9 @@ export async function GET(request: NextRequest) {
             question_text: q.question_text,
             choices,
             selected_index: a?.selected_index ?? null,
-            selected_text: a && a.selected_index !== null && a.selected_index !== undefined ? choices[a.selected_index] ?? '' : '',
+            selected_text:
+              a?.answer_text ||
+              (a && a.selected_index !== null && a.selected_index !== undefined ? choices[a.selected_index] ?? '' : ''),
             is_correct: a?.is_correct ?? null,
             explanation: q.explanation || '',
             answered_at: a?.answered_at ?? null,
@@ -97,7 +99,7 @@ export async function GET(request: NextRequest) {
     // --- 提出制テスト（記述式／選択式 grading_mode='review'）---
     const { data: reviewQuizzes } = await admin
       .from('quizzes')
-      .select('id, title, quiz_type, grading_mode, status')
+      .select('id, title, quiz_type, grading_mode, answer_style, status')
       .eq('course_id', course.id)
       .eq('status', 'published')
       .or('quiz_type.eq.essay,grading_mode.eq.review')
@@ -146,13 +148,14 @@ export async function GET(request: NextRequest) {
         reviewerName = rp?.display_name || rp?.email || null;
       }
       // 設問ごとの添削（正誤・コメント）
-      const questionReviewMap = new Map<number, { is_correct: boolean | null; comment: string | null }>();
+      const questionReviewMap = new Map<number, { is_correct: boolean | null; comment: string | null; markup: any[] | null }>();
       if (latestReview && Array.isArray(latestReview.question_reviews)) {
         (latestReview.question_reviews as any[]).forEach((r) => {
           if (r && r.question_id !== undefined) {
             questionReviewMap.set(Number(r.question_id), {
               is_correct: typeof r.is_correct === 'boolean' ? r.is_correct : null,
               comment: r.comment ?? null,
+              markup: Array.isArray(r.markup) ? r.markup : null,
             });
           }
         });
@@ -174,6 +177,7 @@ export async function GET(request: NextRequest) {
         title: quiz.title,
         quiz_type: quiz.quiz_type,
         grading_mode: quiz.grading_mode,
+        answer_style: quiz.answer_style,
         status,
         lock_reason: gate.quizUnlocked[quiz.id]?.reason || null,
         questions: (questions || []).map((q) => {
@@ -186,14 +190,18 @@ export async function GET(request: NextRequest) {
             question_text: q.question_text,
             my_answer: a?.answer_text ?? '',
             answered_at: a?.answered_at ?? null,
-            // 選択式（提出→添削）用
-            choices: isChoice ? choices : [],
+            // 選択式（提出→添削）用。回答文生成では回答パターンそのものは見せない（選んだ文章だけを表示）
+            choices: isChoice && quiz.answer_style !== 'generated' ? choices : [],
             selected_index: selectedIndex,
-            selected_text:
-              isChoice && selectedIndex !== null && selectedIndex !== undefined ? choices[selectedIndex] ?? '' : '',
-            // 指導者が付けた正誤・個別コメント
+            // 選んだ回答文（回答文生成なら生成された文章）
+            selected_text: isChoice
+              ? a?.answer_text ||
+                (selectedIndex !== null && selectedIndex !== undefined ? choices[selectedIndex] ?? '' : '')
+              : '',
+            // 指導者が付けた正誤・個別コメント・赤ペン
             review_is_correct: qr?.is_correct ?? null,
             review_comment: qr?.comment ?? null,
+            review_markup: qr?.markup ?? null,
           };
         }),
         review: latestReview

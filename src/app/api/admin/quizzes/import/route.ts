@@ -5,16 +5,24 @@ import { parseCSV } from '@/lib/utils/csv';
 
 export const runtime = 'nodejs';
 
-// CSV列: コースID, 配置動画ID, テスト名, 設問, 選択肢1, 選択肢2, 選択肢3, 選択肢4, 正答番号, 解説, 採点方式
+// CSV列: コースID, 配置動画ID, テスト名, 設問, 選択肢1, 選択肢2, 選択肢3, 選択肢4, 正答番号, 解説, 採点方式, 回答形式
 // 1行 = 1設問。(コースID, 配置動画ID, テスト名) が同じ行が1つのクイズにまとまる。
 // 正答番号は 1始まり（CSV）→ 0始まり（DB）に変換。配置動画IDが空ならコース末。
 // 採点方式（任意・11列目）: 空欄/「即時採点」= その場で採点する小テスト、
 //   「提出添削」「添削」「review」= 提出後に指導者が添削する最終テスト。テスト単位で1つ目の行の値を使う。
+// 回答形式（任意・12列目）: 空欄/「固定」= 選択肢をそのまま表示、
+//   「生成」「回答文生成」「generated」= 選択肢を回答パターンとして扱い、受験ごとに回答文を生成して提示。
 //
 // 冪等性: 同じ (course_id, after_video_id, title) の下書きクイズが既にあれば、
 //   回答記録が無い場合に限り設問を差し替える。回答記録があるクイズはスキップ。
 
-const HEADER = ['コースID', '配置動画ID', 'テスト名', '設問', '選択肢1', '選択肢2', '選択肢3', '選択肢4', '正答番号', '解説', '採点方式'];
+const HEADER = ['コースID', '配置動画ID', 'テスト名', '設問', '選択肢1', '選択肢2', '選択肢3', '選択肢4', '正答番号', '解説', '採点方式', '回答形式'];
+
+function parseAnswerStyle(raw: string): 'plain' | 'generated' {
+  const v = raw.trim().toLowerCase().replace(/\s/g, '');
+  if (['生成', '回答文生成', '文章生成', 'generated'].includes(v)) return 'generated';
+  return 'plain';
+}
 
 // 採点方式セルの表記ゆれを吸収する
 function parseGradingMode(raw: string): 'auto' | 'review' {
@@ -56,7 +64,7 @@ export async function POST(request: NextRequest) {
   }
 
   // 行をクイズ単位にグループ化
-  const groups = new Map<string, { course_id: number; after_video_id: number | null; title: string; grading_mode: 'auto' | 'review'; questions: ParsedQuestion[] }>();
+  const groups = new Map<string, { course_id: number; after_video_id: number | null; title: string; grading_mode: 'auto' | 'review'; answer_style: 'plain' | 'generated'; questions: ParsedQuestion[] }>();
   const errors: string[] = [];
 
   for (let i = 1; i < rows.length; i++) {
@@ -71,6 +79,7 @@ export async function POST(request: NextRequest) {
     const correctRaw = (r[8] || '').trim();
     const explanation = (r[9] || '').trim() || null;
     const gradingMode = parseGradingMode(r[10] || '');
+    const answerStyle = parseAnswerStyle(r[11] || '');
 
     if (!courseId || !title || !questionText) {
       errors.push(`${lineNo}行目: コースID・テスト名・設問は必須です`);
@@ -92,7 +101,7 @@ export async function POST(request: NextRequest) {
 
     const key = `${courseId}|${afterVideoId ?? 'end'}|${title}`;
     if (!groups.has(key)) {
-      groups.set(key, { course_id: courseId, after_video_id: afterVideoId, title, grading_mode: gradingMode, questions: [] });
+      groups.set(key, { course_id: courseId, after_video_id: afterVideoId, title, grading_mode: gradingMode, answer_style: answerStyle, questions: [] });
     }
     groups.get(key)!.questions.push({
       question_text: questionText,
@@ -174,7 +183,7 @@ export async function POST(request: NextRequest) {
       }
       // 設問差し替え（採点方式もCSVの指定に合わせる）
       await admin.from('quiz_questions').delete().eq('quiz_id', quizId);
-      await admin.from('quizzes').update({ grading_mode: g.grading_mode }).eq('id', quizId);
+      await admin.from('quizzes').update({ grading_mode: g.grading_mode, answer_style: g.answer_style }).eq('id', quizId);
       s.action = 'replaced';
     } else {
       const { data: newQuiz, error: quizErr } = await admin
@@ -185,6 +194,7 @@ export async function POST(request: NextRequest) {
           title: g.title,
           quiz_type: 'choice',
           grading_mode: g.grading_mode,
+          answer_style: g.answer_style,
           status: 'draft',
           created_by: auth.user.id,
         })

@@ -5,10 +5,13 @@
 //  * quiz_attempts は追記のみ。再提出は attempt_no を増やして新規行を追加する。
 //  * 選択式でもここでは採点しない（is_correct は NULL のまま）。正誤は指導者が添削で付ける。
 //  * 提出後は添削が返るまで再提出不可。'needs_revision' が返ったときのみ再提出できる。
+//  * 回答文生成（answer_style='generated'）では selected_index は表示位置。提示セットでパターンに変換し、
+//    選んだ回答文を answer_text に保存する。
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { computeGateState } from '@/lib/quiz/gating';
 import { notifyUsers, getStaffUserIds } from '@/lib/notify';
+import { claimChoiceSet, releaseChoiceSet } from '@/lib/quiz/choiceSets';
 
 export interface SubmitAnswerInput {
   question_id: number;
@@ -25,11 +28,12 @@ export async function submitForReview(
   admin: SupabaseClient,
   userId: string,
   quizId: number,
-  answers: SubmitAnswerInput[]
+  answers: SubmitAnswerInput[],
+  choiceSetId?: string | null
 ): Promise<SubmitOutcome> {
   const { data: quiz } = await admin
     .from('quizzes')
-    .select('id, course_id, title, quiz_type, grading_mode, status')
+    .select('id, course_id, title, quiz_type, grading_mode, answer_style, status')
     .eq('id', quizId)
     .single();
 
@@ -98,7 +102,35 @@ export async function submitForReview(
   const now = new Date().toISOString();
   const rows: Record<string, unknown>[] = [];
 
-  for (const ans of answers) {
+  const generated = quiz.quiz_type === 'choice' && quiz.answer_style === 'generated';
+  let claimedSetId: string | null = null;
+
+  if (generated) {
+    const valid = answers
+      .filter((a) => questionMap.has(Number(a.question_id)))
+      .map((a) => ({ question_id: Number(a.question_id), selected_index: Number(a.selected_index) }));
+    if (valid.length === 0) {
+      return { status: 400, body: { error: '有効な回答がありません' } };
+    }
+    const claim = await claimChoiceSet(admin, userId, quizId, String(choiceSetId || ''), valid);
+    if (!claim.ok) return { status: claim.status, body: { error: claim.error } };
+    claimedSetId = String(choiceSetId);
+    for (const sel of claim.selections) {
+      rows.push({
+        user_id: userId,
+        quiz_id: quizId,
+        question_id: sel.question_id,
+        selected_index: sel.pattern_index,
+        answer_text: sel.text, // 選んだ回答文そのもの
+        is_correct: null, // 正誤は指導者の添削で確定する
+        attempt_no: nextAttempt,
+        choice_set_id: claimedSetId,
+        answered_at: now,
+      });
+    }
+  }
+
+  for (const ans of generated ? [] : answers) {
     const q = questionMap.get(Number(ans.question_id));
     if (!q) continue;
 
@@ -140,6 +172,7 @@ export async function submitForReview(
 
   const { error: insErr } = await admin.from('quiz_attempts').insert(rows);
   if (insErr) {
+    if (claimedSetId) await releaseChoiceSet(admin, claimedSetId);
     return { status: 500, body: { error: '提出に失敗しました', details: insErr.message } };
   }
 

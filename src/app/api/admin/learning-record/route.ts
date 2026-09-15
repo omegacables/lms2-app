@@ -134,8 +134,10 @@ export async function GET(request: NextRequest) {
             attempts: qAttempts.map((a) => ({
               attempt_no: a.attempt_no,
               selected_index: a.selected_index,
+              // 回答文生成の場合は選んだ文章（answer_text）、固定選択肢は選択肢の文言
               selected_text:
-                a.selected_index !== null && a.selected_index !== undefined ? choices[a.selected_index] ?? '' : '',
+                a.answer_text ||
+                (a.selected_index !== null && a.selected_index !== undefined ? choices[a.selected_index] ?? '' : ''),
               is_correct: a.is_correct,
               answered_at: a.answered_at,
             })),
@@ -161,13 +163,14 @@ export async function GET(request: NextRequest) {
       }
       // 最新添削の設問ごとの正誤・コメント
       const latestReview = reviews && reviews.length > 0 ? reviews[reviews.length - 1] : null;
-      const questionReviewMap = new Map<number, { is_correct: boolean | null; comment: string | null }>();
+      const questionReviewMap = new Map<number, { is_correct: boolean | null; comment: string | null; markup: any[] | null }>();
       if (latestReview && Array.isArray(latestReview.question_reviews)) {
         (latestReview.question_reviews as any[]).forEach((r) => {
           if (r && r.question_id !== undefined) {
             questionReviewMap.set(Number(r.question_id), {
               is_correct: typeof r.is_correct === 'boolean' ? r.is_correct : null,
               comment: r.comment ?? null,
+              markup: Array.isArray(r.markup) ? r.markup : null,
             });
           }
         });
@@ -184,18 +187,20 @@ export async function GET(request: NextRequest) {
             question_text: q.question_text,
             answers: qAttempts.map((a) => ({
               attempt_no: a.attempt_no,
-              // 選択式は「選んだ選択肢」を回答として記録する
+              // 選択式は「選んだ回答文」を記録する（回答文生成なら生成された文章、固定選択肢なら番号と文言）
               answer_text:
                 quiz.quiz_type === 'choice'
-                  ? a.selected_index !== null && a.selected_index !== undefined
-                    ? `${a.selected_index + 1}. ${choices[a.selected_index] ?? ''}`
-                    : '（未回答）'
+                  ? a.answer_text ||
+                    (a.selected_index !== null && a.selected_index !== undefined
+                      ? `${a.selected_index + 1}. ${choices[a.selected_index] ?? ''}`
+                      : '（未回答）')
                   : a.answer_text,
               answered_at: a.answered_at,
             })),
             review_mark: mark,
           };
         }),
+        signer_name: latestReview?.reviewer_id ? reviewerMap.get(latestReview.reviewer_id) || '' : '',
         reviews: (reviews || []).map((r) => ({
           result: r.result,
           comment: r.review_comment,

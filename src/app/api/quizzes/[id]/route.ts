@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth/getUser';
 import { createAdminSupabaseClient } from '@/lib/database/supabase';
 import { computeGateState } from '@/lib/quiz/gating';
+import { getOrCreateChoiceSet, toStudentOptions } from '@/lib/quiz/choiceSets';
 
 export const runtime = 'nodejs';
 
@@ -10,7 +11,11 @@ export const runtime = 'nodejs';
 // ゲート未解放のクイズは 403。
 //
 // grading_mode='review'（提出→添削）の場合は、提出状態（submission_status）と
-// 返却済みの添削（設問ごとの正誤・コメントを含む）も返す。
+// 返却済みの添削（設問ごとの正誤・コメント・赤ペン）も返す。
+//
+// answer_style='generated'（回答文生成）の場合は、固定の choices の代わりに
+// 受験ごとに生成した回答文 options と、その提示セットの choice_set_id を返す。
+// options にはパターン番号を含めない（どれが正答か分からないようにする）。
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -24,7 +29,7 @@ export async function GET(
 
   const { data: quiz } = await admin
     .from('quizzes')
-    .select('id, course_id, title, quiz_type, grading_mode, status, after_video_id')
+    .select('id, course_id, title, quiz_type, grading_mode, answer_style, status, after_video_id')
     .eq('id', quizId)
     .single();
   if (!quiz || quiz.status !== 'published') {
@@ -41,13 +46,14 @@ export async function GET(
     );
   }
 
-  // 設問（安全なフィールドのみ）
+  // 設問（explanation は回答文生成にだけ使い、受講者には返さない）
   const { data: questions } = await admin
     .from('quiz_questions')
-    .select('id, question_text, choices, sort_order')
+    .select('id, question_text, choices, explanation, sort_order')
     .eq('quiz_id', quizId)
     .order('sort_order', { ascending: true })
     .order('id', { ascending: true });
+  const questionList = questions || [];
 
   // 自分の回答履歴（設問ごとに最新の attempt）
   const { data: attempts } = await admin
@@ -58,8 +64,10 @@ export async function GET(
     .order('answered_at', { ascending: false });
 
   const latestByQuestion = new Map<number, any>();
+  const solvedQuestionIds = new Set<number>();
   (attempts || []).forEach((a) => {
     if (!latestByQuestion.has(a.question_id)) latestByQuestion.set(a.question_id, a);
+    if (a.is_correct === true) solvedQuestionIds.add(a.question_id);
   });
 
   // 提出制（添削）テストの提出状態と最新の添削
@@ -103,6 +111,39 @@ export async function GET(
     }
   }
 
+  const canSubmit = reviewMode && (submissionStatus === 'not_submitted' || submissionStatus === 'needs_revision');
+
+  // 回答文生成：これから回答が必要な設問にだけ回答文を用意する
+  //   提出制 … 提出できる状態のときは全設問
+  //   即時採点 … まだ正解していない設問
+  const generated = quiz.quiz_type === 'choice' && quiz.answer_style === 'generated';
+  let choiceSetId: string | null = null;
+  let choiceOptions: Record<string, { pattern_index: number; text: string }[]> = {};
+
+  if (generated) {
+    const needing = questionList.filter((q) => (reviewMode ? canSubmit : !solvedQuestionIds.has(q.id)));
+    if (needing.length > 0) {
+      try {
+        const set = await getOrCreateChoiceSet(
+          admin,
+          user.id,
+          quizId,
+          needing.map((q) => ({
+            id: q.id,
+            question_text: q.question_text,
+            choices: Array.isArray(q.choices) ? (q.choices as string[]) : [],
+            explanation: q.explanation,
+          }))
+        );
+        choiceSetId = set.id;
+        choiceOptions = set.options;
+      } catch (e) {
+        console.error('[quizzes GET] 回答文の準備に失敗:', e);
+        return NextResponse.json({ error: '問題の準備に失敗しました。時間をおいて再読み込みしてください' }, { status: 500 });
+      }
+    }
+  }
+
   return NextResponse.json({
     quiz: {
       id: quiz.id,
@@ -110,29 +151,39 @@ export async function GET(
       title: quiz.title,
       quiz_type: quiz.quiz_type,
       grading_mode: quiz.grading_mode,
+      answer_style: generated ? 'generated' : 'plain',
       after_video_id: quiz.after_video_id,
     },
-    questions: (questions || []).map((q) => ({
-      id: q.id,
-      question_text: q.question_text,
-      choices: Array.isArray(q.choices) ? q.choices : [],
-      sort_order: q.sort_order,
-      my_answer: latestByQuestion.get(q.id)
-        ? {
-            selected_index: latestByQuestion.get(q.id).selected_index,
-            answer_text: latestByQuestion.get(q.id).answer_text,
-            is_correct: latestByQuestion.get(q.id).is_correct,
-            attempt_no: latestByQuestion.get(q.id).attempt_no,
-            answered_at: latestByQuestion.get(q.id).answered_at,
-          }
-        : null,
-    })),
+    choice_set_id: choiceSetId,
+    questions: questionList.map((q) => {
+      const latest = latestByQuestion.get(q.id);
+      return {
+        id: q.id,
+        question_text: q.question_text,
+        // 固定表示の選択肢（回答文生成のときは空）
+        choices: generated ? [] : Array.isArray(q.choices) ? q.choices : [],
+        // 回答文生成のときの選択肢（表示順。key は表示位置）
+        options: generated && choiceOptions[String(q.id)] ? toStudentOptions(choiceOptions, q.id) : null,
+        sort_order: q.sort_order,
+        solved: solvedQuestionIds.has(q.id),
+        my_answer: latest
+          ? {
+              // 回答文生成ではパターン番号に意味がないので返さない（選んだ文章は answer_text）
+              selected_index: generated ? null : latest.selected_index,
+              answer_text: latest.answer_text,
+              is_correct: latest.is_correct,
+              attempt_no: latest.attempt_no,
+              answered_at: latest.answered_at,
+            }
+          : null,
+      };
+    }),
     passed: !!state.quizPassed[quizId],
     // 提出制テストのみ意味を持つ
     review_mode: reviewMode,
     submission_status: submissionStatus,
     // 未提出 or 要再提出のときだけ回答を編集・提出できる
-    can_submit: reviewMode && (submissionStatus === 'not_submitted' || submissionStatus === 'needs_revision'),
+    can_submit: canSubmit,
     review,
   });
 }

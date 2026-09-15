@@ -1,11 +1,14 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { RedPenView } from '@/components/quiz/RedPenView';
 import { supabase } from '@/lib/database/supabase';
+import { useAuth } from '@/stores/auth';
+import { revertSegment, type RedPenSegment } from '@/lib/quiz/redpen';
 import { CheckCircleIcon, ClockIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
 interface SubQuestion {
@@ -24,6 +27,7 @@ interface QuestionReview {
   question_id: number;
   is_correct: boolean | null;
   comment: string | null;
+  markup?: RedPenSegment[] | null;
 }
 interface Submission {
   quiz_id: number;
@@ -35,6 +39,7 @@ interface Submission {
   quiz_title: string;
   quiz_type: 'choice' | 'essay';
   grading_mode: 'auto' | 'review';
+  answer_style: 'plain' | 'generated';
   submitted_at: string;
   status: 'pending' | 'passed' | 'needs_revision';
   questions: SubQuestion[];
@@ -50,6 +55,7 @@ interface Submission {
 interface Mark {
   is_correct: boolean | null;
   comment: string;
+  markup: RedPenSegment[] | null;
 }
 
 async function authHeaders(): Promise<HeadersInit> {
@@ -66,7 +72,13 @@ const statusMeta: Record<string, { label: string; cls: string; icon: React.React
   needs_revision: { label: '要再提出', cls: 'bg-red-100 text-red-700', icon: <ExclamationTriangleIcon className="w-4 h-4" /> },
 };
 
+/** 添削対象の文章（選択式は選んだ回答文、記述式は記述） */
+const targetText = (s: Submission, q: SubQuestion) => (s.quiz_type === 'choice' ? q.selected_text : q.answer_text);
+
 export default function AdminEssayReviewsPage() {
+  const { user } = useAuth();
+  const myName = user?.profile?.display_name || user?.email || '';
+
   const [filter, setFilter] = useState<'pending' | 'all'>('pending');
   const [loading, setLoading] = useState(true);
   const [subs, setSubs] = useState<Submission[]>([]);
@@ -77,6 +89,9 @@ export default function AdminEssayReviewsPage() {
   const [saving, setSaving] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiUsed, setAiUsed] = useState(false);
+  const [aiResult, setAiResult] = useState<'passed' | 'needs_revision' | null>(null);
+  // 下書き生成中に別の提出を開いた場合、古い結果で上書きしないための現在の行
+  const openKeyRef = useRef<string | null>(null);
 
   const load = useCallback(async (f: 'pending' | 'all') => {
     setLoading(true);
@@ -95,38 +110,8 @@ export default function AdminEssayReviewsPage() {
 
   const keyOf = (s: Submission) => `${s.quiz_id}-${s.user_id}`;
 
-  const openRow = (s: Submission) => {
-    const k = keyOf(s);
-    if (expanded === k) { setExpanded(null); return; }
-    setExpanded(k);
-    const keepPrevious = s.status !== 'pending';
-    setComment(keepPrevious ? s.latest_review?.review_comment || '' : '');
-    setExplanation(keepPrevious ? s.latest_review?.explanation || '' : '');
-    setAiUsed(false);
-
-    // 設問ごとの正誤・コメントの初期値
-    //  添削待ち（＝新しい提出）のときは、前回の添削を引きずらず登録正答との照合結果を初期値にする。
-    //  添削済みを開き直したときは、返却した内容をそのまま表示する。
-    const usePrev = s.status !== 'pending';
-    const prev = new Map<number, QuestionReview>(
-      (s.latest_review?.question_reviews || []).map((r) => [r.question_id, r])
-    );
-    const init: Record<number, Mark> = {};
-    s.questions.forEach((q) => {
-      const p = usePrev ? prev.get(q.id) : undefined;
-      init[q.id] = {
-        is_correct: p ? p.is_correct : q.auto_is_correct,
-        comment: p?.comment || '',
-      };
-    });
-    setMarks(init);
-  };
-
-  const setMark = (questionId: number, patch: Partial<Mark>) => {
-    setMarks((m) => ({ ...m, [questionId]: { ...(m[questionId] || { is_correct: null, comment: '' }), ...patch } }));
-  };
-
   const generateAiDraft = async (s: Submission) => {
+    const requestKey = keyOf(s);
     setAiLoading(true);
     try {
       const res = await fetch('/api/admin/essay-reviews/ai-draft', {
@@ -135,9 +120,27 @@ export default function AdminEssayReviewsPage() {
         body: JSON.stringify({ quiz_id: s.quiz_id, user_id: s.user_id }),
       });
       const json = await res.json();
+      if (openKeyRef.current !== requestKey) return; // すでに別の提出を開いている
       if (res.ok) {
         setComment(json.comment || '');
         setExplanation(json.explanation || '');
+        setAiResult(json.result === 'passed' ? 'passed' : json.result === 'needs_revision' ? 'needs_revision' : null);
+        const byQ = new Map<number, QuestionReview>(
+          (json.question_reviews || []).map((r: QuestionReview) => [r.question_id, r])
+        );
+        setMarks((prev) => {
+          const next: Record<number, Mark> = { ...prev };
+          s.questions.forEach((q) => {
+            const r = byQ.get(q.id);
+            if (!r) return;
+            next[q.id] = {
+              is_correct: r.is_correct ?? prev[q.id]?.is_correct ?? null,
+              comment: r.comment || '',
+              markup: r.markup && r.markup.length > 0 ? r.markup : null,
+            };
+          });
+          return next;
+        });
         setAiUsed(true);
       } else {
         alert(json.error || 'AI下書きの生成に失敗しました');
@@ -146,6 +149,57 @@ export default function AdminEssayReviewsPage() {
       alert('AI下書きの生成に失敗しました');
     }
     setAiLoading(false);
+  };
+
+  const openRow = (s: Submission) => {
+    const k = keyOf(s);
+    if (expanded === k) { setExpanded(null); openKeyRef.current = null; return; }
+    setExpanded(k);
+    openKeyRef.current = k;
+    setAiUsed(false);
+    setAiResult(null);
+
+    // 添削待ち（＝新しい提出）は前回の添削を引き継がない。添削済みを開き直したときは返却内容を表示する
+    const keepPrevious = s.status !== 'pending';
+    setComment(keepPrevious ? s.latest_review?.review_comment || '' : '');
+    setExplanation(keepPrevious ? s.latest_review?.explanation || '' : '');
+
+    const prev = new Map<number, QuestionReview>(
+      (s.latest_review?.question_reviews || []).map((r) => [r.question_id, r])
+    );
+    const init: Record<number, Mark> = {};
+    s.questions.forEach((q) => {
+      const p = keepPrevious ? prev.get(q.id) : undefined;
+      init[q.id] = {
+        is_correct: p ? p.is_correct : q.auto_is_correct,
+        comment: p?.comment || '',
+        markup: p?.markup && p.markup.length > 0 ? p.markup : null,
+      };
+    });
+    setMarks(init);
+
+    // 添削待ちは開いた時点で赤ペンの下書きを作る（最終確定は講師が返却ボタンで行う）
+    if (s.status === 'pending') generateAiDraft(s);
+  };
+
+  const setMark = (questionId: number, patch: Partial<Mark>) => {
+    setMarks((m) => ({
+      ...m,
+      [questionId]: { ...(m[questionId] || { is_correct: null, comment: '', markup: null }), ...patch },
+    }));
+  };
+
+  const editNote = (questionId: number, index: number, note: string) => {
+    const current = marks[questionId]?.markup;
+    if (!current) return;
+    const next = current.map((sg, i) => (i === index ? { ...sg, note } : sg));
+    setMark(questionId, { markup: next });
+  };
+
+  const revertMark = (questionId: number, index: number) => {
+    const current = marks[questionId]?.markup;
+    if (!current) return;
+    setMark(questionId, { markup: revertSegment(current, index) });
   };
 
   const submitReview = async (s: Submission, result: 'passed' | 'needs_revision') => {
@@ -157,6 +211,7 @@ export default function AdminEssayReviewsPage() {
       question_id: q.id,
       is_correct: marks[q.id]?.is_correct ?? null,
       comment: marks[q.id]?.comment || null,
+      markup: marks[q.id]?.markup || null,
     }));
     setSaving(true);
     try {
@@ -180,6 +235,7 @@ export default function AdminEssayReviewsPage() {
         setExplanation('');
         setMarks({});
         setAiUsed(false);
+        setAiResult(null);
         load(filter);
       } else {
         alert(json.error || '添削の保存に失敗しました');
@@ -200,8 +256,8 @@ export default function AdminEssayReviewsPage() {
         <div className="max-w-4xl mx-auto px-4 py-6">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">最終テストの添削</h1>
           <p className="text-sm text-gray-500 mb-6">
-            受講者が提出した最終テスト（選択式・記述式）を確認し、設問ごとの正誤と添削コメントを付けて返却します。
-            返却すると受講者の課題ページに表示されます。
+            受講者が提出した回答を開くと、AIが赤ペン添削の下書きを作成します。内容を確認・修正し、正誤とコメントを付けて返却してください。
+            返却すると受講者の課題ページに赤ペンで表示され、最後にあなたの名前で署名されます。
           </p>
 
           <div className="border-b border-gray-200 dark:border-gray-700 mb-6 flex gap-4">
@@ -219,6 +275,7 @@ export default function AdminEssayReviewsPage() {
                 const k = keyOf(s);
                 const meta = statusMeta[s.status];
                 const isChoice = s.quiz_type === 'choice';
+                const editableDraft = s.status !== 'passed';
                 return (
                   <div key={k} className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
                     <button className="w-full flex items-center justify-between gap-3 p-4 text-left" onClick={() => openRow(s)}>
@@ -235,79 +292,91 @@ export default function AdminEssayReviewsPage() {
 
                     {expanded === k && (
                       <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700 pt-4 space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="text-xs text-gray-500">
+                            {aiLoading
+                              ? 'AIが赤ペン添削の下書きを作成しています…'
+                              : aiUsed
+                              ? `AIの下書きを表示中${aiResult ? `（合否案: ${aiResult === 'passed' ? '合格' : '要再提出'}）` : ''}。確認・修正してから返却してください。`
+                              : ''}
+                          </div>
+                          {editableDraft && (
+                            <Button variant="outline" size="sm" onClick={() => generateAiDraft(s)} loading={aiLoading}>
+                              ✨ AIで赤ペン添削を作り直す
+                            </Button>
+                          )}
+                        </div>
+
                         {s.questions.map((q, qi) => {
-                          const mark = marks[q.id] || { is_correct: null, comment: '' };
+                          const mark = marks[q.id] || { is_correct: null, comment: '', markup: null };
+                          const text = targetText(s, q);
                           return (
                             <div key={q.id} className="rounded border border-gray-100 dark:border-gray-700 p-3">
                               <div className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-2">問{qi + 1}. {q.question_text}</div>
 
-                              {isChoice ? (
-                                <div className="space-y-1 mb-2">
-                                  {q.choices.map((c, ci) => {
-                                    const selected = q.selected_index === ci;
-                                    const isCorrectChoice = q.correct_index === ci;
-                                    return (
+                              <div className="text-xs text-gray-500 mb-1">受講者の回答{isChoice ? '（選んだ回答文）' : ''}</div>
+                              {mark.markup ? (
+                                <RedPenView
+                                  segments={mark.markup}
+                                  reviewerName={myName}
+                                  reviewedAt={new Date().toISOString()}
+                                  showSignature={false}
+                                  editable={editableDraft ? {
+                                    onNoteChange: (i, note) => editNote(q.id, i, note),
+                                    onRevert: (i) => revertMark(q.id, i),
+                                  } : undefined}
+                                />
+                              ) : (
+                                <div
+                                  className="text-[15px] leading-7 text-gray-800 dark:text-gray-200 whitespace-pre-wrap bg-gray-50 dark:bg-gray-900 rounded p-3 border border-gray-100 dark:border-gray-700"
+                                  style={{ fontFamily: '"Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif' }}
+                                >
+                                  {text || '（未回答）'}
+                                </div>
+                              )}
+
+                              {isChoice && (
+                                <details className="mt-2">
+                                  <summary className="text-xs text-gray-500 cursor-pointer">回答パターンと正答（参考）</summary>
+                                  <div className="space-y-1 mt-2">
+                                    {q.choices.map((c, ci) => (
                                       <div
                                         key={ci}
-                                        className={`text-sm rounded border px-2 py-1 flex items-center gap-2 ${
-                                          selected
+                                        className={`text-xs rounded border px-2 py-1 flex items-center gap-2 ${
+                                          q.selected_index === ci
                                             ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-gray-900 dark:text-gray-100'
                                             : 'border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-400'
                                         }`}
                                       >
                                         <span>{ci + 1}. {c}</span>
-                                        {selected && <span className="text-xs text-blue-600">受講者の回答</span>}
-                                        {isCorrectChoice && <span className="text-xs text-green-600 ml-auto">正答（登録値）</span>}
+                                        {q.selected_index === ci && <span className="text-blue-600 whitespace-nowrap">受講者が選んだ内容</span>}
+                                        {q.correct_index === ci && <span className="text-green-600 ml-auto whitespace-nowrap">正答</span>}
                                       </div>
-                                    );
-                                  })}
-                                  {q.selected_index === null && <div className="text-sm text-gray-500">（未回答）</div>}
-                                  {q.explanation && (
-                                    <div className="text-xs text-gray-500 mt-1">登録済みの解説：{q.explanation}</div>
-                                  )}
-                                </div>
-                              ) : (
-                                <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap bg-gray-50 dark:bg-gray-900 rounded p-3 border border-gray-100 dark:border-gray-700 mb-2">
-                                  {q.answer_text || '（未回答）'}
-                                </div>
+                                    ))}
+                                    {q.explanation && <div className="text-xs text-gray-500 mt-1">登録済みの解説：{q.explanation}</div>}
+                                  </div>
+                                </details>
                               )}
 
                               {/* 設問ごとの正誤 */}
-                              <div className="flex flex-wrap items-center gap-2 mb-2">
+                              <div className="flex flex-wrap items-center gap-2 mt-3 mb-2">
                                 <span className="text-xs text-gray-500">正誤:</span>
-                                <button
-                                  type="button"
-                                  onClick={() => setMark(q.id, { is_correct: true })}
-                                  className={`text-xs px-3 py-1 rounded border ${
-                                    mark.is_correct === true
-                                      ? 'border-green-500 bg-green-50 text-green-700'
-                                      : 'border-gray-300 text-gray-500 dark:border-gray-600'
-                                  }`}
-                                >
-                                  ○ 正解
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setMark(q.id, { is_correct: false })}
-                                  className={`text-xs px-3 py-1 rounded border ${
-                                    mark.is_correct === false
-                                      ? 'border-red-500 bg-red-50 text-red-700'
-                                      : 'border-gray-300 text-gray-500 dark:border-gray-600'
-                                  }`}
-                                >
-                                  × 不正解
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setMark(q.id, { is_correct: null })}
-                                  className={`text-xs px-3 py-1 rounded border ${
-                                    mark.is_correct === null
-                                      ? 'border-gray-500 bg-gray-100 text-gray-700'
-                                      : 'border-gray-300 text-gray-500 dark:border-gray-600'
-                                  }`}
-                                >
-                                  — 判定なし
-                                </button>
+                                {([
+                                  { v: true, label: '○ 正解', on: 'border-green-500 bg-green-50 text-green-700' },
+                                  { v: false, label: '× 不正解', on: 'border-red-500 bg-red-50 text-red-700' },
+                                  { v: null, label: '— 判定なし', on: 'border-gray-500 bg-gray-100 text-gray-700' },
+                                ] as const).map((opt) => (
+                                  <button
+                                    key={String(opt.v)}
+                                    type="button"
+                                    onClick={() => setMark(q.id, { is_correct: opt.v })}
+                                    className={`text-xs px-3 py-1 rounded border ${
+                                      mark.is_correct === opt.v ? opt.on : 'border-gray-300 text-gray-500 dark:border-gray-600'
+                                    }`}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                ))}
                                 {isChoice && q.auto_is_correct !== null && (
                                   <span className="text-xs text-gray-400">
                                     （登録正答との照合: {q.auto_is_correct ? '一致' : '不一致'}）
@@ -315,36 +384,34 @@ export default function AdminEssayReviewsPage() {
                                 )}
                               </div>
 
-                              {/* 設問ごとの添削コメント */}
-                              <textarea
-                                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm"
-                                rows={2}
-                                value={mark.comment}
-                                onChange={(e) => setMark(q.id, { comment: e.target.value })}
-                                placeholder="この設問への添削コメント（任意）"
-                              />
+                              {s.questions.length > 1 && (
+                                <textarea
+                                  className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm"
+                                  rows={2}
+                                  value={mark.comment}
+                                  onChange={(e) => setMark(q.id, { comment: e.target.value })}
+                                  placeholder="この設問への添削コメント（任意）"
+                                />
+                              )}
                             </div>
                           );
                         })}
 
-                        <div className="flex items-center justify-between">
-                          <label className="block text-sm text-gray-600 dark:text-gray-300">全体の添削コメント・解説</label>
-                          <Button variant="outline" size="sm" onClick={() => generateAiDraft(s)} loading={aiLoading}>
-                            ✨ AIで添削案を生成（Gemini）
-                          </Button>
-                        </div>
                         <div>
-                          <label className="block text-xs text-gray-500 mb-1">添削コメント</label>
+                          <label className="block text-xs text-gray-500 mb-1">添削コメント（全体）</label>
                           <textarea
                             className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm"
-                            rows={4}
+                            rows={5}
                             value={comment}
                             onChange={(e) => setComment(e.target.value)}
                             placeholder="添削コメントを入力（要再提出の場合は必須）"
                           />
+                          {myName && (
+                            <div className="text-right text-red-600 font-bold text-sm mt-1">講師　{myName}</div>
+                          )}
                         </div>
                         <div>
-                          <label className="block text-xs text-gray-500 mb-1">解説（模範解答の要点など）</label>
+                          <label className="block text-xs text-gray-500 mb-1">解説（押さえるべきポイント）</label>
                           <textarea
                             className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm"
                             rows={3}
@@ -353,9 +420,6 @@ export default function AdminEssayReviewsPage() {
                             placeholder="解説を入力"
                           />
                         </div>
-                        {aiUsed && (
-                          <p className="text-xs text-amber-600">AIが下書きを生成しました。内容を確認・修正のうえ、指導者の判断で返却してください（最終確定は指導者が行います）。</p>
-                        )}
 
                         {s.status === 'passed' ? (
                           <p className="text-sm text-green-700">この受講者は合格済みです。</p>
@@ -364,10 +428,10 @@ export default function AdminEssayReviewsPage() {
                             {allMarkedCorrect(s) && (
                               <span className="text-xs text-green-600 mr-auto">全問「正解」です</span>
                             )}
-                            <Button variant="destructive" size="sm" onClick={() => submitReview(s, 'needs_revision')} loading={saving}>
+                            <Button variant="destructive" size="sm" onClick={() => submitReview(s, 'needs_revision')} loading={saving} disabled={aiLoading}>
                               要再提出で返却
                             </Button>
-                            <Button size="sm" onClick={() => submitReview(s, 'passed')} loading={saving}>
+                            <Button size="sm" onClick={() => submitReview(s, 'passed')} loading={saving} disabled={aiLoading}>
                               合格で返却
                             </Button>
                           </div>

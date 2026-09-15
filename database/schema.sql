@@ -631,6 +631,7 @@ CREATE TABLE IF NOT EXISTS quizzes (
   title         VARCHAR(200) NOT NULL,
   quiz_type     VARCHAR(20) NOT NULL DEFAULT 'choice' CHECK (quiz_type IN ('choice', 'essay')),
   grading_mode  VARCHAR(20) NOT NULL DEFAULT 'auto' CHECK (grading_mode IN ('auto', 'review')), -- auto=即時採点 / review=提出→添削
+  answer_style  VARCHAR(20) NOT NULL DEFAULT 'plain' CHECK (answer_style IN ('plain', 'generated')), -- generated=受験ごとに回答文を生成して提示
   pass_policy   VARCHAR(20) NOT NULL DEFAULT 'all_correct' CHECK (pass_policy IN ('all_correct')),
   sort_order    INTEGER NOT NULL DEFAULT 0,
   status        VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
@@ -662,7 +663,19 @@ CREATE TABLE IF NOT EXISTS quiz_attempts (
   answer_text    TEXT,
   is_correct     BOOLEAN,
   attempt_no     INTEGER NOT NULL DEFAULT 1,
+  choice_set_id  UUID, -- 回答文生成時の提示セット（quiz_choice_sets.id）
   answered_at    TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 受験ごとに生成して提示した回答文の組（表示位置と回答パターンの対応はサーバー側のみ）
+CREATE TABLE IF NOT EXISTS quiz_choice_sets (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  quiz_id      INTEGER NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+  options      JSONB NOT NULL,
+  generator    VARCHAR(100),
+  created_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  consumed_at  TIMESTAMP WITH TIME ZONE
 );
 
 -- 添削（追記のみ・指導者の関与記録）

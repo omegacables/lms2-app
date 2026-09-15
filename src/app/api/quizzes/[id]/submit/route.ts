@@ -6,7 +6,7 @@ import { submitForReview } from '@/lib/quiz/submitForReview';
 export const runtime = 'nodejs';
 
 // POST /api/quizzes/[id]/submit
-// body: { access_token?, answers: [{ question_id, selected_index? , answer_text? }] }
+// body: { access_token?, choice_set_id?, answers: [{ question_id, selected_index? , answer_text? }] }
 // 提出制テスト（記述式／選択式 grading_mode='review'）の提出。採点はせず、指導者の添削待ちにする。
 export async function POST(
   request: NextRequest,
@@ -23,7 +23,8 @@ export async function POST(
     admin,
     user.id,
     Number(id),
-    Array.isArray(body.answers) ? body.answers : []
+    Array.isArray(body.answers) ? body.answers : [],
+    body.choice_set_id ? String(body.choice_set_id) : null
   );
   return NextResponse.json(outcome.body, { status: outcome.status });
 }

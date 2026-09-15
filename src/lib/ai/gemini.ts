@@ -6,17 +6,25 @@ export function isGeminiConfigured(): boolean {
   return !!process.env.GEMINI_API_KEY;
 }
 
+export function geminiModelName(): string {
+  return process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+}
+
 /**
  * JSON 応答を返すプロンプトを実行し、パース済みオブジェクトを返す。
  * temperature を少し高めにして、受講者ごとに異なる添削文になるようにする。
  */
 export async function geminiGenerateJSON(
   prompt: string,
-  opts: { temperature?: number } = {}
+  opts: {
+    temperature?: number;
+    /** 思考トークンの上限。0 で思考をオフにして高速化（2.5 系のみ有効）。未指定ならモデル既定 */
+    thinkingBudget?: number;
+  } = {}
 ): Promise<any> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('GEMINI_API_KEY が設定されていません');
-  const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const model = geminiModelName();
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`,
@@ -28,6 +36,7 @@ export async function geminiGenerateJSON(
         generationConfig: {
           temperature: opts.temperature ?? 0.85,
           responseMimeType: 'application/json',
+          ...(opts.thinkingBudget !== undefined ? { thinkingConfig: { thinkingBudget: opts.thinkingBudget } } : {}),
         },
       }),
     }

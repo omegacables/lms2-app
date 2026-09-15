@@ -7,6 +7,8 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { supabase } from '@/lib/database/supabase';
+import { RedPenView } from '@/components/quiz/RedPenView';
+import type { RedPenSegment } from '@/lib/quiz/redpen';
 import {
   CheckCircleIcon,
   ClockIcon,
@@ -29,6 +31,7 @@ interface HwQuestion {
   selected_text: string;
   review_is_correct: boolean | null;
   review_comment: string | null;
+  review_markup: RedPenSegment[] | null;
 }
 interface HwItem {
   quiz_id: number;
@@ -37,6 +40,7 @@ interface HwItem {
   title: string;
   quiz_type: 'choice' | 'essay';
   grading_mode: 'auto' | 'review';
+  answer_style: 'plain' | 'generated';
   status: HomeworkStatus;
   lock_reason: string | null;
   questions: HwQuestion[];
@@ -183,9 +187,8 @@ export default function HomeworkPage() {
                       <div className={`mb-3 p-3 rounded border text-sm relative ${
                         item.review.result === 'passed' ? 'border-green-300 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800'
                       }`}>
-                        <div className="font-medium mb-1">
+                        <div className="font-medium mb-1 pr-16">
                           添削結果: {item.review.result === 'passed' ? '合格' : '要再提出'}
-                          {item.review.reviewer_name && <span className="ml-2 text-xs">（添削者: {item.review.reviewer_name}）</span>}
                           <span className="ml-2 text-xs text-gray-500">{new Date(item.review.reviewed_at).toLocaleString('ja-JP')}</span>
                         </div>
                         {item.review.comment && (
@@ -199,6 +202,9 @@ export default function HomeworkPage() {
                             <div className="text-xs font-semibold text-gray-500">解説</div>
                             <div className="whitespace-pre-wrap text-gray-700">{item.review.explanation}</div>
                           </div>
+                        )}
+                        {item.review.reviewer_name && (
+                          <div className="mt-2 text-right text-red-600 font-bold">講師　{item.review.reviewer_name}</div>
                         )}
                         {stampUrl && (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -214,7 +220,37 @@ export default function HomeworkPage() {
                           <div key={q.id}>
                             <div className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">問{qi + 1}. {q.question_text}</div>
 
-                            {isChoice ? (
+                            {isChoice && (item.answer_style === 'generated' || (q.review_markup && q.review_markup.length > 0)) ? (
+                              /* 回答文生成：選んだ回答文を表示（添削済みなら赤ペン） */
+                              <div>
+                                {q.review_markup && q.review_markup.length > 0 ? (
+                                  <RedPenView
+                                    segments={q.review_markup}
+                                    reviewerName={item.review?.reviewer_name}
+                                    reviewedAt={item.review?.reviewed_at}
+                                    showSignature={false}
+                                  />
+                                ) : q.selected_text ? (
+                                  <div
+                                    className="text-[15px] leading-7 text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 rounded p-3 border border-gray-100 dark:border-gray-700"
+                                    style={{ fontFamily: '"Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif' }}
+                                  >
+                                    {q.selected_text}
+                                  </div>
+                                ) : (
+                                  <div className="text-sm text-gray-500">（未回答）</div>
+                                )}
+                                {q.review_is_correct !== null && (
+                                  <div className={`flex items-center gap-1 text-sm font-medium mt-2 ${q.review_is_correct ? 'text-green-700' : 'text-red-700'}`}>
+                                    {q.review_is_correct ? <CheckCircleIcon className="w-4 h-4" /> : <XCircleIcon className="w-4 h-4" />}
+                                    {q.review_is_correct ? '正解' : '不正解'}
+                                  </div>
+                                )}
+                                {q.review_comment && (
+                                  <div className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap mt-1">添削：{q.review_comment}</div>
+                                )}
+                              </div>
+                            ) : isChoice ? (
                               /* 選択式：提出内容は読み取り専用。回答・再提出はテストページで行う */
                               <div className="space-y-1">
                                 {q.choices.map((c, ci) => {
@@ -258,9 +294,18 @@ export default function HomeworkPage() {
                               />
                             ) : (
                               <>
-                                <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap bg-gray-50 dark:bg-gray-900 rounded p-2 border border-gray-100 dark:border-gray-700">
-                                  {q.my_answer || '（未回答）'}
-                                </div>
+                                {q.review_markup && q.review_markup.length > 0 ? (
+                                  <RedPenView
+                                    segments={q.review_markup}
+                                    reviewerName={item.review?.reviewer_name}
+                                    reviewedAt={item.review?.reviewed_at}
+                                    showSignature={false}
+                                  />
+                                ) : (
+                                  <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap bg-gray-50 dark:bg-gray-900 rounded p-2 border border-gray-100 dark:border-gray-700">
+                                    {q.my_answer || '（未回答）'}
+                                  </div>
+                                )}
                                 {q.review_is_correct !== null && (
                                   <div className={`flex items-center gap-1 text-sm font-medium mt-1 ${q.review_is_correct ? 'text-green-700' : 'text-red-700'}`}>
                                     {q.review_is_correct ? <CheckCircleIcon className="w-4 h-4" /> : <XCircleIcon className="w-4 h-4" />}

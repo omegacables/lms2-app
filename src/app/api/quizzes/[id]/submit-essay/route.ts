@@ -23,7 +23,8 @@ export async function POST(
     admin,
     user.id,
     Number(id),
-    Array.isArray(body.answers) ? body.answers : []
+    Array.isArray(body.answers) ? body.answers : [],
+    body.choice_set_id ? String(body.choice_set_id) : null
   );
   return NextResponse.json(outcome.body, { status: outcome.status });
 }

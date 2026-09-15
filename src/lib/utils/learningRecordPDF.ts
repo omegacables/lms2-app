@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
+import { circledNumber } from '@/lib/quiz/redpen';
 
 // 学習・テスト実施記録PDF（証拠書類）。
 // 日本語の長文が複数ページに渡っても崩れないよう、HTMLをブラウザで描画→html2canvasで取得し、
@@ -40,9 +41,15 @@ export interface LearningRecordData {
     questions: {
       question_text: string;
       answers: { attempt_no: number; answer_text: string; answered_at: string }[];
-      /** 指導者が設問ごとに付けた正誤・コメント */
-      review_mark?: { is_correct: boolean | null; comment: string | null } | null;
+      /** 指導者が設問ごとに付けた正誤・コメント・赤ペン（最新の添削） */
+      review_mark?: {
+        is_correct: boolean | null;
+        comment: string | null;
+        markup?: { type: 'keep' | 'del' | 'ins'; text: string; note?: string | null }[] | null;
+      } | null;
     }[];
+    /** 最新の添削を確定した講師名（赤ペンの署名に使う） */
+    signer_name?: string;
     reviews: { result: string; comment: string | null; explanation?: string | null; reviewer_name: string; reviewed_at: string }[];
   }[];
   testsPassed: boolean | null;
@@ -61,6 +68,37 @@ const fmtDuration = (sec: number | null | undefined) => {
   const m = Math.floor((sec % 3600) / 60);
   return h > 0 ? `${h}時間${m}分` : `${m}分`;
 };
+
+
+/** 赤ペン添削を HTML にする（取り消し線・書き足し・吹き出し番号＋コメント一覧＋講師署名） */
+function renderRedPenHTML(
+  segments: { type: 'keep' | 'del' | 'ins'; text: string; note?: string | null }[],
+  signerName: string
+): string {
+  let n = 0;
+  const notes: string[] = [];
+  const body = segments
+    .map((sg) => {
+      let marker = '';
+      if (sg.note) {
+        n += 1;
+        const label = circledNumber(n);
+        marker = `<sup style="color:#d00;font-weight:bold;">${label}</sup>`;
+        notes.push(`<div style="margin-top:2px;"><span style="color:#d00;font-weight:bold;">${label}</span> ${esc(sg.note)}</div>`);
+      }
+      if (sg.type === 'del') return `<span style="color:#d00;text-decoration:line-through;">${esc(sg.text)}</span>${marker}`;
+      if (sg.type === 'ins') return `<span style="color:#d00;text-decoration:underline;">${esc(sg.text)}</span>${marker}`;
+      if (sg.note) return `<span style="background:#fde8e8;border-bottom:1px dashed #d00;">${esc(sg.text)}</span>${marker}`;
+      return esc(sg.text);
+    })
+    .join('');
+  return `<div style="margin-top:6px;border:1px solid #f3b4b4;border-radius:4px;padding:6px 8px;">
+    <div style="font-size:10px;color:#d00;font-weight:bold;">赤ペン添削</div>
+    <div style="line-height:1.9;">${body}</div>
+    ${notes.length > 0 ? `<div style="margin-top:4px;font-size:11px;">${notes.join('')}</div>` : ''}
+    ${signerName ? `<div style="text-align:right;color:#d00;margin-top:4px;">講師　${esc(signerName)}</div>` : ''}
+  </div>`;
+}
 
 export function buildRecordHTML(d: LearningRecordData): string {
   const stdMin = d.course.standard_learning_minutes;
@@ -123,6 +161,7 @@ export function buildRecordHTML(d: LearningRecordData): string {
             )
             .join('');
           const mark = qq.review_mark;
+          const redpenHtml = mark?.markup && mark.markup.length > 0 ? renderRedPenHTML(mark.markup, q.signer_name || '') : '';
           const markHtml = mark
             ? `<div class="ans-body" style="margin-top:2px;">${
                 mark.is_correct === null || mark.is_correct === undefined
@@ -130,7 +169,7 @@ export function buildRecordHTML(d: LearningRecordData): string {
                   : `<b>添削：${mark.is_correct ? '正解' : '不正解'}</b>`
               }${mark.comment ? `${mark.is_correct === null || mark.is_correct === undefined ? '<b>添削：</b>' : '　'}${esc(mark.comment)}` : ''}</div>`
             : '';
-          return `<div class="q"><div class="qh">問${qi + 1}. ${esc(qq.question_text)}</div>${answers || '<div class="ans-body">未提出</div>'}${markHtml}</div>`;
+          return `<div class="q"><div class="qh">問${qi + 1}. ${esc(qq.question_text)}</div>${answers || '<div class="ans-body">未提出</div>'}${markHtml}${redpenHtml}</div>`;
         })
         .join('');
       const stampImg = d.seal?.stampUrl
