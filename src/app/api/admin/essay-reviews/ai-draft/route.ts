@@ -128,7 +128,7 @@ ${qaText}
   "explanation": "解説（各設問で押さえるべきポイント）",
   "result": "passed" または "needs_revision"
 }`;
-    const draft = await geminiGenerateJSON(prompt, { temperature: 0.8 });
+    const draft = await geminiGenerateJSON(prompt, { purpose: 'review', temperature: 0.8 });
     return {
       comment: String(draft.comment || ''),
       explanation: String(draft.explanation || ''),

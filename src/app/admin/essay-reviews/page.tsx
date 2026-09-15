@@ -295,7 +295,7 @@ export default function AdminEssayReviewsPage() {
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="text-xs text-gray-500">
                             {aiLoading
-                              ? 'AIが赤ペン添削の下書きを作成しています…'
+                              ? 'AIが赤ペン添削の下書きを作成しています…（30秒ほどかかります）'
                               : aiUsed
                               ? `AIの下書きを表示中${aiResult ? `（合否案: ${aiResult === 'passed' ? '合格' : '要再提出'}）` : ''}。確認・修正してから返却してください。`
                               : ''}

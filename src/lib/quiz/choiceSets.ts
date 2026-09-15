@@ -9,7 +9,7 @@
 //  * Gemini が使えない・失敗したときは、パターンの文言をそのまま（シャッフルして）提示する
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { geminiGenerateJSON, geminiModelName, isGeminiConfigured } from '@/lib/ai/gemini';
+import { GeminiTimeoutError, geminiGenerateJSON, geminiModelName, isGeminiConfigured } from '@/lib/ai/gemini';
 
 export interface ChoiceOption {
   pattern_index: number;
@@ -90,7 +90,8 @@ ${q.explanation ? `（参考：正しい考え方）${q.explanation}` : ''}
 次のJSONのみを出力してください:
 {"answers":[{"pattern":0,"text":"..."},{"pattern":1,"text":"..."}]}`;
 
-  const out = await geminiGenerateJSON(prompt, { temperature: 1.0, thinkingBudget: 0 });
+  // 受講者を待たせないよう思考は最小にする
+  const out = await geminiGenerateJSON(prompt, { purpose: 'generation', temperature: 1.0, thinking: 'minimal' });
   const answers: any[] = Array.isArray(out?.answers) ? out.answers : [];
 
   const byPattern = new Map<number, string>();
@@ -116,12 +117,14 @@ async function buildOptions(questions: QuestionForGeneration[]): Promise<{ optio
   const results = await Promise.all(
     questions.map(async (q) => {
       if (!useAi || q.choices.length === 0) return fallbackOptions(q);
-      // 一度だけリトライし、それでも失敗したらパターンの文言で出す
+      // 一度だけリトライし、それでも失敗したらパターンの文言で出す。
+      // タイムアウトはリトライすると受講者をさらに待たせるので、すぐにパターンの文言に切り替える
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           return await generateForQuestion(q, writer, lengthRange);
         } catch (e) {
           console.error(`[choiceSets] 回答文の生成に失敗 (question ${q.id}, try ${attempt + 1}):`, e);
+          if (e instanceof GeminiTimeoutError) break;
         }
       }
       fellBack = true;
@@ -134,7 +137,7 @@ async function buildOptions(questions: QuestionForGeneration[]): Promise<{ optio
     options[String(q.id)] = shuffle(results[i]);
   });
 
-  const generator = useAi ? `${geminiModelName()}${fellBack ? '+fallback' : ''}` : 'fallback';
+  const generator = useAi ? `${geminiModelName('generation')}${fellBack ? '+fallback' : ''}` : 'fallback';
   return { options, generator };
 }
 

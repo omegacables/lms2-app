@@ -62,7 +62,7 @@ export async function draftRedPen(i: RedPenDraftInput): Promise<RedPenDraft> {
   const prompt = buildRedPenPrompt(i);
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const out = await geminiGenerateJSON(prompt, { temperature: 0.7 });
+      const out = await geminiGenerateJSON(prompt, { purpose: 'review', temperature: 0.7 });
       const markup = normalizeMarkup(i.answerText, out?.segments);
       if (!markup) throw new Error('赤ペンの区切りが回答文と一致しません');
       return {
