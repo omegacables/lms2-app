@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/Input';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { supabase } from '@/lib/database/supabase';
 import { DIFFICULTY_LEVELS, type DifficultyLevel } from '@/lib/constants/difficulty';
-import * as tus from 'tus-js-client';
+import { uploadVideoFile, removeUploadedVideo } from '@/lib/utils/videoUpload';
 import {
   ArrowLeftIcon,
   CloudArrowUpIcon,
@@ -154,59 +154,19 @@ export default function CreateCoursePage() {
         throw new Error('認証が必要です。再度ログインしてください。');
       }
 
-      // ファイル名を安全な形式に変換
-      const timestamp = Date.now();
-      const safeFileName = videoFile.file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-      const filePath = `course_${courseId}/${timestamp}_${safeFileName}`;
-
-      const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-
-      // TUSプロトコルで Supabase Storage に直接アップロード（Next.js APIをバイパス）
-      await new Promise<void>((resolve, reject) => {
-        const upload = new tus.Upload(videoFile.file, {
-          endpoint: `${projectUrl}/storage/v1/upload/resumable`,
-          retryDelays: [0, 3000, 5000, 10000, 20000],
-          headers: {
-            authorization: `Bearer ${session.access_token}`,
-            'x-upsert': 'false',
-          },
-          uploadDataDuringCreation: true,
-          removeFingerprintOnSuccess: true,
-          metadata: {
-            bucketName: 'videos',
-            objectName: filePath,
-            contentType: videoFile.file.type,
-            cacheControl: '3600',
-          },
-          chunkSize: 6 * 1024 * 1024, // 6MB chunks (Supabase 推奨)
-          onError: (err) => {
-            console.error('TUS upload error:', err);
-            reject(err);
-          },
-          onProgress: (bytesUploaded, bytesTotal) => {
-            const percentage = Math.floor((bytesUploaded / bytesTotal) * 95);
-            setVideos(prev => prev.map(v =>
-              v.id === videoFile.id ? { ...v, uploadProgress: percentage } : v
-            ));
-          },
-          onSuccess: () => {
-            console.log('TUS upload successful:', filePath);
-            resolve();
-          },
-        });
-
-        upload.findPreviousUploads().then((previousUploads) => {
-          if (previousUploads.length) {
-            upload.resumeFromPreviousUpload(previousUploads[0]);
-          }
-          upload.start();
-        });
+      // 配信先（R2 または Supabase Storage）へアップロード
+      const uploaded = await uploadVideoFile({
+        file: videoFile.file,
+        courseId,
+        accessToken: session.access_token,
+        onProgress: (fraction) => {
+          const percentage = Math.floor(fraction * 95);
+          setVideos(prev => prev.map(v =>
+            v.id === videoFile.id ? { ...v, uploadProgress: percentage } : v
+          ));
+        },
       });
-
-      // 公開URLを取得
-      const { data: { publicUrl } } = supabase.storage
-        .from('videos')
-        .getPublicUrl(filePath);
+      const publicUrl = uploaded.fileUrl;
 
       // データベースに動画情報を保存（基本スキーマのカラムのみ）
       const { data: insertedVideo, error: dbError } = await supabase
@@ -228,7 +188,7 @@ export default function CreateCoursePage() {
       if (dbError) {
         console.error('Database error:', dbError);
         // 失敗時はアップロード済みファイルをクリーンアップ
-        await supabase.storage.from('videos').remove([filePath]);
+        await removeUploadedVideo(uploaded);
         throw new Error(`動画情報の保存に失敗しました: ${dbError.message}`);
       }
 
