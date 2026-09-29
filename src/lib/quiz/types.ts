@@ -3,7 +3,7 @@ import type { RedPenSegment } from './redpen';
 // 通信制対応：小テスト／記述式最終テスト 関連の共有型定義
 
 export type QuizType = 'choice' | 'essay';
-/** 採点方式: auto=回答時に即時採点（小テスト） / review=提出のみ・指導者が添削（最終テスト） */
+/** 採点方式: auto=全問に回答すると通過（小テスト。正誤は記録のみで表示しない） / review=提出のみ・指導者が添削（最終テスト） */
 export type GradingMode = 'auto' | 'review';
 /** 回答形式: plain=選択肢をそのまま表示 / generated=選択肢を回答パターンとして扱い、受験ごとに回答文を生成して提示 */
 export type AnswerStyle = 'plain' | 'generated';
@@ -18,7 +18,7 @@ export interface Quiz {
   quiz_type: QuizType;
   grading_mode: GradingMode;
   answer_style: AnswerStyle;
-  pass_policy: 'all_correct';
+  pass_policy: 'all_correct'; // DB の既定値（互換のため残す）。実際の通過判定は gating.ts（小テストは全問回答で通過）
   sort_order: number;
   status: QuizStatus;
   created_by: string | null;
@@ -82,12 +82,9 @@ export interface EssayReview {
   reviewed_at: string;
 }
 
-// 受講者に返す採点結果（正答・解説は不正解時のみ）
-export interface GradeResult {
+// 小テストの回答結果（受講者には正誤・正答を返さない）
+export interface AnswerResult {
   question_id: number;
-  is_correct: boolean;
-  correct_index: number | null; // 不正解時のみ返す
-  explanation: string | null;   // 不正解時のみ返す
 }
 
 /** 提出制テスト（記述式／選択式 grading_mode='review'）の受講者から見た状態 */

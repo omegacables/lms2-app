@@ -21,7 +21,6 @@ interface SubQuestion {
   explanation: string;
   selected_index: number | null;
   selected_text: string;
-  auto_is_correct: boolean | null;
 }
 interface QuestionReview {
   question_id: number;
@@ -53,7 +52,6 @@ interface Submission {
 }
 
 interface Mark {
-  is_correct: boolean | null;
   comment: string;
   markup: RedPenSegment[] | null;
 }
@@ -134,7 +132,6 @@ export default function AdminEssayReviewsPage() {
             const r = byQ.get(q.id);
             if (!r) return;
             next[q.id] = {
-              is_correct: r.is_correct ?? prev[q.id]?.is_correct ?? null,
               comment: r.comment || '',
               markup: r.markup && r.markup.length > 0 ? r.markup : null,
             };
@@ -171,7 +168,6 @@ export default function AdminEssayReviewsPage() {
     s.questions.forEach((q) => {
       const p = keepPrevious ? prev.get(q.id) : undefined;
       init[q.id] = {
-        is_correct: p ? p.is_correct : q.auto_is_correct,
         comment: p?.comment || '',
         markup: p?.markup && p.markup.length > 0 ? p.markup : null,
       };
@@ -185,7 +181,7 @@ export default function AdminEssayReviewsPage() {
   const setMark = (questionId: number, patch: Partial<Mark>) => {
     setMarks((m) => ({
       ...m,
-      [questionId]: { ...(m[questionId] || { is_correct: null, comment: '', markup: null }), ...patch },
+      [questionId]: { ...(m[questionId] || { comment: '', markup: null }), ...patch },
     }));
   };
 
@@ -207,9 +203,10 @@ export default function AdminEssayReviewsPage() {
       alert('要再提出の場合はコメントを入力してください');
       return;
     }
+    // 正誤は付けない仕様（設問ごとはコメントと赤ペンのみ）
     const question_reviews = s.questions.map((q) => ({
       question_id: q.id,
-      is_correct: marks[q.id]?.is_correct ?? null,
+      is_correct: null,
       comment: marks[q.id]?.comment || null,
       markup: marks[q.id]?.markup || null,
     }));
@@ -246,17 +243,13 @@ export default function AdminEssayReviewsPage() {
     setSaving(false);
   };
 
-  // 全問正解なら「合格」を推奨表示する
-  const allMarkedCorrect = (s: Submission) =>
-    s.questions.length > 0 && s.questions.every((q) => marks[q.id]?.is_correct === true);
-
   return (
     <AuthGuard requiredRoles={['admin', 'instructor']}>
       <MainLayout>
         <div className="max-w-4xl mx-auto px-4 py-6">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">最終テストの添削</h1>
           <p className="text-sm text-gray-500 mb-6">
-            受講者が提出した回答を開くと、AIが赤ペン添削の下書きを作成します。内容を確認・修正し、正誤とコメントを付けて返却してください。
+            受講者が提出した回答を開くと、AIが赤ペン添削の下書きを作成します。内容を確認・修正し、コメントを付けて「合格」か「要再提出」で返却してください。
             返却すると受講者の課題ページに赤ペンで表示され、最後にあなたの名前で署名されます。
           </p>
 
@@ -308,7 +301,7 @@ export default function AdminEssayReviewsPage() {
                         </div>
 
                         {s.questions.map((q, qi) => {
-                          const mark = marks[q.id] || { is_correct: null, comment: '', markup: null };
+                          const mark = marks[q.id] || { comment: '', markup: null };
                           const text = targetText(s, q);
                           return (
                             <div key={q.id} className="rounded border border-gray-100 dark:border-gray-700 p-3">
@@ -358,32 +351,6 @@ export default function AdminEssayReviewsPage() {
                                 </details>
                               )}
 
-                              {/* 設問ごとの正誤 */}
-                              <div className="flex flex-wrap items-center gap-2 mt-3 mb-2">
-                                <span className="text-xs text-gray-500">正誤:</span>
-                                {([
-                                  { v: true, label: '○ 正解', on: 'border-green-500 bg-green-50 text-green-700' },
-                                  { v: false, label: '× 不正解', on: 'border-red-500 bg-red-50 text-red-700' },
-                                  { v: null, label: '— 判定なし', on: 'border-gray-500 bg-gray-100 text-gray-700' },
-                                ] as const).map((opt) => (
-                                  <button
-                                    key={String(opt.v)}
-                                    type="button"
-                                    onClick={() => setMark(q.id, { is_correct: opt.v })}
-                                    className={`text-xs px-3 py-1 rounded border ${
-                                      mark.is_correct === opt.v ? opt.on : 'border-gray-300 text-gray-500 dark:border-gray-600'
-                                    }`}
-                                  >
-                                    {opt.label}
-                                  </button>
-                                ))}
-                                {isChoice && q.auto_is_correct !== null && (
-                                  <span className="text-xs text-gray-400">
-                                    （登録正答との照合: {q.auto_is_correct ? '一致' : '不一致'}）
-                                  </span>
-                                )}
-                              </div>
-
                               {s.questions.length > 1 && (
                                 <textarea
                                   className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm"
@@ -425,9 +392,6 @@ export default function AdminEssayReviewsPage() {
                           <p className="text-sm text-green-700">この受講者は合格済みです。</p>
                         ) : (
                           <div className="flex flex-wrap items-center justify-end gap-2">
-                            {allMarkedCorrect(s) && (
-                              <span className="text-xs text-green-600 mr-auto">全問「正解」です</span>
-                            )}
                             <Button variant="destructive" size="sm" onClick={() => submitReview(s, 'needs_revision')} loading={saving} disabled={aiLoading}>
                               要再提出で返却
                             </Button>

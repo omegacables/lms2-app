@@ -93,7 +93,8 @@ export async function POST(request: NextRequest) {
       explanation: t.q.explanation,
       knownCorrect: t.knownCorrect,
     });
-    return { question_id: t.q.id, is_correct: d.is_correct, comment: d.summary, markup: d.markup };
+    // 正誤は付けない仕様のため返さない（コメントと赤ペンのみ）
+    return { question_id: t.q.id, is_correct: null, comment: d.summary, markup: d.markup };
   };
 
   // --- 全体の添削コメント・解説・合否案 ---

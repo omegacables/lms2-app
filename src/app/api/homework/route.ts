@@ -10,7 +10,7 @@ type HomeworkStatus = 'locked' | 'not_submitted' | 'under_review' | 'needs_revis
 // GET /api/homework
 // 受講者の課題ページ用データ。
 //  items       … 提出制テスト（記述式／選択式 grading_mode='review'）の提出内容と添削結果
-//  quizResults … 即時採点の小テスト（grading_mode='auto'）の結果
+//  quizResults … 小テスト（grading_mode='auto'）の回答（正誤は返さない）
 export async function GET(request: NextRequest) {
   const { user, response } = await getAuthUser(request);
   if (!user) return response!;
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
   const quizResults: any[] = [];
 
   for (const course of targetCourses) {
-    // --- 即時採点の小テストの結果：問題・選択した回答・正誤・解説 ---
+    // --- 小テストの回答：問題・選択した回答・解説（正誤は表示しない仕様のため返さない）---
     const { data: choiceQuizzes } = await admin
       .from('quizzes')
       .select('id, title, quiz_type, grading_mode, status')
@@ -58,13 +58,13 @@ export async function GET(request: NextRequest) {
     for (const cq of choiceQuizzes || []) {
       const { data: cqQuestions } = await admin
         .from('quiz_questions')
-        .select('id, question_text, choices, correct_index, explanation, sort_order')
+        .select('id, question_text, choices, explanation, sort_order')
         .eq('quiz_id', cq.id)
         .order('sort_order', { ascending: true });
 
       const { data: cqAttempts } = await admin
         .from('quiz_attempts')
-        .select('question_id, selected_index, answer_text, is_correct, answered_at')
+        .select('question_id, selected_index, answer_text, answered_at')
         .eq('quiz_id', cq.id)
         .eq('user_id', user.id)
         .order('answered_at', { ascending: false });
@@ -88,7 +88,6 @@ export async function GET(request: NextRequest) {
             selected_text:
               a?.answer_text ||
               (a && a.selected_index !== null && a.selected_index !== undefined ? choices[a.selected_index] ?? '' : ''),
-            is_correct: a?.is_correct ?? null,
             explanation: q.explanation || '',
             answered_at: a?.answered_at ?? null,
           };
@@ -147,13 +146,12 @@ export async function GET(request: NextRequest) {
           .single();
         reviewerName = rp?.display_name || rp?.email || null;
       }
-      // 設問ごとの添削（正誤・コメント）
-      const questionReviewMap = new Map<number, { is_correct: boolean | null; comment: string | null; markup: any[] | null }>();
+      // 設問ごとの添削（コメント・赤ペン。正誤は表示しない仕様のため扱わない）
+      const questionReviewMap = new Map<number, { comment: string | null; markup: any[] | null }>();
       if (latestReview && Array.isArray(latestReview.question_reviews)) {
         (latestReview.question_reviews as any[]).forEach((r) => {
           if (r && r.question_id !== undefined) {
             questionReviewMap.set(Number(r.question_id), {
-              is_correct: typeof r.is_correct === 'boolean' ? r.is_correct : null,
               comment: r.comment ?? null,
               markup: Array.isArray(r.markup) ? r.markup : null,
             });
@@ -198,8 +196,7 @@ export async function GET(request: NextRequest) {
               ? a?.answer_text ||
                 (selectedIndex !== null && selectedIndex !== undefined ? choices[selectedIndex] ?? '' : '')
               : '',
-            // 指導者が付けた正誤・個別コメント・赤ペン
-            review_is_correct: qr?.is_correct ?? null,
+            // 指導者が付けた個別コメント・赤ペン
             review_comment: qr?.comment ?? null,
             review_markup: qr?.markup ?? null,
           };

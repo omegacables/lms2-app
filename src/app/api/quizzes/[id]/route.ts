@@ -8,6 +8,7 @@ export const runtime = 'nodejs';
 
 // GET /api/quizzes/[id]
 // 受講者向け：クイズの設問（正答・解説は含まない）＋自分の回答履歴＋通過状況を返す。
+// 正誤は受講者に見せない仕様のため、回答の is_correct・添削の設問ごとの正誤は返さない。
 // ゲート未解放のクイズは 403。
 //
 // grading_mode='review'（提出→添削）の場合は、提出状態（submission_status）と
@@ -58,17 +59,17 @@ export async function GET(
   // 自分の回答履歴（設問ごとに最新の attempt）
   const { data: attempts } = await admin
     .from('quiz_attempts')
-    .select('question_id, selected_index, answer_text, is_correct, attempt_no, answered_at')
+    .select('question_id, selected_index, answer_text, attempt_no, answered_at')
     .eq('quiz_id', quizId)
     .eq('user_id', user.id)
     .order('answered_at', { ascending: false });
 
   const latestByQuestion = new Map<number, any>();
-  const solvedQuestionIds = new Set<number>();
   (attempts || []).forEach((a) => {
     if (!latestByQuestion.has(a.question_id)) latestByQuestion.set(a.question_id, a);
-    if (a.is_correct === true) solvedQuestionIds.add(a.question_id);
   });
+  // 回答済みの設問（小テストは正誤を問わず、回答すれば通過）
+  const answeredQuestionIds = new Set<number>(latestByQuestion.keys());
 
   // 提出制（添削）テストの提出状態と最新の添削
   const reviewMode = quiz.quiz_type === 'essay' || quiz.grading_mode === 'review';
@@ -104,7 +105,10 @@ export async function GET(
         result: latestReview.result,
         comment: latestReview.review_comment,
         explanation: latestReview.explanation || null,
-        question_reviews: Array.isArray(latestReview.question_reviews) ? latestReview.question_reviews : [],
+        // 設問ごとのコメント・赤ペンだけを返す（正誤は表示しない仕様）
+        question_reviews: Array.isArray(latestReview.question_reviews)
+          ? latestReview.question_reviews.map((r: any) => ({ ...r, is_correct: null }))
+          : [],
         reviewed_at: latestReview.reviewed_at,
         reviewer_name: reviewerName,
       };
@@ -115,13 +119,13 @@ export async function GET(
 
   // 回答文生成：これから回答が必要な設問にだけ回答文を用意する
   //   提出制 … 提出できる状態のときは全設問
-  //   即時採点 … まだ正解していない設問
+  //   小テスト … まだ回答していない設問
   const generated = quiz.quiz_type === 'choice' && quiz.answer_style === 'generated';
   let choiceSetId: string | null = null;
   let choiceOptions: Record<string, { pattern_index: number; text: string }[]> = {};
 
   if (generated) {
-    const needing = questionList.filter((q) => (reviewMode ? canSubmit : !solvedQuestionIds.has(q.id)));
+    const needing = questionList.filter((q) => (reviewMode ? canSubmit : !answeredQuestionIds.has(q.id)));
     if (needing.length > 0) {
       try {
         const set = await getOrCreateChoiceSet(
@@ -165,13 +169,15 @@ export async function GET(
         // 回答文生成のときの選択肢（表示順。key は表示位置）
         options: generated && choiceOptions[String(q.id)] ? toStudentOptions(choiceOptions, q.id) : null,
         sort_order: q.sort_order,
-        solved: solvedQuestionIds.has(q.id),
+        // 回答済みか（solved は旧アプリ向けの同じ値）
+        answered: answeredQuestionIds.has(q.id),
+        solved: answeredQuestionIds.has(q.id),
         my_answer: latest
           ? {
               // 回答文生成ではパターン番号に意味がないので返さない（選んだ文章は answer_text）
               selected_index: generated ? null : latest.selected_index,
               answer_text: latest.answer_text,
-              is_correct: latest.is_correct,
+              is_correct: null,
               attempt_no: latest.attempt_no,
               answered_at: latest.answered_at,
             }

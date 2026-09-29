@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth/getUser';
 import { createAdminSupabaseClient } from '@/lib/database/supabase';
 import { computeGateState } from '@/lib/quiz/gating';
-import { claimChoiceSet, displayPositionOfPattern, releaseChoiceSet } from '@/lib/quiz/choiceSets';
+import { claimChoiceSet, releaseChoiceSet } from '@/lib/quiz/choiceSets';
 
 export const runtime = 'nodejs';
 
 // POST /api/quizzes/[id]/answer
 // body: { access_token?, choice_set_id?, answers: [{ question_id, selected_index }] }
-// 選択式小テストの採点をサーバー側で行い、attempt を追記。不正解には解説を返す。
+// 選択式小テストの回答を attempt として追記する。全設問に回答すると通過（正誤は問わない）。
+// 正誤（is_correct）は登録済みの正答と照合して記録だけ残し、受講者には返さない。
 // 回答文生成（answer_style='generated'）では selected_index は「表示位置」。
 // choice_set_id の提示セットでパターンに変換し、選んだ回答文を answer_text に保存する。
 export async function POST(
@@ -57,10 +58,10 @@ export async function POST(
     return NextResponse.json({ error: '回答がありません' }, { status: 400 });
   }
 
-  // 設問（正答・解説を含む＝サーバー内でのみ使用）
+  // 設問（正答を含む＝サーバー内で正誤の記録にだけ使用）
   const { data: questions } = await admin
     .from('quiz_questions')
-    .select('id, choices, correct_index, explanation')
+    .select('id, choices, correct_index')
     .eq('quiz_id', quizId);
   const questionMap = new Map((questions || []).map((q) => [q.id, q]));
 
@@ -77,13 +78,7 @@ export async function POST(
 
   const now = new Date().toISOString();
   const rows: any[] = [];
-  const results: {
-    question_id: number;
-    is_correct: boolean;
-    correct_index?: number | null;
-    correct_text?: string | null;
-    explanation?: string | null;
-  }[] = [];
+  const results: { question_id: number }[] = [];
 
   const validAnswers = answers.filter((a) => questionMap.has(Number(a.question_id)));
   if (validAnswers.length === 0) {
@@ -101,7 +96,8 @@ export async function POST(
 
     for (const sel of claim.selections) {
       const q = questionMap.get(sel.question_id)!;
-      const isCorrect = sel.pattern_index === q.correct_index;
+      // 正誤は記録用（画面には表示しない）。正答が未設定なら NULL
+      const isCorrect = q.correct_index === null || q.correct_index === undefined ? null : sel.pattern_index === q.correct_index;
       rows.push({
         user_id: user.id,
         quiz_id: quizId,
@@ -113,18 +109,7 @@ export async function POST(
         choice_set_id: choiceSetId,
         answered_at: now,
       });
-      const correctPos =
-        q.correct_index === null || q.correct_index === undefined
-          ? null
-          : displayPositionOfPattern(claim.options, sel.question_id, q.correct_index);
-      results.push({
-        question_id: sel.question_id,
-        is_correct: isCorrect,
-        // 不正解時のみ、正しかった回答文（表示位置と文章）と解説を返す
-        correct_index: isCorrect ? undefined : correctPos,
-        correct_text: isCorrect || correctPos === null ? undefined : claim.options[String(sel.question_id)][correctPos].text,
-        explanation: isCorrect ? undefined : q.explanation,
-      });
+      results.push({ question_id: sel.question_id });
     }
   } else {
     for (const ans of validAnswers) {
@@ -134,23 +119,17 @@ export async function POST(
       if (!Number.isInteger(sel) || sel < 0 || sel >= choicesLen) {
         return NextResponse.json({ error: `設問${ans.question_id}の選択が不正です` }, { status: 400 });
       }
-      const isCorrect = sel === q.correct_index;
       rows.push({
         user_id: user.id,
         quiz_id: quizId,
         question_id: q.id,
         selected_index: sel,
-        is_correct: isCorrect,
+        // 正誤は記録用（画面には表示しない）。正答が未設定なら NULL
+        is_correct: q.correct_index === null || q.correct_index === undefined ? null : sel === q.correct_index,
         attempt_no: (maxAttempt.get(q.id) || 0) + 1,
         answered_at: now,
       });
-      results.push({
-        question_id: q.id,
-        is_correct: isCorrect,
-        // 不正解時のみ正答・解説を返す
-        correct_index: isCorrect ? undefined : q.correct_index,
-        explanation: isCorrect ? undefined : q.explanation,
-      });
+      results.push({ question_id: q.id });
     }
   }
 
@@ -160,7 +139,7 @@ export async function POST(
     return NextResponse.json({ error: '回答の保存に失敗しました', details: insErr.message }, { status: 500 });
   }
 
-  // 通過状況を再計算（このクイズが全問正解になったか）
+  // 通過状況を再計算（このクイズの全設問に回答したか）
   const postState = await computeGateState(admin, user.id, quiz.course_id);
   const passed = !!postState.quizPassed[quizId];
 

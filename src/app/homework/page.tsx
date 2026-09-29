@@ -15,7 +15,6 @@ import {
   LockClosedIcon,
   ExclamationTriangleIcon,
   DocumentTextIcon,
-  XCircleIcon,
 } from '@heroicons/react/24/outline';
 
 type HomeworkStatus = 'locked' | 'not_submitted' | 'under_review' | 'needs_revision' | 'passed';
@@ -29,7 +28,6 @@ interface HwQuestion {
   choices: string[];
   selected_index: number | null;
   selected_text: string;
-  review_is_correct: boolean | null;
   review_comment: string | null;
   review_markup: RedPenSegment[] | null;
 }
@@ -58,7 +56,6 @@ interface QuizResult {
     choices: string[];
     selected_index: number | null;
     selected_text: string;
-    is_correct: boolean | null;
     explanation: string;
     answered_at: string | null;
   }[];
@@ -240,12 +237,6 @@ export default function HomeworkPage() {
                                 ) : (
                                   <div className="text-sm text-gray-500">（未回答）</div>
                                 )}
-                                {q.review_is_correct !== null && (
-                                  <div className={`flex items-center gap-1 text-sm font-medium mt-2 ${q.review_is_correct ? 'text-green-700' : 'text-red-700'}`}>
-                                    {q.review_is_correct ? <CheckCircleIcon className="w-4 h-4" /> : <XCircleIcon className="w-4 h-4" />}
-                                    {q.review_is_correct ? '正解' : '不正解'}
-                                  </div>
-                                )}
                                 {q.review_comment && (
                                   <div className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap mt-1">添削：{q.review_comment}</div>
                                 )}
@@ -271,12 +262,6 @@ export default function HomeworkPage() {
                                 })}
                                 {q.selected_index === null && (
                                   <div className="text-sm text-gray-500">（未回答）</div>
-                                )}
-                                {q.review_is_correct !== null && (
-                                  <div className={`flex items-center gap-1 text-sm font-medium mt-1 ${q.review_is_correct ? 'text-green-700' : 'text-red-700'}`}>
-                                    {q.review_is_correct ? <CheckCircleIcon className="w-4 h-4" /> : <XCircleIcon className="w-4 h-4" />}
-                                    {q.review_is_correct ? '正解' : '不正解'}
-                                  </div>
                                 )}
                                 {q.review_comment && (
                                   <div className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap mt-1">
@@ -304,12 +289,6 @@ export default function HomeworkPage() {
                                 ) : (
                                   <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap bg-gray-50 dark:bg-gray-900 rounded p-2 border border-gray-100 dark:border-gray-700">
                                     {q.my_answer || '（未回答）'}
-                                  </div>
-                                )}
-                                {q.review_is_correct !== null && (
-                                  <div className={`flex items-center gap-1 text-sm font-medium mt-1 ${q.review_is_correct ? 'text-green-700' : 'text-red-700'}`}>
-                                    {q.review_is_correct ? <CheckCircleIcon className="w-4 h-4" /> : <XCircleIcon className="w-4 h-4" />}
-                                    {q.review_is_correct ? '正解' : '不正解'}
                                   </div>
                                 )}
                                 {q.review_comment && (
@@ -348,10 +327,10 @@ export default function HomeworkPage() {
             </div>
             )}
 
-            {/* 小テストの結果（問題・選択した回答・正誤・解説） */}
+            {/* 小テストの回答（問題・選択した回答・解説）。正誤は表示しない */}
             {quizResults.length > 0 && (
               <div className="mt-8">
-                <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-3">小テストの結果</h2>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-3">小テストの回答</h2>
                 <div className="space-y-4">
                   {quizResults.map((qr) => (
                     <div key={qr.quiz_id} className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
@@ -363,11 +342,6 @@ export default function HomeworkPage() {
                             <div className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">問{qi + 1}. {q.question_text}</div>
                             <div className="text-sm text-gray-700 dark:text-gray-300">
                               あなたの回答：{q.selected_text || '（未回答）'}
-                              {q.is_correct === null ? null : q.is_correct ? (
-                                <span className="ml-2 text-green-600">正解</span>
-                              ) : (
-                                <span className="ml-2 text-red-600">不正解</span>
-                              )}
                             </div>
                             {q.explanation && (
                               <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">解説：{q.explanation}</div>

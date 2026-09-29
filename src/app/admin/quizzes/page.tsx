@@ -39,14 +39,15 @@ interface QuestionDraft {
 }
 interface AttemptRow {
   id: number;
+  user_id: string;
   user_name: string;
   company: string;
+  quiz_id: number;
   quiz_title: string;
   quiz_type: string;
   question_text: string;
   selected_text: string;
   answer_text: string | null;
-  is_correct: boolean | null;
   attempt_no: number;
   answered_at: string;
 }
@@ -71,7 +72,7 @@ export default function AdminQuizzesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newType, setNewType] = useState<'choice' | 'essay'>('choice');
-  // 'auto' = 即時採点 / 'review' = 提出→指導者が添削
+  // 'auto' = 回答で通過（小テスト） / 'review' = 提出→指導者が添削
   const [newGradingMode, setNewGradingMode] = useState<'auto' | 'review'>('auto');
   // 'plain' = 選択肢をそのまま表示 / 'generated' = 受験ごとに回答文を生成して提示
   const [newAnswerStyle, setNewAnswerStyle] = useState<'plain' | 'generated'>('plain');
@@ -89,6 +90,10 @@ export default function AdminQuizzesPage() {
   // 回答状況
   const [attempts, setAttempts] = useState<AttemptRow[]>([]);
   const [attemptsLoading, setAttemptsLoading] = useState(false);
+  const [attemptUserFilter, setAttemptUserFilter] = useState(''); // user_id（空=すべて）
+  const [attemptQuizFilter, setAttemptQuizFilter] = useState(''); // quiz_id（空=すべて）
+  const [selectedAttemptIds, setSelectedAttemptIds] = useState<Set<number>>(new Set());
+  const [deletingAttempts, setDeletingAttempts] = useState(false);
 
   // コース設定（通信制モード ON/OFF ほか）
   const [settings, setSettings] = useState<{
@@ -205,7 +210,7 @@ export default function AdminQuizzesPage() {
     }
   };
 
-  // --- 採点方式の切替（選択式のみ。即時採点 <-> 提出→添削）---
+  // --- 採点方式の切替（選択式のみ。回答で通過 <-> 提出→添削）---
   const changeAnswerStyle = async (q: QuizRow, style: 'plain' | 'generated') => {
     const res = await fetch(`/api/admin/quizzes/${q.id}`, {
       method: 'PATCH',
@@ -308,7 +313,7 @@ export default function AdminQuizzesPage() {
   const downloadTemplate = () => {
     downloadCSV('小テスト_インポート雛形.csv', [
       ['コースID', '配置動画ID', 'テスト名', '設問', '選択肢1', '選択肢2', '選択肢3', '選択肢4', '正答番号', '解説', '採点方式', '回答形式'],
-      [courseId ?? 1, videos[0]?.id ?? '', '小テスト1', '例）正しいものはどれ？', '回答パターンA', '回答パターンB', '回答パターンC', '回答パターンD', 2, '解説文（不正解時に表示）', '即時採点', '生成'],
+      [courseId ?? 1, videos[0]?.id ?? '', '小テスト1', '例）正しいものはどれ？', '回答パターンA', '回答パターンB', '回答パターンC', '回答パターンD', 2, '解説文（課題ページに表示）', '回答で通過', '生成'],
       [courseId ?? 1, '', '最終テスト', '例）正しいものはどれ？', '回答パターンA', '回答パターンB', '回答パターンC', '回答パターンD', 1, '解説文', '提出添削', '生成'],
     ]);
   };
@@ -343,6 +348,7 @@ export default function AdminQuizzesPage() {
   // --- 回答状況 ---
   const loadAttempts = useCallback(async (cid: number) => {
     setAttemptsLoading(true);
+    setSelectedAttemptIds(new Set());
     try {
       const res = await fetch(`/api/admin/quizzes/attempts?courseId=${cid}`, { headers: await authHeaders() });
       const json = await res.json();
@@ -358,16 +364,86 @@ export default function AdminQuizzesPage() {
     if (tab === 'attempts' && courseId) loadAttempts(courseId);
   }, [tab, courseId, loadAttempts]);
 
+  // コースを切り替えたら絞り込みを解除
+  useEffect(() => {
+    setAttemptUserFilter('');
+    setAttemptQuizFilter('');
+  }, [courseId]);
+
+  // 絞り込みの選択肢（回答のある受講者・テスト）
+  const attemptUsers = Array.from(new Map(attempts.map((a) => [a.user_id, a.user_name])).entries());
+  const attemptQuizzes = Array.from(new Map(attempts.map((a) => [a.quiz_id, a.quiz_title])).entries());
+  const visibleAttempts = attempts.filter(
+    (a) =>
+      (!attemptUserFilter || a.user_id === attemptUserFilter) &&
+      (!attemptQuizFilter || String(a.quiz_id) === attemptQuizFilter)
+  );
+  const allVisibleSelected = visibleAttempts.length > 0 && visibleAttempts.every((a) => selectedAttemptIds.has(a.id));
+
+  const toggleAttempt = (id: number) => {
+    setSelectedAttemptIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllVisible = () => {
+    setSelectedAttemptIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) visibleAttempts.forEach((a) => next.delete(a.id));
+      else visibleAttempts.forEach((a) => next.add(a.id));
+      return next;
+    });
+  };
+
+  // --- 回答の削除 ---
+  const deleteAttempts = async (ids: number[]) => {
+    if (!courseId || ids.length === 0) return;
+    const people = new Set(attempts.filter((a) => ids.includes(a.id)).map((a) => a.user_id)).size;
+    const ok = confirm(
+      [
+        `選択した回答 ${ids.length} 件（受講者 ${people} 名）を削除しますか？`,
+        '',
+        '・削除した回答は元に戻せません（削除の記録はシステムログに残ります）。',
+        '・あるテストの回答をすべて削除した受講者は、そのテストを受け直す必要があります（次の動画は再びロックされます）。',
+        '・最終テストの場合は、その受講者への添削結果も一緒に削除されます。',
+      ].join('\n')
+    );
+    if (!ok) return;
+    setDeletingAttempts(true);
+    try {
+      const res = await fetch('/api/admin/quizzes/attempts', {
+        method: 'DELETE',
+        headers: await authHeaders(),
+        body: JSON.stringify({ attempt_ids: ids }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        const lines = [`${json.deleted}件の回答を削除しました。`];
+        if (json.reset) lines.push(`${json.reset}件（受講者×テスト）が未回答の状態に戻りました。`);
+        if (json.deleted_reviews) lines.push(`添削結果 ${json.deleted_reviews}件も削除しました。`);
+        alert(lines.join('\n'));
+        await loadAttempts(courseId);
+      } else {
+        alert(json.error || '回答の削除に失敗しました');
+      }
+    } catch {
+      alert('回答の削除に失敗しました');
+    }
+    setDeletingAttempts(false);
+  };
+
   const exportAttempts = () => {
-    const header = ['受講者', '会社', 'テスト名', '種別', '設問', '解答', '正誤', '挑戦回数', '回答日時'];
-    const rows = attempts.map((a) => [
+    const header = ['受講者', '会社', 'テスト名', '種別', '設問', '解答', '挑戦回数', '回答日時'];
+    const rows = visibleAttempts.map((a) => [
       a.user_name,
       a.company,
       a.quiz_title,
       a.quiz_type === 'choice' ? '選択式' : '記述式',
       a.question_text,
       a.quiz_type === 'choice' ? a.selected_text : a.answer_text || '',
-      a.is_correct === null ? '—' : a.is_correct ? '正解' : '不正解',
       a.attempt_no,
       new Date(a.answered_at).toLocaleString('ja-JP'),
     ]);
@@ -506,7 +582,7 @@ export default function AdminQuizzesPage() {
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
                   列: コースID, 配置動画ID(動画の数値ID。空欄=コース末), テスト名, 設問, 選択肢1〜4, 正答番号(1始まり), 解説,
-                  採点方式(空欄/即時採点 = その場で採点／提出添削 = 提出後に指導者が添削),
+                  採点方式(空欄/回答で通過 = 全問に回答すると通過する小テスト。旧表記「即時採点」も可／提出添削 = 提出後に指導者が添削),
                   回答形式(空欄/固定 = 選択肢をそのまま表示／生成 = 選択肢を回答パターンとして、受験ごとに回答文を生成)。取込後は「下書き」で作成されます。
                 </p>
                 {importResult && (
@@ -535,7 +611,7 @@ export default function AdminQuizzesPage() {
                             {q.quiz_type === 'choice' ? '選択式' : '記述式'}
                           </span>
                           <span className={`text-xs px-2 py-0.5 rounded ${q.grading_mode === 'review' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
-                            {q.grading_mode === 'review' ? '提出→添削' : '即時採点'}
+                            {q.grading_mode === 'review' ? '提出→添削' : '回答で通過'}
                           </span>
                           {q.quiz_type === 'choice' && q.answer_style === 'generated' && (
                             <span className="text-xs px-2 py-0.5 rounded bg-rose-100 text-rose-700">回答文生成</span>
@@ -556,7 +632,7 @@ export default function AdminQuizzesPage() {
                             onChange={(e) => changeGradingMode(q, e.target.value as 'auto' | 'review')}
                             title="採点方式"
                           >
-                            <option value="auto">即時採点（小テスト）</option>
+                            <option value="auto">回答で通過（小テスト）</option>
                             <option value="review">提出→添削（最終テスト）</option>
                           </select>
                         )}
@@ -590,47 +666,100 @@ export default function AdminQuizzesPage() {
 
           {tab === 'attempts' && (
             <div>
-              <div className="flex justify-end mb-3">
-                <Button variant="outline" size="sm" onClick={exportAttempts} disabled={attempts.length === 0}>
-                  <DocumentArrowDownIcon className="w-4 h-4 mr-1" /> CSVエクスポート
-                </Button>
+              <div className="flex flex-wrap items-center gap-3 mb-3">
+                <select
+                  className="text-sm border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  value={attemptUserFilter}
+                  onChange={(e) => setAttemptUserFilter(e.target.value)}
+                  title="受講者で絞り込み"
+                >
+                  <option value="">すべての受講者</option>
+                  {attemptUsers.map(([id, name]) => (
+                    <option key={id} value={id}>{name}</option>
+                  ))}
+                </select>
+                <select
+                  className="text-sm border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  value={attemptQuizFilter}
+                  onChange={(e) => setAttemptQuizFilter(e.target.value)}
+                  title="テストで絞り込み"
+                >
+                  <option value="">すべてのテスト</option>
+                  {attemptQuizzes.map(([id, title]) => (
+                    <option key={id} value={String(id)}>{title}</option>
+                  ))}
+                </select>
+                <span className="text-xs text-gray-500">{visibleAttempts.length}件</span>
+                <div className="ml-auto flex flex-wrap gap-2">
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => deleteAttempts(Array.from(selectedAttemptIds))}
+                    disabled={selectedAttemptIds.size === 0}
+                    loading={deletingAttempts}
+                  >
+                    <TrashIcon className="w-4 h-4 mr-1" /> 選択した回答を削除{selectedAttemptIds.size > 0 ? `（${selectedAttemptIds.size}件）` : ''}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={exportAttempts} disabled={visibleAttempts.length === 0}>
+                    <DocumentArrowDownIcon className="w-4 h-4 mr-1" /> CSVエクスポート
+                  </Button>
+                </div>
               </div>
+              <p className="text-xs text-gray-500 mb-3">
+                受講者とテストで絞り込み、左のチェックで選んだ回答を削除できます。あるテストの回答をすべて削除すると、その受講者はテストを受け直せる状態に戻ります。
+              </p>
               {attemptsLoading ? (
                 <div className="py-12 flex justify-center"><LoadingSpinner size="lg" /></div>
-              ) : attempts.length === 0 ? (
+              ) : visibleAttempts.length === 0 ? (
                 <p className="text-sm text-gray-500 py-8 text-center">回答記録がありません。</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-sm">
                     <thead>
                       <tr className="text-left text-gray-500 border-b border-gray-200 dark:border-gray-700">
+                        <th className="py-2 pr-3 w-8">
+                          <input
+                            type="checkbox"
+                            checked={allVisibleSelected}
+                            onChange={toggleAllVisible}
+                            title="表示中の回答をすべて選択"
+                          />
+                        </th>
                         <th className="py-2 pr-4">受講者</th>
                         <th className="py-2 pr-4">テスト</th>
                         <th className="py-2 pr-4">設問</th>
                         <th className="py-2 pr-4">解答</th>
-                        <th className="py-2 pr-4">正誤</th>
                         <th className="py-2 pr-4">挑戦</th>
                         <th className="py-2 pr-4">回答日時</th>
+                        <th className="py-2 pr-2" />
                       </tr>
                     </thead>
                     <tbody>
-                      {attempts.map((a) => (
-                        <tr key={a.id} className="border-b border-gray-100 dark:border-gray-800">
+                      {visibleAttempts.map((a) => (
+                        <tr key={a.id} className={`border-b border-gray-100 dark:border-gray-800 ${selectedAttemptIds.has(a.id) ? 'bg-red-50 dark:bg-red-900/10' : ''}`}>
+                          <td className="py-2 pr-3">
+                            <input type="checkbox" checked={selectedAttemptIds.has(a.id)} onChange={() => toggleAttempt(a.id)} />
+                          </td>
                           <td className="py-2 pr-4 whitespace-nowrap">{a.user_name}</td>
                           <td className="py-2 pr-4 whitespace-nowrap">{a.quiz_title}</td>
                           <td className="py-2 pr-4 max-w-xs truncate" title={a.question_text}>{a.question_text}</td>
                           <td className="py-2 pr-4 max-w-xs truncate" title={a.quiz_type === 'choice' ? a.selected_text : a.answer_text || ''}>
                             {a.quiz_type === 'choice' ? a.selected_text : a.answer_text}
                           </td>
-                          <td className="py-2 pr-4 whitespace-nowrap">
-                            {a.is_correct === null ? '—' : a.is_correct ? (
-                              <span className="text-green-600">正解</span>
-                            ) : (
-                              <span className="text-red-600">不正解</span>
-                            )}
-                          </td>
                           <td className="py-2 pr-4">{a.attempt_no}</td>
                           <td className="py-2 pr-4 whitespace-nowrap">{new Date(a.answered_at).toLocaleString('ja-JP')}</td>
+                          <td className="py-2 pr-2">
+                            <button
+                              type="button"
+                              className="text-gray-400 hover:text-red-600 disabled:opacity-40"
+                              onClick={() => deleteAttempts([a.id])}
+                              disabled={deletingAttempts}
+                              title="この回答を削除"
+                              aria-label="この回答を削除"
+                            >
+                              <TrashIcon className="w-4 h-4" />
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -663,12 +792,13 @@ export default function AdminQuizzesPage() {
                       else { setNewType('choice'); setNewGradingMode(v === 'choice-review' ? 'review' : 'auto'); }
                     }}
                   >
-                    <option value="choice-auto">選択式・即時採点（小テスト）</option>
+                    <option value="choice-auto">選択式・回答で通過（小テスト）</option>
                     <option value="choice-review">選択式・提出→添削（最終テスト）</option>
                     <option value="essay">記述式・提出→添削（最終テスト）</option>
                   </select>
                   <p className="text-xs text-gray-500 mt-1">
-                    「提出→添削」は、受講者が回答を提出したあと指導者が正誤とコメントを付けて返却します。合格で通過扱いになります。
+                    「回答で通過」は、すべての問題に回答すると次へ進めます（正解・不正解は受講者にも管理画面にも表示しません。正答の設定は記録用に保存されます）。
+                    「提出→添削」は、受講者が回答を提出したあと指導者が赤ペン・コメントを付けて返却し、合格で通過扱いになります。
                   </p>
                 </div>
                 {newType === 'choice' && (
@@ -760,12 +890,12 @@ export default function AdminQuizzesPage() {
                               }} />
                           </div>
                         ))}
-                        <p className="text-xs text-gray-400">左のラジオボタンで正答を選択</p>
+                        <p className="text-xs text-gray-400">左のラジオボタンで正答を選択（受講者には正誤を表示しません）</p>
                       </div>
                     )}
 
                     <textarea className="w-full mt-2 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm"
-                      rows={2} placeholder={editingQuiz.quiz_type === 'choice' ? '解説（不正解時に表示）' : '採点の参考メモ（任意）'}
+                      rows={2} placeholder={editingQuiz.quiz_type === 'choice' ? '解説（回答後、受講者の「課題」ページに表示）' : '採点の参考メモ（任意）'}
                       value={d.explanation}
                       onChange={(e) => {
                         const next = [...questionDrafts];

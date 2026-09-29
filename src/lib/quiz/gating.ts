@@ -4,7 +4,8 @@
 // 順序: [動画1, 動画1直後のクイズ..., 動画2, 動画2直後のクイズ..., ..., コース末クイズ...]
 // 通過条件:
 //   - 動画: video_view_logs に status='completed' の行がある
-//   - 選択式クイズ（grading_mode='auto'）: 全設問に is_correct=true の attempt がある（all_correct）
+//   - 選択式クイズ（grading_mode='auto'）: 全設問に回答（attempt）がある。正誤は問わない
+//     （正答は設定・記録用に保持するが、受講者・管理者とも正誤は表示しない。2026-09-29 仕様変更）
 //   - 提出制クイズ（記述式 または grading_mode='review' の選択式）: essay_reviews に result='passed' がある
 // 解放条件: そのステップより前の全ステップが通過済み（先頭動画は常に解放）
 
@@ -95,17 +96,16 @@ export async function computeGateState(
       quizQuestionIds.get(q.quiz_id)!.add(q.id);
     });
 
-    // 正解済み attempt
-    const { data: correctAttempts } = await admin
+    // 回答済み attempt（正誤は問わない）
+    const { data: answeredAttempts } = await admin
       .from('quiz_attempts')
       .select('quiz_id, question_id')
       .eq('user_id', userId)
-      .in('quiz_id', quizIds)
-      .eq('is_correct', true);
-    const correctByQuiz = new Map<number, Set<number>>();
-    (correctAttempts || []).forEach((a) => {
-      if (!correctByQuiz.has(a.quiz_id)) correctByQuiz.set(a.quiz_id, new Set());
-      correctByQuiz.get(a.quiz_id)!.add(a.question_id);
+      .in('quiz_id', quizIds);
+    const answeredByQuiz = new Map<number, Set<number>>();
+    (answeredAttempts || []).forEach((a) => {
+      if (!answeredByQuiz.has(a.quiz_id)) answeredByQuiz.set(a.quiz_id, new Set());
+      answeredByQuiz.get(a.quiz_id)!.add(a.question_id);
     });
 
     // 提出制（記述式 / grading_mode='review'）：合格レビュー
@@ -123,8 +123,8 @@ export async function computeGateState(
         quizPassed[q.id] = essayPassedQuizIds.has(q.id);
       } else {
         const need = quizQuestionIds.get(q.id) || new Set<number>();
-        const got = correctByQuiz.get(q.id) || new Set<number>();
-        // 設問が1問もない選択式は「未完成」とみなし未通過にする（公開時に弾いているが保険）
+        const got = answeredByQuiz.get(q.id) || new Set<number>();
+        // 全設問に回答していれば通過。設問が1問もない選択式は「未完成」とみなし未通過にする（公開時に弾いているが保険）
         quizPassed[q.id] = need.size > 0 && Array.from(need).every((qid) => got.has(qid));
       }
     }

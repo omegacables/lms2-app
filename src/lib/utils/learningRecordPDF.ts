@@ -41,7 +41,7 @@ export interface LearningRecordData {
     questions: {
       question_text: string;
       answers: { attempt_no: number; answer_text: string; answered_at: string }[];
-      /** 指導者が設問ごとに付けた正誤・コメント・赤ペン（最新の添削） */
+      /** 指導者が設問ごとに付けたコメント・赤ペン（最新の添削）。正誤は記録に載せない */
       review_mark?: {
         is_correct: boolean | null;
         comment: string | null;
@@ -130,7 +130,6 @@ export function buildRecordHTML(d: LearningRecordData): string {
               <tr>
                 <td style="text-align:center">${a.attempt_no}</td>
                 <td>${esc(a.selected_text)}</td>
-                <td style="text-align:center">${a.is_correct === null ? '—' : a.is_correct ? '正解' : '不正解'}</td>
                 <td>${fmtDateTime(a.answered_at)}</td>
               </tr>`
             )
@@ -140,8 +139,8 @@ export function buildRecordHTML(d: LearningRecordData): string {
               <div class="qh">問${qi + 1}. ${esc(qq.question_text)}</div>
               <div class="choices">${choicesHtml}</div>
               <table class="sub">
-                <thead><tr><th>挑戦</th><th>選択した解答</th><th>正誤</th><th>回答日時</th></tr></thead>
-                <tbody>${attemptRows || '<tr><td colspan="4" style="text-align:center">未回答</td></tr>'}</tbody>
+                <thead><tr><th>挑戦</th><th>選択した解答</th><th>回答日時</th></tr></thead>
+                <tbody>${attemptRows || '<tr><td colspan="3" style="text-align:center">未回答</td></tr>'}</tbody>
               </table>
               ${qq.explanation ? `<div class="expl"><b>解説：</b>${esc(qq.explanation)}</div>` : ''}
             </div>`;
@@ -162,13 +161,8 @@ export function buildRecordHTML(d: LearningRecordData): string {
             .join('');
           const mark = qq.review_mark;
           const redpenHtml = mark?.markup && mark.markup.length > 0 ? renderRedPenHTML(mark.markup, q.signer_name || '') : '';
-          const markHtml = mark
-            ? `<div class="ans-body" style="margin-top:2px;">${
-                mark.is_correct === null || mark.is_correct === undefined
-                  ? ''
-                  : `<b>添削：${mark.is_correct ? '正解' : '不正解'}</b>`
-              }${mark.comment ? `${mark.is_correct === null || mark.is_correct === undefined ? '<b>添削：</b>' : '　'}${esc(mark.comment)}` : ''}</div>`
-            : '';
+          // 設問ごとの添削コメント（正誤は記載しない）
+          const markHtml = mark?.comment ? `<div class="ans-body" style="margin-top:2px;"><b>添削：</b>${esc(mark.comment)}</div>` : '';
           return `<div class="q"><div class="qh">問${qi + 1}. ${esc(qq.question_text)}</div>${answers || '<div class="ans-body">未提出</div>'}${markHtml}${redpenHtml}</div>`;
         })
         .join('');

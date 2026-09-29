@@ -5,7 +5,8 @@ import { createAdminSupabaseClient } from '@/lib/database/supabase';
 export const runtime = 'nodejs';
 
 // GET /api/admin/quizzes/attempts?courseId=123[&userId=uuid]
-// 受講者別の回答状況一覧（全 attempt 履歴・正誤・回答日時）を返す
+// 受講者別の回答状況一覧（全 attempt 履歴・回答日時）を返す。
+// 正誤は管理画面にも表示しない仕様のため返さない（DB には記録として残る）。
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, ['admin', 'instructor']);
   if (!auth.ok) return auth.response;
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
   // 2. 回答（attempt）
   let attemptQuery = admin
     .from('quiz_attempts')
-    .select('*')
+    .select('id, user_id, quiz_id, question_id, selected_index, answer_text, attempt_no, answered_at')
     .in('quiz_id', quizIds)
     .order('answered_at', { ascending: true });
   if (userId) attemptQuery = attemptQuery.eq('user_id', userId);
@@ -44,7 +45,7 @@ export async function GET(request: NextRequest) {
   // 3. 設問（本文・選択肢）
   const { data: questions } = await admin
     .from('quiz_questions')
-    .select('id, question_text, choices, correct_index')
+    .select('id, question_text, choices')
     .in('quiz_id', quizIds);
   const questionMap = new Map((questions || []).map((q) => [q.id, q]));
 
@@ -83,11 +84,113 @@ export async function GET(request: NextRequest) {
       selected_index: a.selected_index,
       selected_text: selectedText,
       answer_text: a.answer_text,
-      is_correct: a.is_correct,
       attempt_no: a.attempt_no,
       answered_at: a.answered_at,
     };
   });
 
   return NextResponse.json({ attempts: rows });
+}
+
+// DELETE /api/admin/quizzes/attempts
+// body: { attempt_ids: number[] }
+// 選んだ回答（attempt）を削除する（管理者のみ）。
+// - ある受講者のそのテストの回答がすべて無くなった場合は、そのテストの添削（essay_reviews）も削除し、
+//   受講者が最初から受け直せる状態に戻す（小テストは未回答に戻り、以降のステップは再びロックされる）。
+// - 削除した内容は system_logs に記録する（誰が・いつ・何を削除したか。削除前の回答内容も保存）。
+export async function DELETE(request: NextRequest) {
+  const auth = await requireRole(request, ['admin']);
+  if (!auth.ok) return auth.response;
+
+  const body = await request.json().catch(() => ({}));
+  const ids: number[] = Array.isArray(body.attempt_ids)
+    ? Array.from(new Set(body.attempt_ids.map((v: unknown) => Number(v)).filter((v: number) => Number.isInteger(v) && v > 0)))
+    : [];
+  if (ids.length === 0) {
+    return NextResponse.json({ error: '削除する回答が選ばれていません' }, { status: 400 });
+  }
+  if (ids.length > 2000) {
+    return NextResponse.json({ error: '一度に削除できるのは2000件までです' }, { status: 400 });
+  }
+
+  const admin = createAdminSupabaseClient();
+
+  // 1. 削除対象（ログ用に内容を控える）
+  const { data: targets, error: fetchErr } = await admin
+    .from('quiz_attempts')
+    .select('*')
+    .in('id', ids);
+  if (fetchErr) {
+    return NextResponse.json({ error: '回答の取得に失敗しました', details: fetchErr.message }, { status: 500 });
+  }
+  if (!targets || targets.length === 0) {
+    return NextResponse.json({ error: '削除する回答が見つかりません（すでに削除されている可能性があります）' }, { status: 404 });
+  }
+
+  // 2. 回答を削除
+  const { error: delErr } = await admin
+    .from('quiz_attempts')
+    .delete()
+    .in('id', targets.map((t) => t.id));
+  if (delErr) {
+    return NextResponse.json({ error: '回答の削除に失敗しました', details: delErr.message }, { status: 500 });
+  }
+
+  // 3. 受講者×テストごとに、回答が残っていなければ添削も削除する
+  const pairs = new Map<string, { user_id: string; quiz_id: number }>();
+  targets.forEach((t) => pairs.set(`${t.user_id}:${t.quiz_id}`, { user_id: t.user_id, quiz_id: t.quiz_id }));
+
+  const deletedReviews: any[] = [];
+  const resetPairs: { user_id: string; quiz_id: number }[] = [];
+  for (const pair of pairs.values()) {
+    const { count } = await admin
+      .from('quiz_attempts')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', pair.user_id)
+      .eq('quiz_id', pair.quiz_id);
+    if ((count ?? 0) > 0) continue;
+
+    resetPairs.push(pair);
+    const { data: reviews } = await admin
+      .from('essay_reviews')
+      .select('*')
+      .eq('user_id', pair.user_id)
+      .eq('quiz_id', pair.quiz_id);
+    if (reviews && reviews.length > 0) {
+      const { error: revErr } = await admin
+        .from('essay_reviews')
+        .delete()
+        .in('id', reviews.map((r) => r.id));
+      if (revErr) {
+        console.error('[admin/quizzes/attempts DELETE] essay_reviews delete error:', revErr);
+      } else {
+        deletedReviews.push(...reviews);
+      }
+    }
+  }
+
+  // 4. 監査ログ（失敗しても削除自体は完了しているので処理は続ける）
+  const forwardedIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '';
+  const ipAddress = /^[0-9a-fA-F:.]{3,45}$/.test(forwardedIp) ? forwardedIp : null;
+  const { error: logErr } = await admin.from('system_logs').insert({
+    user_id: auth.user.id,
+    action: 'quiz_attempts_deleted',
+    resource_type: 'quiz_attempts',
+    resource_id: String(targets.length),
+    ip_address: ipAddress,
+    user_agent: request.headers.get('user-agent') || null,
+    details: {
+      deleted_by: auth.user.email || auth.user.id,
+      attempts: targets,
+      essay_reviews: deletedReviews,
+      reset: resetPairs,
+    },
+  });
+  if (logErr) console.error('[admin/quizzes/attempts DELETE] system_logs insert error:', logErr);
+
+  return NextResponse.json({
+    deleted: targets.length,
+    deleted_reviews: deletedReviews.length,
+    reset: resetPairs.length,
+  });
 }

@@ -19,6 +19,8 @@ interface StudentQuestion {
   /** 回答文生成のときの選択肢（key は表示位置） */
   options: { key: number; text: string }[] | null;
   sort_order: number;
+  /** 回答済みか（小テストは回答すれば通過。正誤は表示しない） */
+  answered?: boolean;
   solved: boolean;
   my_answer: {
     selected_index: number | null;
@@ -36,13 +38,6 @@ interface QuizMeta {
   grading_mode: 'auto' | 'review';
   answer_style: 'plain' | 'generated';
   after_video_id: number | null;
-}
-interface GradeResult {
-  question_id: number;
-  is_correct: boolean;
-  correct_index?: number | null;
-  correct_text?: string | null;
-  explanation?: string | null;
 }
 interface QuestionReview {
   question_id: number;
@@ -88,9 +83,8 @@ export default function QuizPage() {
   const [justSubmitted, setJustSubmitted] = useState(false);
 
   const [selections, setSelections] = useState<Record<number, number>>({});
-  const [results, setResults] = useState<Record<number, GradeResult>>({});
   const [submitting, setSubmitting] = useState(false);
-  const [justPassed, setJustPassed] = useState(false);
+  const [justAnswered, setJustAnswered] = useState(false);
 
   const generated = quiz?.answer_style === 'generated';
 
@@ -128,7 +122,6 @@ export default function QuizPage() {
         });
       }
       setSelections(init);
-      setResults({});
     } catch {
       setLockedMsg('読み込みに失敗しました');
     }
@@ -137,8 +130,10 @@ export default function QuizPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // これから回答が必要な設問（回答文生成の即時採点では、正解済みの設問は除く）
-  const pendingQuestions = questions.filter((q) => !(generated && !reviewMode && q.solved));
+  // 回答済みか（旧APIの solved も同じ意味）
+  const isAnswered = (q: StudentQuestion) => q.answered ?? q.solved;
+  // これから回答が必要な設問（小テストでは回答済みの設問は除く）
+  const pendingQuestions = questions.filter((q) => reviewMode || !isAnswered(q));
   const allAnswered = pendingQuestions.length > 0 && pendingQuestions.every((q) => selections[q.id] !== undefined);
 
   const buildAnswers = () =>
@@ -146,10 +141,9 @@ export default function QuizPage() {
       .filter((q) => selections[q.id] !== undefined)
       .map((q) => ({ question_id: q.id, selected_index: selections[q.id] }));
 
-  // 即時採点（小テスト）
+  // 回答の送信（小テスト。正誤は表示せず、全問に回答すると通過）
   const submit = async () => {
     setSubmitting(true);
-    setResults({});
     try {
       const res = await fetch(`/api/quizzes/${quizId}/answer`, {
         method: 'POST',
@@ -158,19 +152,14 @@ export default function QuizPage() {
       });
       const json = await res.json();
       if (!res.ok) {
-        alert(json.error || '採点に失敗しました');
+        alert(json.error || '回答の送信に失敗しました');
         setSubmitting(false);
         return;
       }
-      const map: Record<number, GradeResult> = {};
-      (json.results || []).forEach((r: GradeResult) => { map[r.question_id] = r; });
-      setResults(map);
-      if (json.passed) {
-        setPassed(true);
-        setJustPassed(true);
-      }
+      setJustAnswered(true);
+      await load();
     } catch {
-      alert('採点に失敗しました');
+      alert('回答の送信に失敗しました');
     }
     setSubmitting(false);
   };
@@ -199,22 +188,6 @@ export default function QuizPage() {
     setSubmitting(false);
   };
 
-  const retryWrong = async () => {
-    setJustPassed(false);
-    if (generated) {
-      // 回答文生成：新しい回答文で出し直す（正解済みの設問は出題されない）
-      await load();
-      return;
-    }
-    // 固定選択肢：不正解の設問だけ選択をクリアして再挑戦
-    const next = { ...selections };
-    Object.values(results).forEach((r) => {
-      if (!r.is_correct) delete next[r.question_id];
-    });
-    setSelections(next);
-    setResults({});
-  };
-
   const questionReview = (questionId: number): QuestionReview | null =>
     review?.question_reviews?.find((r) => r.question_id === questionId) || null;
 
@@ -222,7 +195,7 @@ export default function QuizPage() {
     if (!reviewMode) {
       return passed ? (
         <span className="inline-flex items-center text-green-600 text-sm font-medium">
-          <CheckCircleIcon className="w-5 h-5 mr-1" /> 通過済み
+          <CheckCircleIcon className="w-5 h-5 mr-1" /> 回答済み
         </span>
       ) : null;
     }
@@ -253,22 +226,19 @@ export default function QuizPage() {
   };
 
   // 選択肢（固定 or 生成された回答文）を描画
-  const renderChoices = (q: StudentQuestion, editable: boolean, result?: GradeResult) => {
+  const renderChoices = (q: StudentQuestion, editable: boolean) => {
     const items: { key: number; text: string }[] = q.options ?? q.choices.map((c, i) => ({ key: i, text: c }));
     const essayLike = !!q.options;
     return (
       <div className={essayLike ? 'space-y-3' : 'space-y-2'}>
         {items.map((opt) => {
           const selected = selections[q.id] === opt.key;
-          const isCorrectShown = result && !result.is_correct && result.correct_index === opt.key;
           return (
             <label
               key={opt.key}
               className={`flex items-start gap-3 rounded border ${essayLike ? 'p-3' : 'p-2 items-center'} ${
                 editable ? 'cursor-pointer' : 'cursor-default'
-              } ${selected ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'} ${
-                isCorrectShown ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : ''
-              }`}
+              } ${selected ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}
             >
               <input
                 type="radio"
@@ -284,7 +254,6 @@ export default function QuizPage() {
               >
                 {opt.text}
               </span>
-              {isCorrectShown && <span className="text-xs text-green-600 ml-auto whitespace-nowrap">正しい回答</span>}
             </label>
           );
         })}
@@ -329,7 +298,7 @@ export default function QuizPage() {
               <p className="text-sm text-gray-500 mb-6">
                 {reviewMode
                   ? `全${questions.length}問。回答を選んで提出すると、講師が添削します。添削結果は課題ページで確認できます。`
-                  : `全${questions.length}問。すべて正解すると次のステップが解放されます。`}
+                  : `全${questions.length}問。すべての問題に回答すると次のステップに進めます。`}
                 {generated && ' 回答の文章は受験のたびに変わるので、内容をよく読んで選んでください。'}
               </p>
 
@@ -366,10 +335,10 @@ export default function QuizPage() {
 
               <div className="space-y-6">
                 {questions.map((q, qi) => {
-                  const result = results[q.id];
                   const qr = questionReview(q.id);
-                  const solvedLocked = generated && !reviewMode && q.solved;
-                  const editable = reviewMode ? canSubmit : !(passed && !result) && !result;
+                  // 小テストで回答済みの設問は、選んだ回答だけを表示する（正誤は表示しない）
+                  const answeredLocked = !reviewMode && isAnswered(q);
+                  const editable = reviewMode ? canSubmit : !answeredLocked;
                   // 回答文生成で、提出済み（添削待ち・添削済み）なら選んだ文章だけを見せる
                   const showSubmittedText = generated && reviewMode && !canSubmit;
                   return (
@@ -378,16 +347,10 @@ export default function QuizPage() {
                         問{qi + 1}. {q.question_text}
                       </div>
 
-                      {solvedLocked ? (
-                        <div>
-                          <div className="text-sm text-green-700 flex items-center gap-1 mb-2">
-                            <CheckCircleIcon className="w-5 h-5" /> 正解済み
-                          </div>
-                          {q.my_answer?.answer_text && (
-                            <div className="text-sm text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 rounded p-3 border border-gray-100 dark:border-gray-700">
-                              {q.my_answer.answer_text}
-                            </div>
-                          )}
+                      {answeredLocked && generated ? (
+                        <div className="text-[15px] leading-7 text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 rounded p-3 border border-gray-100 dark:border-gray-700"
+                          style={{ fontFamily: '"Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif' }}>
+                          {q.my_answer?.answer_text || '（回答済み）'}
                         </div>
                       ) : showSubmittedText ? (
                         qr?.markup && qr.markup.length > 0 ? (
@@ -398,56 +361,28 @@ export default function QuizPage() {
                           </div>
                         )
                       ) : (
-                        renderChoices(q, editable, result)
+                        renderChoices(q, editable)
                       )}
 
-                      {/* 講師による設問ごとの正誤・コメント */}
-                      {reviewMode && qr && (qr.is_correct !== null || qr.comment) && (
-                        <div className="mt-3 text-sm">
-                          {qr.is_correct !== null && (
-                            <div className={`flex items-center gap-1 font-medium ${qr.is_correct ? 'text-green-700' : 'text-red-700'}`}>
-                              {qr.is_correct ? <CheckCircleIcon className="w-5 h-5" /> : <XCircleIcon className="w-5 h-5" />}
-                              {qr.is_correct ? '正解' : '不正解'}
-                            </div>
-                          )}
-                          {qr.comment && (
-                            <div className="text-gray-600 dark:text-gray-300 mt-1 whitespace-pre-wrap">添削: {qr.comment}</div>
-                          )}
+                      {answeredLocked && q.my_answer && (
+                        <div className="mt-2 text-xs text-gray-500 flex items-center gap-1">
+                          <CheckCircleIcon className="w-4 h-4 text-green-600" /> 回答済み（{new Date(q.my_answer.answered_at).toLocaleString('ja-JP')}）
                         </div>
                       )}
 
-                      {result && (
-                        <div className={`mt-3 text-sm flex items-start gap-2 ${result.is_correct ? 'text-green-700' : 'text-red-700'}`}>
-                          {result.is_correct ? (
-                            <><CheckCircleIcon className="w-5 h-5 flex-shrink-0" /> 正解</>
-                          ) : (
-                            <div className="flex items-start gap-2">
-                              <XCircleIcon className="w-5 h-5 flex-shrink-0 text-red-600" />
-                              <div>
-                                <div>不正解</div>
-                                {result.explanation && (
-                                  <div className="text-gray-600 dark:text-gray-300 mt-1">解説: {result.explanation}</div>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {!generated && !reviewMode && passed && q.my_answer?.is_correct && !result && (
-                        <div className="mt-3 text-sm text-green-700 flex items-center gap-1">
-                          <CheckCircleIcon className="w-5 h-5" /> 正解（{q.my_answer && new Date(q.my_answer.answered_at).toLocaleString('ja-JP')}）
-                        </div>
+                      {/* 講師による設問ごとのコメント */}
+                      {reviewMode && qr?.comment && (
+                        <div className="mt-3 text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap">添削: {qr.comment}</div>
                       )}
                     </div>
                   );
                 })}
               </div>
 
-              {/* 通過メッセージ（即時採点） */}
-              {!reviewMode && justPassed && (
+              {/* 回答直後（小テスト） */}
+              {!reviewMode && justAnswered && passed && (
                 <div className="mt-6 p-4 rounded-lg border border-green-300 bg-green-50 text-green-800">
-                  全問正解しました！次のステップが解放されました。
+                  回答を送信しました。次のステップに進めます。
                   <div className="mt-3">
                     <Link href={`/courses/${courseId}`}><Button size="sm">コースに戻って続ける</Button></Link>
                   </div>
@@ -471,18 +406,12 @@ export default function QuizPage() {
                 </>
               ) : (
                 <>
-                  {!passed && Object.keys(results).length === 0 && (
-                    <div className="mt-6 flex justify-end">
+                  {pendingQuestions.length > 0 && (
+                    <div className="mt-6 flex flex-col items-end gap-2">
                       <Button onClick={submit} loading={submitting} disabled={!allAnswered}>
-                        採点する
+                        回答を送信する
                       </Button>
-                    </div>
-                  )}
-                  {!passed && Object.keys(results).length > 0 && Object.values(results).some((r) => !r.is_correct) && (
-                    <div className="mt-6 flex justify-end">
-                      <Button variant="outline" size="sm" onClick={retryWrong}>
-                        {generated ? '不正解の問題にもう一度挑戦する' : '不正解の問題をやり直す'}
-                      </Button>
+                      {!allAnswered && <p className="text-xs text-gray-500">すべての問題に回答すると送信できます。</p>}
                     </div>
                   )}
                 </>

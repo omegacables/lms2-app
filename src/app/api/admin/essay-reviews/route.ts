@@ -114,11 +114,6 @@ export async function GET(request: NextRequest) {
               ? a?.answer_text ||
                 (selectedIndex !== null && selectedIndex !== undefined ? choices[selectedIndex] ?? '' : '')
               : '',
-            // 正答が設定されていれば正誤の初期値として使う（最終判断は指導者）
-            auto_is_correct:
-              isChoice && q.correct_index !== null && q.correct_index !== undefined && selectedIndex !== null
-                ? selectedIndex === q.correct_index
-                : null,
           };
         }),
         latest_review: latestReview
@@ -142,7 +137,7 @@ export async function GET(request: NextRequest) {
 //   quiz_id, user_id,
 //   result: 'passed'|'needs_revision',
 //   review_comment, explanation,
-//   question_reviews?: [{ question_id, is_correct, comment, markup? }],  // 設問ごとの正誤・コメント・赤ペン
+//   question_reviews?: [{ question_id, comment, markup? }],  // 設問ごとのコメント・赤ペン（正誤は付けない仕様。is_correct は常に NULL で保存）
 //   ai_assisted?
 // }
 export async function POST(request: NextRequest) {
@@ -210,7 +205,7 @@ export async function POST(request: NextRequest) {
       const markup = r.markup ? normalizeMarkup(latestAnswerText.get(qid) || '', r.markup) : null;
       return {
         question_id: qid,
-        is_correct: typeof r.is_correct === 'boolean' ? r.is_correct : null,
+        is_correct: null,
         comment: r.comment ? String(r.comment) : null,
         markup,
       };
