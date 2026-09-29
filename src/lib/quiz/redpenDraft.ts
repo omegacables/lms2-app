@@ -15,6 +15,8 @@ export interface RedPenDraftInput {
   explanation?: string | null;
   /** 選択式で内容の正誤が決まっている場合 true/false、記述式は null */
   knownCorrect: boolean | null;
+  /** 小テストの自動添削（受講者にそのまま表示する）。「正解」「不正解」という判定の言葉を使わせない */
+  autoFeedback?: boolean;
 }
 
 export interface RedPenDraft {
@@ -22,6 +24,10 @@ export interface RedPenDraft {
   summary: string;
   is_correct: boolean | null;
 }
+
+/** 小テストの自動添削で足すルール（受講者にそのまま届くため、判定の言葉を使わない） */
+const AUTO_FEEDBACK_RULE =
+  '- この添削は受講者にそのまま届く。「正解」「不正解」という判定の言葉は使わず、どこをどう考えるとよいかを具体的に、前向きな言葉で伝える。';
 
 export function buildRedPenPrompt(i: RedPenDraftInput): string {
   const context = [
@@ -50,7 +56,7 @@ ${context}
 - 内容が正しい場合は、修正は0〜2か所の軽い補強にとどめ、良い点を note で具体的に評価する。
 - 内容が誤っている場合は、誤りの中心となる部分を正しい考え方に直し、2〜4か所に note を付ける。
 - note や summary に文字数の注記、署名、講師名は書かない。
-
+${i.autoFeedback ? AUTO_FEEDBACK_RULE : ''}
 次のJSONのみを出力してください:
 {"segments":[{"type":"keep","text":"..."},{"type":"del","text":"...","note":"..."},{"type":"ins","text":"..."}],"summary":"この設問への総評（80〜160字）","is_correct":true}`;
 }

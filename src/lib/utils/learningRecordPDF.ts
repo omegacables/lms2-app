@@ -27,11 +27,25 @@ export interface LearningRecordData {
   }[];
   choiceQuizzes: {
     title: string;
+    /** 小テストの自動添削（AI）。講師が確認していれば確認した講師名 */
+    auto_review?: {
+      comment: string | null;
+      generated_at: string | null;
+      confirmed: boolean;
+      reviewer_name: string | null;
+      confirmed_at: string | null;
+      edited: boolean;
+    } | null;
     questions: {
       question_text: string;
       choices: string[];
       explanation?: string;
       attempts: { attempt_no: number; selected_text: string; is_correct: boolean | null; answered_at: string }[];
+      /** 自動添削（AI）の設問ごとの講評・赤ペン */
+      auto_mark?: {
+        comment: string | null;
+        markup?: { type: 'keep' | 'del' | 'ins'; text: string; note?: string | null }[] | null;
+      } | null;
     }[];
   }[];
   essayQuizzes: {
@@ -73,7 +87,8 @@ const fmtDuration = (sec: number | null | undefined) => {
 /** 赤ペン添削を HTML にする（取り消し線・書き足し・吹き出し番号＋コメント一覧＋講師署名） */
 function renderRedPenHTML(
   segments: { type: 'keep' | 'del' | 'ins'; text: string; note?: string | null }[],
-  signerName: string
+  signerName: string,
+  title = '赤ペン添削'
 ): string {
   let n = 0;
   const notes: string[] = [];
@@ -93,7 +108,7 @@ function renderRedPenHTML(
     })
     .join('');
   return `<div style="margin-top:6px;border:1px solid #f3b4b4;border-radius:4px;padding:6px 8px;">
-    <div style="font-size:10px;color:#d00;font-weight:bold;">赤ペン添削</div>
+    <div style="font-size:10px;color:#d00;font-weight:bold;">${esc(title)}</div>
     <div style="line-height:1.9;">${body}</div>
     ${notes.length > 0 ? `<div style="margin-top:4px;font-size:11px;">${notes.join('')}</div>` : ''}
     ${signerName ? `<div style="text-align:right;color:#d00;margin-top:4px;">講師　${esc(signerName)}</div>` : ''}
@@ -143,10 +158,20 @@ export function buildRecordHTML(d: LearningRecordData): string {
                 <tbody>${attemptRows || '<tr><td colspan="3" style="text-align:center">未回答</td></tr>'}</tbody>
               </table>
               ${qq.explanation ? `<div class="expl"><b>解説：</b>${esc(qq.explanation)}</div>` : ''}
+              ${qq.auto_mark?.comment ? `<div class="expl"><b>自動添削（AI）：</b>${esc(qq.auto_mark.comment)}</div>` : ''}
+              ${qq.auto_mark?.markup && qq.auto_mark.markup.length > 0
+                ? renderRedPenHTML(qq.auto_mark.markup, q.auto_review?.confirmed ? q.auto_review.reviewer_name || '' : '', '自動添削（AI）の赤ペン')
+                : ''}
             </div>`;
         })
         .join('');
-      return `<div class="quiz"><div class="quiz-title">■ 小テスト：${esc(q.title)}</div>${qs}</div>`;
+      const ar = q.auto_review;
+      const autoLine = ar
+        ? `<div class="expl" style="margin:2px 0 6px;">自動添削（AI）作成：${fmtDateTime(ar.generated_at)}　／　講師の確認：${
+            ar.confirmed ? `${esc(ar.reviewer_name || '')}（${fmtDateTime(ar.confirmed_at)}）${ar.edited ? '・講師が修正' : ''}` : '未確認'
+          }${ar.comment ? `<br><b>全体のコメント：</b>${esc(ar.comment)}` : ''}</div>`
+        : '';
+      return `<div class="quiz"><div class="quiz-title">■ 小テスト：${esc(q.title)}</div>${autoLine}${qs}</div>`;
     })
     .join('');
 

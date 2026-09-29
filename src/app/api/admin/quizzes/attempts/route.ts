@@ -95,7 +95,8 @@ export async function GET(request: NextRequest) {
 // DELETE /api/admin/quizzes/attempts
 // body: { attempt_ids: number[] }
 // 選んだ回答（attempt）を削除する（管理者のみ）。
-// - ある受講者のそのテストの回答がすべて無くなった場合は、そのテストの添削（essay_reviews）も削除し、
+// - ある受講者のそのテストの回答がすべて無くなった場合は、そのテストの添削（essay_reviews）と
+//   小テストの自動添削（quiz_auto_reviews）も削除し、
 //   受講者が最初から受け直せる状態に戻す（小テストは未回答に戻り、以降のステップは再びロックされる）。
 // - 削除した内容は system_logs に記録する（誰が・いつ・何を削除したか。削除前の回答内容も保存）。
 export async function DELETE(request: NextRequest) {
@@ -141,6 +142,7 @@ export async function DELETE(request: NextRequest) {
   targets.forEach((t) => pairs.set(`${t.user_id}:${t.quiz_id}`, { user_id: t.user_id, quiz_id: t.quiz_id }));
 
   const deletedReviews: any[] = [];
+  const deletedAutoReviews: any[] = [];
   const resetPairs: { user_id: string; quiz_id: number }[] = [];
   for (const pair of pairs.values()) {
     const { count } = await admin
@@ -167,6 +169,24 @@ export async function DELETE(request: NextRequest) {
         deletedReviews.push(...reviews);
       }
     }
+
+    // 小テストの自動添削（AI）
+    const { data: autoReviews } = await admin
+      .from('quiz_auto_reviews')
+      .select('*')
+      .eq('user_id', pair.user_id)
+      .eq('quiz_id', pair.quiz_id);
+    if (autoReviews && autoReviews.length > 0) {
+      const { error: autoErr } = await admin
+        .from('quiz_auto_reviews')
+        .delete()
+        .in('id', autoReviews.map((r) => r.id));
+      if (autoErr) {
+        console.error('[admin/quizzes/attempts DELETE] quiz_auto_reviews delete error:', autoErr);
+      } else {
+        deletedAutoReviews.push(...autoReviews);
+      }
+    }
   }
 
   // 4. 監査ログ（失敗しても削除自体は完了しているので処理は続ける）
@@ -183,6 +203,7 @@ export async function DELETE(request: NextRequest) {
       deleted_by: auth.user.email || auth.user.id,
       attempts: targets,
       essay_reviews: deletedReviews,
+      quiz_auto_reviews: deletedAutoReviews,
       reset: resetPairs,
     },
   });
@@ -190,7 +211,7 @@ export async function DELETE(request: NextRequest) {
 
   return NextResponse.json({
     deleted: targets.length,
-    deleted_reviews: deletedReviews.length,
+    deleted_reviews: deletedReviews.length + deletedAutoReviews.length,
     reset: resetPairs.length,
   });
 }

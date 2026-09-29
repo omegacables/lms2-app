@@ -1,10 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { getAuthUser } from '@/lib/auth/getUser';
 import { createAdminSupabaseClient } from '@/lib/database/supabase';
 import { computeGateState } from '@/lib/quiz/gating';
 import { claimChoiceSet, releaseChoiceSet } from '@/lib/quiz/choiceSets';
+import { generateQuizAutoReview, markAutoReviewPending } from '@/lib/quiz/autoReview';
 
 export const runtime = 'nodejs';
+// 回答の保存後に自動添削（AI）を作るため、応答後もしばらく処理を続ける
+export const maxDuration = 300;
 
 // POST /api/quizzes/[id]/answer
 // body: { access_token?, choice_set_id?, answers: [{ question_id, selected_index }] }
@@ -143,5 +146,12 @@ export async function POST(
   const postState = await computeGateState(admin, user.id, quiz.course_id);
   const passed = !!postState.quizPassed[quizId];
 
-  return NextResponse.json({ results, passed });
+  // 自動添削（AI の赤ペン・コメント）を作成する。応答を返したあとに実行し、
+  // 受講者の画面は GET /api/quizzes/[id] の auto_review を読み直して表示する
+  await markAutoReviewPending(admin, quizId, user.id);
+  after(async () => {
+    await generateQuizAutoReview(admin, quizId, user.id);
+  });
+
+  return NextResponse.json({ results, passed, auto_review: 'pending' });
 }

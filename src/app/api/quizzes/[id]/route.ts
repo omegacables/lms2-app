@@ -3,6 +3,7 @@ import { getAuthUser } from '@/lib/auth/getUser';
 import { createAdminSupabaseClient } from '@/lib/database/supabase';
 import { computeGateState } from '@/lib/quiz/gating';
 import { getOrCreateChoiceSet, toStudentOptions } from '@/lib/quiz/choiceSets';
+import { loadAutoReviewView } from '@/lib/quiz/autoReview';
 
 export const runtime = 'nodejs';
 
@@ -117,6 +118,9 @@ export async function GET(
 
   const canSubmit = reviewMode && (submissionStatus === 'not_submitted' || submissionStatus === 'needs_revision');
 
+  // 小テストの自動添削（AI の赤ペン・コメント。講師が確認すると署名が付く）
+  const autoReview = !reviewMode && quiz.quiz_type === 'choice' ? await loadAutoReviewView(admin, quizId, user.id) : null;
+
   // 回答文生成：これから回答が必要な設問にだけ回答文を用意する
   //   提出制 … 提出できる状態のときは全設問
   //   小テスト … まだ回答していない設問
@@ -191,5 +195,6 @@ export async function GET(
     // 未提出 or 要再提出のときだけ回答を編集・提出できる
     can_submit: canSubmit,
     review,
+    auto_review: autoReview,
   });
 }

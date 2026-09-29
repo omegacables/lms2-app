@@ -8,6 +8,7 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { RedPenView } from '@/components/quiz/RedPenView';
+import { AutoQuestionReview, AutoReviewSummary, type AutoReviewData } from '@/components/quiz/AutoReview';
 import { supabase } from '@/lib/database/supabase';
 import type { RedPenSegment } from '@/lib/quiz/redpen';
 import { CheckCircleIcon, XCircleIcon, ClockIcon } from '@heroicons/react/24/solid';
@@ -81,6 +82,8 @@ export default function QuizPage() {
   const [canSubmit, setCanSubmit] = useState(false);
   const [review, setReview] = useState<ReviewInfo | null>(null);
   const [justSubmitted, setJustSubmitted] = useState(false);
+  // 小テストの自動添削（AI）
+  const [autoReview, setAutoReview] = useState<AutoReviewData | null>(null);
 
   const [selections, setSelections] = useState<Record<number, number>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -112,6 +115,7 @@ export default function QuizPage() {
       setSubmissionStatus(json.submission_status || 'not_submitted');
       setCanSubmit(!!json.can_submit);
       setReview(json.review || null);
+      setAutoReview(json.auto_review || null);
       // 固定選択肢のときだけ、既存回答を初期選択に反映（回答文生成は毎回文章が変わるので引き継がない）
       const init: Record<number, number> = {};
       if (json.quiz?.answer_style !== 'generated') {
@@ -129,6 +133,23 @@ export default function QuizPage() {
   }, [quizId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // 自動添削の作成中は、できあがるまで数秒ごとに読み直す（画面全体は読み込み直さない）
+  useEffect(() => {
+    if (autoReview?.status !== 'pending') return;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/quizzes/${quizId}`, { headers: await authHeaders() });
+        if (res.ok) {
+          const json = await res.json();
+          setAutoReview(json.auto_review || null);
+        }
+      } catch {
+        /* 次の読み直しで再試行 */
+      }
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [autoReview, quizId]);
 
   // 回答済みか（旧APIの solved も同じ意味）
   const isAnswered = (q: StudentQuestion) => q.answered ?? q.solved;
@@ -348,10 +369,12 @@ export default function QuizPage() {
                       </div>
 
                       {answeredLocked && generated ? (
-                        <div className="text-[15px] leading-7 text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 rounded p-3 border border-gray-100 dark:border-gray-700"
-                          style={{ fontFamily: '"Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif' }}>
-                          {q.my_answer?.answer_text || '（回答済み）'}
-                        </div>
+                        autoReview?.status === 'ready' && autoReview.question_reviews.some((r) => r.question_id === q.id) ? null : (
+                          <div className="text-[15px] leading-7 text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 rounded p-3 border border-gray-100 dark:border-gray-700"
+                            style={{ fontFamily: '"Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif' }}>
+                            {q.my_answer?.answer_text || '（回答済み）'}
+                          </div>
+                        )
                       ) : showSubmittedText ? (
                         qr?.markup && qr.markup.length > 0 ? (
                           <RedPenView segments={qr.markup} reviewerName={review?.reviewer_name} reviewedAt={review?.reviewed_at} showSignature={false} />
@@ -370,6 +393,11 @@ export default function QuizPage() {
                         </div>
                       )}
 
+                      {/* 自動添削（AI の赤ペン・コメント） */}
+                      {answeredLocked && autoReview && (
+                        <AutoQuestionReview data={autoReview} questionId={q.id} fallbackText={generated ? q.my_answer?.answer_text : null} />
+                      )}
+
                       {/* 講師による設問ごとのコメント */}
                       {reviewMode && qr?.comment && (
                         <div className="mt-3 text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap">添削: {qr.comment}</div>
@@ -378,6 +406,13 @@ export default function QuizPage() {
                   );
                 })}
               </div>
+
+              {/* 自動添削（全体） */}
+              {!reviewMode && autoReview && (
+                <div className="mt-6">
+                  <AutoReviewSummary data={autoReview} />
+                </div>
+              )}
 
               {/* 回答直後（小テスト） */}
               {!reviewMode && justAnswered && passed && (

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { supabase } from '@/lib/database/supabase';
 import { RedPenView } from '@/components/quiz/RedPenView';
+import { AutoQuestionReview, AutoReviewSummary, type AutoReviewData } from '@/components/quiz/AutoReview';
 import type { RedPenSegment } from '@/lib/quiz/redpen';
 import {
   CheckCircleIcon,
@@ -51,7 +52,10 @@ interface QuizResult {
   course_id: number;
   course_title: string;
   title: string;
+  /** 自動添削（AI の赤ペン・コメント） */
+  auto_review: AutoReviewData | null;
   questions: {
+    question_id: number;
     question_text: string;
     choices: string[];
     selected_index: number | null;
@@ -336,6 +340,11 @@ export default function HomeworkPage() {
                     <div key={qr.quiz_id} className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
                       <div className="text-xs text-gray-500">{qr.course_title}</div>
                       <div className="font-bold text-gray-900 dark:text-gray-100 mb-3">{qr.title}</div>
+                      {qr.auto_review && (
+                        <div className="mb-3">
+                          <AutoReviewSummary data={qr.auto_review} />
+                        </div>
+                      )}
                       <div className="space-y-3">
                         {qr.questions.map((q, qi) => (
                           <div key={qi} className="border border-gray-100 dark:border-gray-700 rounded p-3">
@@ -343,6 +352,7 @@ export default function HomeworkPage() {
                             <div className="text-sm text-gray-700 dark:text-gray-300">
                               あなたの回答：{q.selected_text || '（未回答）'}
                             </div>
+                            {qr.auto_review && <AutoQuestionReview data={qr.auto_review} questionId={q.question_id} />}
                             {q.explanation && (
                               <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">解説：{q.explanation}</div>
                             )}

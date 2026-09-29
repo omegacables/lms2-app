@@ -10,6 +10,7 @@ import { supabase } from '@/lib/database/supabase';
 import { useAuth } from '@/stores/auth';
 import { revertSegment, type RedPenSegment } from '@/lib/quiz/redpen';
 import { CheckCircleIcon, ClockIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { QuizAutoReviewsPanel } from '@/components/admin/QuizAutoReviewsPanel';
 
 interface SubQuestion {
   id: number;
@@ -77,6 +78,8 @@ export default function AdminEssayReviewsPage() {
   const { user } = useAuth();
   const myName = user?.profile?.display_name || user?.email || '';
 
+  // 最終テストの添削 / 小テストの自動添削
+  const [mode, setMode] = useState<'final' | 'auto'>('final');
   const [filter, setFilter] = useState<'pending' | 'all'>('pending');
   const [loading, setLoading] = useState(true);
   const [subs, setSubs] = useState<Submission[]>([]);
@@ -247,7 +250,22 @@ export default function AdminEssayReviewsPage() {
     <AuthGuard requiredRoles={['admin', 'instructor']}>
       <MainLayout>
         <div className="max-w-4xl mx-auto px-4 py-6">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">最終テストの添削</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-3">添削</h1>
+          <div className="mb-5 inline-flex rounded-lg border border-gray-200 dark:border-gray-700 p-1 bg-gray-50 dark:bg-gray-800">
+            <button
+              className={`px-4 py-1.5 text-sm rounded-md ${mode === 'final' ? 'bg-white dark:bg-gray-900 shadow text-blue-600 font-medium' : 'text-gray-500'}`}
+              onClick={() => setMode('final')}
+            >最終テストの添削</button>
+            <button
+              className={`px-4 py-1.5 text-sm rounded-md ${mode === 'auto' ? 'bg-white dark:bg-gray-900 shadow text-blue-600 font-medium' : 'text-gray-500'}`}
+              onClick={() => setMode('auto')}
+            >小テストの自動添削</button>
+          </div>
+
+          {mode === 'auto' ? (
+            <QuizAutoReviewsPanel />
+          ) : (
+          <>
           <p className="text-sm text-gray-500 mb-6">
             受講者が提出した回答を開くと、AIが赤ペン添削の下書きを作成します。内容を確認・修正し、コメントを付けて「合格」か「要再提出」で返却してください。
             返却すると受講者の課題ページに赤ペンで表示され、最後にあなたの名前で署名されます。
@@ -406,6 +424,8 @@ export default function AdminEssayReviewsPage() {
                 );
               })}
             </div>
+          )}
+          </>
           )}
         </div>
       </MainLayout>

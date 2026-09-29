@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth/getUser';
 import { createAdminSupabaseClient } from '@/lib/database/supabase';
 import { computeGateState } from '@/lib/quiz/gating';
+import { reviewerNames, toAutoReviewView } from '@/lib/quiz/autoReview';
 
 export const runtime = 'nodejs';
 
@@ -44,6 +45,11 @@ export async function GET(request: NextRequest) {
   const items: any[] = [];
   const quizResults: any[] = [];
 
+  // 小テストの自動添削（AI の赤ペン・コメント）
+  const { data: autoRows } = await admin.from('quiz_auto_reviews').select('*').eq('user_id', user.id);
+  const autoByQuiz = new Map<number, any>((autoRows || []).map((r) => [r.quiz_id, r]));
+  const autoNames = await reviewerNames(admin, (autoRows || []).map((r) => r.confirmed_by));
+
   for (const course of targetCourses) {
     // --- 小テストの回答：問題・選択した回答・解説（正誤は表示しない仕様のため返さない）---
     const { data: choiceQuizzes } = await admin
@@ -73,15 +79,18 @@ export async function GET(request: NextRequest) {
       const latest = new Map<number, any>();
       cqAttempts.forEach((a) => { if (!latest.has(a.question_id)) latest.set(a.question_id, a); });
 
+      const autoRow = autoByQuiz.get(cq.id);
       quizResults.push({
         quiz_id: cq.id,
         course_id: course.id,
         course_title: course.title,
         title: cq.title,
+        auto_review: autoRow ? toAutoReviewView(autoRow, autoNames) : null,
         questions: (cqQuestions || []).map((q) => {
           const choices: string[] = Array.isArray(q.choices) ? (q.choices as string[]) : [];
           const a = latest.get(q.id);
           return {
+            question_id: q.id,
             question_text: q.question_text,
             choices,
             selected_index: a?.selected_index ?? null,

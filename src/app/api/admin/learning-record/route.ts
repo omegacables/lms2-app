@@ -122,15 +122,42 @@ export async function GET(request: NextRequest) {
     const isReviewQuiz = quiz.quiz_type === 'essay' || quiz.grading_mode === 'review';
 
     if (!isReviewQuiz) {
+      // 小テストの自動添削（AI）
+      const { data: autoRow } = await admin
+        .from('quiz_auto_reviews')
+        .select('*')
+        .eq('quiz_id', quiz.id)
+        .eq('user_id', userId)
+        .maybeSingle();
+      const autoReady = autoRow && autoRow.status === 'ready';
+      let autoReviewer: string | null = null;
+      if (autoReady && autoRow.confirmed_by) {
+        const { data: rp } = await admin.from('user_profiles').select('display_name, email').eq('id', autoRow.confirmed_by).single();
+        autoReviewer = rp?.display_name || rp?.email || null;
+      }
+      const autoMarks: any[] = autoReady && Array.isArray(autoRow.question_reviews) ? autoRow.question_reviews : [];
+
       choiceQuizzes.push({
         title: quiz.title,
+        auto_review: autoReady
+          ? {
+              comment: autoRow.review_comment ?? null,
+              generated_at: autoRow.generated_at,
+              confirmed: !!autoRow.confirmed_at,
+              reviewer_name: autoReviewer,
+              confirmed_at: autoRow.confirmed_at,
+              edited: !!autoRow.edited_at,
+            }
+          : null,
         questions: (questions || []).map((q) => {
           const choices: string[] = Array.isArray(q.choices) ? (q.choices as string[]) : [];
           const qAttempts = (attempts || []).filter((a) => a.question_id === q.id);
+          const mark = autoMarks.find((m) => Number(m.question_id) === q.id);
           return {
             question_text: q.question_text,
             choices,
             explanation: q.explanation || '',
+            auto_mark: mark ? { comment: mark.comment ?? null, markup: Array.isArray(mark.markup) ? mark.markup : null } : null,
             attempts: qAttempts.map((a) => ({
               attempt_no: a.attempt_no,
               selected_index: a.selected_index,
