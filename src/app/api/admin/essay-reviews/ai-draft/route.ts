@@ -12,7 +12,7 @@ export const runtime = 'nodejs';
 //   question_reviews … 設問ごとの赤ペン（取り消し線・書き足し・吹き出し）と講評
 //   comment / explanation / result … 全体の添削コメント・解説・合否案
 // ★ このAPIは講師が添削画面で使う下書き生成のみ（DBには書き込まない）。
-//   提出直後の AI講師による自動添削は lib/quiz/autoFinalReview.ts が行う。
+//   提出直後の自動添削は lib/quiz/autoFinalReview.ts が行う。
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, ['admin', 'instructor']);
   if (!auth.ok) return auth.response;

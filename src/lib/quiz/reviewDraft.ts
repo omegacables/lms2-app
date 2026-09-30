@@ -1,5 +1,5 @@
 // 提出制テスト（記述式／選択式 grading_mode='review'）の添削を AI で作成する。サーバー専用。
-// 講師の添削画面の下書き（/api/admin/essay-reviews/ai-draft）と、AI講師の自動添削の両方で使う。
+// 講師の添削画面の下書き（/api/admin/essay-reviews/ai-draft）と、自動添削の両方で使う。
 //
 //   question_reviews … 設問ごとの赤ペン（取り消し線・書き足し・吹き出し）と講評
 //   comment / explanation / result … 全体の添削コメント・解説・合否

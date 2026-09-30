@@ -48,9 +48,13 @@ interface Submission {
     review_comment: string | null;
     explanation?: string | null;
     question_reviews?: QuestionReview[];
-    /** AI講師の自動添削なら「AI講師　名前」 */
+    /** 署名（「講師　名前」） */
     signature?: string | null;
     auto_reviewed?: boolean;
+    /** 'auto' = 自動添削（講師が未確認） / 'confirmed' = 自動添削を講師が確認済み / 'manual' = 講師が添削 */
+    origin?: 'auto' | 'confirmed' | 'manual';
+    /** 添削した講師、または自動添削を確認した講師の名前 */
+    reviewer_name?: string | null;
     reviewed_at: string;
   } | null;
 }
@@ -83,7 +87,10 @@ export default function AdminEssayReviewsPage() {
 
   // 最終テストの添削 / 小テストの自動添削
   const [mode, setMode] = useState<'final' | 'auto'>('final');
-  const [filter, setFilter] = useState<'pending' | 'all'>('pending');
+  const [filter, setFilter] = useState<'pending' | 'auto' | 'all'>('pending');
+  // まとめて確認する自動添削（key: quiz_id-user_id）
+  const [autoSelected, setAutoSelected] = useState<Set<string>>(new Set());
+  const [bulkConfirming, setBulkConfirming] = useState(false);
   const [loading, setLoading] = useState(true);
   const [subs, setSubs] = useState<Submission[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -97,8 +104,9 @@ export default function AdminEssayReviewsPage() {
   // 下書き生成中に別の提出を開いた場合、古い結果で上書きしないための現在の行
   const openKeyRef = useRef<string | null>(null);
 
-  const load = useCallback(async (f: 'pending' | 'all') => {
+  const load = useCallback(async (f: 'pending' | 'auto' | 'all') => {
     setLoading(true);
+    setAutoSelected(new Set());
     try {
       const res = await fetch(`/api/admin/essay-reviews?status=${f}`, { headers: await authHeaders() });
       const json = await res.json();
@@ -204,7 +212,40 @@ export default function AdminEssayReviewsPage() {
     setMark(questionId, { markup: revertSegment(current, index) });
   };
 
-  const submitReview = async (s: Submission, result: 'passed' | 'needs_revision') => {
+  /** 自動添削で返却済み・講師がまだ確認していないものか */
+  const isAutoUnconfirmed = (s: Submission) => s.status !== 'pending' && !!s.latest_review?.auto_reviewed;
+
+  const toggleAutoSelected = (k: string) =>
+    setAutoSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+
+  /** 選んだ自動添削を、内容を確認したものとして記録する（返却内容・合否・受講者に見える署名は変わらない） */
+  const confirmSelectedAuto = async () => {
+    const targets = subs.filter((s) => autoSelected.has(keyOf(s)) && isAutoUnconfirmed(s));
+    if (targets.length === 0) return;
+    if (!confirm(`選択した ${targets.length} 件の自動添削を、確認済みにします（確認者：${myName}）。返却した内容と合否は変わりません。よろしいですか？`)) return;
+    setBulkConfirming(true);
+    try {
+      const res = await fetch('/api/admin/essay-reviews/confirm-auto', {
+        method: 'POST',
+        headers: await authHeaders(),
+        body: JSON.stringify({ items: targets.map((s) => ({ quiz_id: s.quiz_id, user_id: s.user_id })) }),
+      });
+      const json = await res.json();
+      if (!res.ok) alert(json.error || '確認に失敗しました');
+      else if (json.skipped) alert(`${json.confirmed}件を確認済みにしました（${json.skipped}件は新しい提出があるなどの理由で確認できませんでした）`);
+      load(filter);
+    } catch {
+      alert('確認に失敗しました');
+    }
+    setBulkConfirming(false);
+  };
+
+  const submitReview = async (s: Submission, result: 'passed' | 'needs_revision', confirmAuto = false) => {
     if (result === 'needs_revision' && !comment.trim()) {
       alert('要再提出の場合はコメントを入力してください');
       return;
@@ -229,6 +270,7 @@ export default function AdminEssayReviewsPage() {
           explanation,
           question_reviews,
           ai_assisted: aiUsed,
+          confirm_auto: confirmAuto,
         }),
       });
       const json = await res.json();
@@ -270,29 +312,60 @@ export default function AdminEssayReviewsPage() {
           ) : (
           <>
           <p className="text-sm text-gray-500 mb-6">
-            最終テストは提出されると、コースの担当 AI講師が自動で添削して返却します（署名は「AI講師　名前」）。
-            AIの添削ができなかった提出は「添削待ち」に残ります。開くとAIが赤ペン添削の下書きを作成するので、内容を確認・修正して返却してください（あなたの名前で署名されます）。
+            最終テストは提出されると、自動で添削してコースの担当講師の署名（「講師　名前」）で返却します。
+            「自動添削（未確認）」で内容を確認すると、確認者としてあなたの名前が記録と学習記録PDFに残ります（まとめて確認もできます。受講者に見える署名は変わりません）。
+            自動添削ができなかった提出は「添削待ち」に残ります。開くとAIが赤ペン添削の下書きを作成するので、内容を確認・修正して返却してください（あなたの名前で署名されます）。
           </p>
 
           <div className="border-b border-gray-200 dark:border-gray-700 mb-6 flex gap-4">
             <button className={`pb-2 text-sm font-medium ${filter === 'pending' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`} onClick={() => setFilter('pending')}>添削待ち</button>
+            <button className={`pb-2 text-sm font-medium ${filter === 'auto' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`} onClick={() => setFilter('auto')}>自動添削（未確認）</button>
             <button className={`pb-2 text-sm font-medium ${filter === 'all' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`} onClick={() => setFilter('all')}>すべて</button>
           </div>
+
+          {!loading && subs.some(isAutoUnconfirmed) && (
+            <div className="flex flex-wrap items-center gap-3 mb-3">
+              <label className="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={subs.filter(isAutoUnconfirmed).every((s) => autoSelected.has(keyOf(s)))}
+                  onChange={(e) =>
+                    setAutoSelected(e.target.checked ? new Set(subs.filter(isAutoUnconfirmed).map(keyOf)) : new Set())
+                  }
+                />
+                自動添削（未確認）をすべて選択
+              </label>
+              <Button size="sm" onClick={confirmSelectedAuto} disabled={autoSelected.size === 0} loading={bulkConfirming}>
+                選択したものを確認済みにする{autoSelected.size > 0 ? `（${autoSelected.size}件）` : ''}
+              </Button>
+            </div>
+          )}
 
           {loading ? (
             <div className="py-16 flex justify-center"><LoadingSpinner size="lg" /></div>
           ) : subs.length === 0 ? (
-            <p className="text-sm text-gray-500 py-8 text-center">{filter === 'pending' ? '添削待ちの提出はありません。' : '提出はありません。'}</p>
+            <p className="text-sm text-gray-500 py-8 text-center">
+              {filter === 'pending' ? '添削待ちの提出はありません。' : filter === 'auto' ? '未確認の自動添削はありません。' : '提出はありません。'}
+            </p>
           ) : (
             <div className="space-y-3">
               {subs.map((s) => {
                 const k = keyOf(s);
                 const meta = statusMeta[s.status];
                 const isChoice = s.quiz_type === 'choice';
-                const editableDraft = s.status !== 'passed';
+                const autoUnconfirmed = isAutoUnconfirmed(s);
+                // 合格で返却済みでも、自動添削（未確認）は内容を確認・修正できる
+                const editableDraft = s.status !== 'passed' || autoUnconfirmed;
+                const origin = s.latest_review?.origin;
                 return (
                   <div key={k} className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-                    <button className="w-full flex items-center justify-between gap-3 p-4 text-left" onClick={() => openRow(s)}>
+                    <div className="flex items-center">
+                    {autoUnconfirmed && (
+                      <label className="pl-4 py-4 flex items-center" title="まとめて確認する">
+                        <input type="checkbox" checked={autoSelected.has(k)} onChange={() => toggleAutoSelected(k)} />
+                      </label>
+                    )}
+                    <button className="flex-1 min-w-0 flex items-center justify-between gap-3 p-4 text-left" onClick={() => openRow(s)}>
                       <div className="min-w-0">
                         <div className="font-medium text-gray-900 dark:text-gray-100">{s.student_name} <span className="text-xs text-gray-500">{s.company}</span></div>
                         <div className="text-xs text-gray-500">
@@ -302,12 +375,18 @@ export default function AdminEssayReviewsPage() {
                         </div>
                       </div>
                       <span className="flex items-center gap-2">
-                        {s.status !== 'pending' && s.latest_review?.auto_reviewed && (
-                          <span className="text-xs text-rose-600 whitespace-nowrap">{s.latest_review.signature || 'AI講師'}</span>
+                        {s.status !== 'pending' && s.latest_review && origin && origin !== 'manual' && (
+                          <span className="text-xs text-rose-600 whitespace-nowrap">
+                            {s.latest_review.signature || '講師'}
+                            <span className="ml-1 text-gray-500">
+                              {origin === 'confirmed' ? `（自動添削・確認：${s.latest_review.reviewer_name || ''}）` : '（自動添削・未確認）'}
+                            </span>
+                          </span>
                         )}
                         <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded whitespace-nowrap ${meta.cls}`}>{meta.icon}{meta.label}</span>
                       </span>
                     </button>
+                    </div>
 
                     {expanded === k && (
                       <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700 pt-4 space-y-4">
@@ -399,10 +478,19 @@ export default function AdminEssayReviewsPage() {
                             onChange={(e) => setComment(e.target.value)}
                             placeholder="添削コメントを入力（要再提出の場合は必須）"
                           />
-                          {s.status !== 'pending' && s.latest_review?.auto_reviewed ? (
+                          {autoUnconfirmed ? (
                             <div className="text-right text-red-600 font-bold text-sm mt-1">
-                              {s.latest_review.signature || 'AI講師'}
-                              <span className="ml-1 text-xs font-normal text-gray-500">（AIによる自動添削。返却し直すとあなたの名前で署名されます）</span>
+                              {s.latest_review?.signature || '講師'}
+                              <span className="ml-1 text-xs font-normal text-gray-500">
+                                （自動添削。確認すると確認者としてあなたの名前が記録に残ります。受講者に見える署名は変わりません）
+                              </span>
+                            </div>
+                          ) : s.status === 'passed' && s.latest_review?.signature ? (
+                            <div className="text-right text-red-600 font-bold text-sm mt-1">
+                              {s.latest_review.signature}
+                              {origin === 'confirmed' && (
+                                <span className="ml-1 text-xs font-normal text-gray-500">（自動添削・確認：{s.latest_review.reviewer_name || ''}）</span>
+                              )}
                             </div>
                           ) : myName && (
                             <div className="text-right text-red-600 font-bold text-sm mt-1">講師　{myName}</div>
@@ -419,7 +507,24 @@ export default function AdminEssayReviewsPage() {
                           />
                         </div>
 
-                        {s.status === 'passed' ? (
+                        {autoUnconfirmed ? (
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            {s.status === 'passed' ? (
+                              <Button size="sm" onClick={() => submitReview(s, 'passed', true)} loading={saving} disabled={aiLoading}>
+                                確認済みにする（合格のまま）
+                              </Button>
+                            ) : (
+                              <>
+                                <Button variant="outline" size="sm" onClick={() => submitReview(s, 'passed', true)} loading={saving} disabled={aiLoading}>
+                                  合格に変えて返却
+                                </Button>
+                                <Button size="sm" onClick={() => submitReview(s, 'needs_revision', true)} loading={saving} disabled={aiLoading}>
+                                  確認済みにする（要再提出のまま）
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        ) : s.status === 'passed' ? (
                           <p className="text-sm text-green-700">この受講者は合格済みです。</p>
                         ) : (
                           <div className="flex flex-wrap items-center justify-end gap-2">

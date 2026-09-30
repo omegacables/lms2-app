@@ -7,7 +7,7 @@ import { aiInstructorLabel } from '@/lib/quiz/aiInstructors';
 export const runtime = 'nodejs';
 
 // GET /api/admin/quiz-auto-reviews?filter=unconfirmed|all
-// 小テストの自動添削（AI講師の赤ペン・講評）の一覧。受講者には回答直後に返却済み。講師が内容を確認・修正するための画面用。
+// 小テストの自動添削（赤ペン・講評）の一覧。受講者には回答直後に返却済み。講師が内容を確認・修正するための画面用。
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, ['admin', 'instructor']);
   if (!auth.ok) return auth.response;

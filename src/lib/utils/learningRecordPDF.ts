@@ -30,7 +30,7 @@ export interface LearningRecordData {
     /** 小テストの自動添削（AI）。講師が確認していれば確認した講師名 */
     auto_review?: {
       comment: string | null;
-      /** 署名（「AI講師　名前」） */
+      /** 署名（「講師　名前」） */
       signature?: string;
       generated_at: string | null;
       confirmed: boolean;
@@ -64,10 +64,18 @@ export interface LearningRecordData {
         markup?: { type: 'keep' | 'del' | 'ins'; text: string; note?: string | null }[] | null;
       } | null;
     }[];
-    /** 最新の添削の署名（「講師　名前」または「AI講師　名前」。赤ペンの署名に使う） */
+    /** 最新の添削の署名（「講師　名前」。赤ペンの署名に使う） */
     signer_label?: string;
-    /** reviewer_name は AI講師の自動添削なら「AI講師　名前」 */
-    reviews: { result: string; comment: string | null; explanation?: string | null; reviewer_name: string; auto?: boolean; reviewed_at: string }[];
+    /** 自動添削（auto）の reviewer_name は「講師　担当講師の名前」。confirmed_by は自動添削を確認した講師 */
+    reviews: {
+      result: string;
+      comment: string | null;
+      explanation?: string | null;
+      reviewer_name: string;
+      auto?: boolean;
+      confirmed_by?: string;
+      reviewed_at: string;
+    }[];
   }[];
   testsPassed: boolean | null;
   totalWatchedSeconds: number;
@@ -161,16 +169,16 @@ export function buildRecordHTML(d: LearningRecordData): string {
                 <tbody>${attemptRows || '<tr><td colspan="3" style="text-align:center">未回答</td></tr>'}</tbody>
               </table>
               ${qq.explanation ? `<div class="expl"><b>解説：</b>${esc(qq.explanation)}</div>` : ''}
-              ${qq.auto_mark?.comment ? `<div class="expl"><b>AI講師の講評：</b>${esc(qq.auto_mark.comment)}</div>` : ''}
+              ${qq.auto_mark?.comment ? `<div class="expl"><b>講評：</b>${esc(qq.auto_mark.comment)}</div>` : ''}
               ${qq.auto_mark?.markup && qq.auto_mark.markup.length > 0
-                ? renderRedPenHTML(qq.auto_mark.markup, q.auto_review?.signature || 'AI講師', 'AI講師による自動添削')
+                ? renderRedPenHTML(qq.auto_mark.markup, q.auto_review?.signature || '講師', '赤ペン添削（自動添削）')
                 : ''}
             </div>`;
         })
         .join('');
       const ar = q.auto_review;
       const autoLine = ar
-        ? `<div class="expl" style="margin:2px 0 6px;">自動添削：${esc(ar.signature || 'AI講師')}（AIによる自動添削　${fmtDateTime(ar.generated_at)}）${
+        ? `<div class="expl" style="margin:2px 0 6px;">添削：${esc(ar.signature || '講師')}（AIによる自動添削　${fmtDateTime(ar.generated_at)}）${
             ar.confirmed ? `　／　講師の確認：${esc(ar.reviewer_name || '')}（${fmtDateTime(ar.confirmed_at)}）${ar.edited ? '・講師が修正' : ''}` : ''
           }${ar.comment ? `<br><b>全体のコメント：</b>${esc(ar.comment)}` : ''}</div>`
         : '';
@@ -203,7 +211,11 @@ export function buildRecordHTML(d: LearningRecordData): string {
           <div class="review" style="position:relative;">
             ${stampImg}
             <div><b>添削結果：${r.result === 'passed' ? '合格' : '要再提出'}</b>　添削者：${esc(r.reviewer_name)}${
-              r.auto ? '（AIによる自動添削）' : d.seal?.signerTitle ? '（' + esc(d.seal.signerTitle) + '）' : ''
+              r.auto
+                ? `（AIによる自動添削${r.confirmed_by ? `・講師の確認：${esc(r.confirmed_by)}` : ''}）`
+                : d.seal?.signerTitle
+                ? '（' + esc(d.seal.signerTitle) + '）'
+                : ''
             }　${fmtDateTime(r.reviewed_at)}</div>
             ${r.comment ? `<div class="review-comment"><b>添削：</b>${esc(r.comment)}</div>` : ''}
             ${r.explanation ? `<div class="review-comment"><b>解説：</b>${esc(r.explanation)}</div>` : ''}

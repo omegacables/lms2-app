@@ -49,7 +49,7 @@ interface HwItem {
     explanation: string | null;
     reviewed_at: string;
     reviewer_name: string | null;
-    /** 署名の完成形（「AI講師　名前」または「講師　名前」） */
+    /** 署名の完成形（「講師　名前」） */
     reviewer_label?: string | null;
     auto_reviewed?: boolean;
   } | null;
@@ -122,7 +122,7 @@ export default function HomeworkPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // AI講師の添削が返るまで（添削中・作成中の項目があるあいだ）、数秒ごとに読み直す。入力中の下書きは触らない
+  // 講師の添削が返るまで（添削中・作成中の項目があるあいだ）、数秒ごとに読み直す。入力中の下書きは触らない
   const waiting =
     items.some((it) => it.status === 'under_review') || quizResults.some((qr) => qr.auto_review?.status === 'pending');
   useEffect(() => {
@@ -355,7 +355,7 @@ export default function HomeworkPage() {
                           </div>
                         )}
                         {item.status === 'under_review' && (
-                          <p className="text-xs text-gray-500">添削中です。AI講師の添削が返るまでお待ちください（この画面は自動で更新されます）。</p>
+                          <p className="text-xs text-gray-500">添削中です。講師の添削が返るまでお待ちください（この画面は自動で更新されます）。</p>
                         )}
                       </div>
                     )}

@@ -1,8 +1,9 @@
-// 小テストの自動添削（AI講師の赤ペン・コメント）。サーバー専用（service role クライアントを渡す）。
+// 小テストの自動添削（AI の赤ペン・コメント）。サーバー専用（service role クライアントを渡す）。
 //
-// - 受講者が小テスト（grading_mode='auto' の選択式）に回答すると、コースの担当 AI講師が設問ごとの赤ペンと
-//   講評を作り、受講者にすぐ表示する。署名は必ず「AI講師　{名前}」（人の講師の添削と区別する）。
-// - 講師が内容を確認（必要なら修正）すると confirmed_by / confirmed_at が入り、「確認：講師名」が添えられる。
+// - 受講者が小テスト（grading_mode='auto' の選択式）に回答すると、AI が設問ごとの赤ペンと講評を作り、
+//   コースの担当講師の署名「講師　{名前}」で受講者にすぐ表示する。
+// - 講師が内容を確認（必要なら修正）すると confirmed_by / confirmed_at が入る。受講者に見える署名は変えず、
+//   確認の記録は管理画面と学習記録PDFに載せる（PDF には AI による自動添削であることも記載する）。
 // - AI が作成した元の内容は ai_question_reviews / ai_review_comment に残す。
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -28,9 +29,9 @@ export interface AutoReviewView {
   comment: string | null;
   question_reviews: { question_id: number; comment: string | null; markup: RedPenSegment[] | null }[];
   generated_at: string | null;
-  /** 添削した AI講師の名前 */
+  /** 担当講師の名前 */
   instructor_name: string | null;
-  /** 署名（「AI講師　名前」） */
+  /** 署名（「講師　名前」） */
   signature: string;
   /** 講師が内容を確認済みか */
   confirmed: boolean;

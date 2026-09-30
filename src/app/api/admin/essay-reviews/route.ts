@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/requireAdmin';
-import { aiInstructorLabel } from '@/lib/quiz/aiInstructors';
+import { isAutoOrigin, reviewSignature } from '@/lib/quiz/aiInstructors';
 import { createAdminSupabaseClient } from '@/lib/database/supabase';
 import { notifyUsers } from '@/lib/notify';
 import { issueCertificateIfEligible } from '@/lib/certificate/issue';
@@ -11,8 +11,8 @@ export const runtime = 'nodejs';
 // 添削対象＝提出制テスト（記述式 quiz_type='essay' ／ 選択式 grading_mode='review'）
 const REVIEW_TARGET_FILTER = 'quiz_type.eq.essay,grading_mode.eq.review';
 
-// GET /api/admin/essay-reviews?status=pending|all
-// 提出制テストの提出一覧（添削待ち／全件）を返す。
+// GET /api/admin/essay-reviews?status=pending|auto|all
+// 提出制テストの提出一覧（添削待ち／自動添削で講師が未確認のもの／全件）を返す。
 // 選択式（提出→添削）は、設問・選択肢・受講者が選んだ選択肢・正答（参考）も返す。
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, ['admin', 'instructor']);
@@ -82,6 +82,8 @@ export async function GET(request: NextRequest) {
       const status = pending ? 'pending' : latestReview!.result;
 
       if (statusFilter === 'pending' && !pending) continue;
+      // 自動添削で返却済み・講師がまだ確認していないもの
+      if (statusFilter === 'auto' && (pending || !latestReview?.auto_reviewed)) continue;
 
       const u = userMap.get(uid);
       submissions.push({
@@ -120,13 +122,30 @@ export async function GET(request: NextRequest) {
         latest_review: latestReview
           ? {
               ...latestReview,
-              // 署名（AI講師の自動添削は「AI講師　名前」。講師の添削は画面側で講師名を表示）
-              signature: latestReview.auto_reviewed ? aiInstructorLabel(latestReview.ai_instructor_name) : null,
               question_reviews: Array.isArray(latestReview.question_reviews) ? latestReview.question_reviews : [],
             }
           : null,
       });
     }
+  }
+
+  // 最新の添削の署名と、添削した講師（自動添削を確認した講師を含む）の名前
+  const reviewerIds = Array.from(
+    new Set(submissions.map((s) => s.latest_review?.reviewer_id).filter((v): v is string => !!v))
+  );
+  const reviewerMap = new Map<string, string>();
+  if (reviewerIds.length > 0) {
+    const { data: reviewers } = await admin.from('user_profiles').select('id, display_name, email').in('id', reviewerIds);
+    (reviewers || []).forEach((r) => reviewerMap.set(r.id, r.display_name || r.email || ''));
+  }
+  for (const s of submissions) {
+    const r = s.latest_review;
+    if (!r) continue;
+    const humanName = r.reviewer_id ? reviewerMap.get(r.reviewer_id) || null : null;
+    r.reviewer_name = humanName;
+    r.signature = reviewSignature(r, humanName);
+    // 'auto' = 自動添削（講師が未確認） / 'confirmed' = 自動添削を講師が確認済み / 'manual' = 講師が添削
+    r.origin = r.auto_reviewed ? 'auto' : isAutoOrigin(r) ? 'confirmed' : 'manual';
   }
 
   // 提出日時の新しい順
@@ -141,7 +160,9 @@ export async function GET(request: NextRequest) {
 //   result: 'passed'|'needs_revision',
 //   review_comment, explanation,
 //   question_reviews?: [{ question_id, comment, markup? }],  // 設問ごとのコメント・赤ペン（正誤は付けない仕様。is_correct は常に NULL で保存）
-//   ai_assisted?
+//   ai_assisted?,
+//   confirm_auto?  … 自動添削を講師が確認して返却し直す（受講者に見える署名「講師　担当講師の名前」は変えず、
+//                    確認した講師を reviewer_id に記録する。合否が同じなら受講者への通知はしない）
 // }
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, ['admin', 'instructor']);
@@ -214,7 +235,32 @@ export async function POST(request: NextRequest) {
       };
     });
 
-  // 添削を追記（reviewer_id は指導者本人）
+  // 自動添削を講師が確認する場合：最新の添削が自動添削（まだ講師が確認していない）で、その後に新しい提出が無いこと
+  let confirmOf: { ai_instructor_id: number | null; ai_instructor_name: string | null; result: string } | null = null;
+  if (body.confirm_auto) {
+    const { data: latest } = await admin
+      .from('essay_reviews')
+      .select('auto_reviewed, ai_instructor_id, ai_instructor_name, result, reviewed_at')
+      .eq('quiz_id', Number(quiz_id))
+      .eq('user_id', user_id)
+      .order('reviewed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!latest?.auto_reviewed) {
+      return NextResponse.json({ error: '自動添削ではないか、すでに講師が確認済みです' }, { status: 409 });
+    }
+    const lastAnsweredAt = answerRows?.[0]?.answered_at;
+    if (lastAnsweredAt && new Date(lastAnsweredAt) > new Date(latest.reviewed_at)) {
+      return NextResponse.json({ error: '新しい提出があります。画面を読み込み直してください' }, { status: 409 });
+    }
+    // 合格で返却済み（修了証が発行されている場合がある）の自動添削は、合格のまま確認するだけにする
+    if (latest.result === 'passed' && result !== 'passed') {
+      return NextResponse.json({ error: '合格で返却済みの添削は、要再提出に変更できません' }, { status: 409 });
+    }
+    confirmOf = latest;
+  }
+
+  // 添削を追記（reviewer_id は指導者本人。自動添削を確認した場合は担当講師も残し、受講者には同じ署名で見せる）
   const { error: insErr } = await admin.from('essay_reviews').insert({
     quiz_id: Number(quiz_id),
     user_id,
@@ -223,15 +269,17 @@ export async function POST(request: NextRequest) {
     explanation: explanation ? String(explanation) : null,
     question_reviews: cleanedQuestionReviews,
     result,
-    ai_assisted: !!ai_assisted,
+    ai_assisted: !!ai_assisted || !!confirmOf,
+    ai_instructor_id: confirmOf?.ai_instructor_id ?? null,
+    ai_instructor_name: confirmOf?.ai_instructor_name ?? null,
     reviewed_at: new Date().toISOString(),
   });
   if (insErr) {
     return NextResponse.json({ error: '添削の保存に失敗しました', details: insErr.message }, { status: 500 });
   }
 
-  // 受講者へ通知
-  await notifyUsers(admin, [user_id], {
+  // 受講者へ通知（自動添削を同じ合否のまま確認しただけのときは通知しない）
+  if (!confirmOf || confirmOf.result !== result) await notifyUsers(admin, [user_id], {
     title: result === 'passed' ? 'テストに合格しました' : 'テストの再提出のお願い',
     message:
       result === 'passed'

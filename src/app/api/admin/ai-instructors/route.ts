@@ -6,7 +6,7 @@ import { listAiInstructors, MAX_AI_INSTRUCTORS } from '@/lib/quiz/aiInstructors'
 export const runtime = 'nodejs';
 
 // GET /api/admin/ai-instructors
-// 登録済みの AI講師（自動添削の署名に使う名前）と、それぞれを担当にしているコース数
+// 登録済みの講師（自動添削の署名に使う名前）と、それぞれを担当にしているコース数
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, ['admin', 'instructor']);
   if (!auth.ok) return auth.response;
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/admin/ai-instructors
-// body: { name, title? }  … AI講師を追加（最大5名）
+// body: { name, title? }  … 講師を追加（最大5名）
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, ['admin']);
   if (!auth.ok) return auth.response;
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   const admin = createAdminSupabaseClient();
   const current = await listAiInstructors(admin);
   if (current.length >= MAX_AI_INSTRUCTORS) {
-    return NextResponse.json({ error: `AI講師は最大${MAX_AI_INSTRUCTORS}名まで登録できます` }, { status: 400 });
+    return NextResponse.json({ error: `講師は最大${MAX_AI_INSTRUCTORS}名まで登録できます` }, { status: 400 });
   }
   const sortOrder = current.length > 0 ? Math.max(...current.map((i) => i.sort_order)) + 1 : 0;
 
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     .select('id, name, title, sort_order')
     .single();
   if (error) {
-    return NextResponse.json({ error: 'AI講師の登録に失敗しました', details: error.message }, { status: 500 });
+    return NextResponse.json({ error: '講師の登録に失敗しました', details: error.message }, { status: 500 });
   }
   return NextResponse.json({ instructor: data });
 }

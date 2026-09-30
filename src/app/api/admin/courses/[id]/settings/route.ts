@@ -6,7 +6,7 @@ export const runtime = 'nodejs';
 
 // 通信制関連のコース設定のみを扱う（既存のコース更新PUTには手を触れない）。
 // test_required = 小テスト・最終テスト・ゲート・修了要件の ON/OFF マスタースイッチ。
-// ai_instructor_id = 小テスト・最終テストを自動で添削する AI講師。
+// ai_instructor_id = 小テスト・最終テストを自動で添削する講師。
 
 export async function GET(
   request: NextRequest,
@@ -53,7 +53,7 @@ export async function PATCH(
   if ('training_type_note' in body) {
     update.training_type_note = body.training_type_note ? String(body.training_type_note) : null;
   }
-  // 添削を担当する AI講師（null = 未設定：最初に登録した AI講師）
+  // 添削を担当する講師（null = 未設定：最初に登録した講師）
   if ('ai_instructor_id' in body) {
     const v = body.ai_instructor_id;
     update.ai_instructor_id = v === null || v === '' ? null : Number(v);

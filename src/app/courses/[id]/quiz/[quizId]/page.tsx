@@ -53,7 +53,7 @@ interface ReviewInfo {
   question_reviews: QuestionReview[];
   reviewed_at: string;
   reviewer_name: string | null;
-  /** 署名の完成形（「AI講師　名前」または「講師　名前」） */
+  /** 署名の完成形（「講師　名前」） */
   reviewer_label?: string | null;
   auto_reviewed?: boolean;
 }
@@ -137,7 +137,7 @@ export default function QuizPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // 最終テストの提出後（添削待ち）は、AI講師の添削が返るまで数秒ごとに読み直す（画面全体は読み込み直さない）
+  // 最終テストの提出後（添削待ち）は、講師の添削が返るまで数秒ごとに読み直す（画面全体は読み込み直さない）
   useEffect(() => {
     if (!reviewMode || submissionStatus !== 'under_review') return;
     let tries = 0;
@@ -346,7 +346,7 @@ export default function QuizPage() {
               </div>
               <p className="text-sm text-gray-500 mb-6">
                 {reviewMode
-                  ? `全${questions.length}問。回答を選んで提出すると、AI講師が添削して返却します（1分ほどかかります）。添削結果はこの画面と課題ページで確認できます。`
+                  ? `全${questions.length}問。回答を選んで提出すると、講師が添削して返却します（1分ほどかかります）。添削結果はこの画面と課題ページで確認できます。`
                   : `全${questions.length}問。すべての問題に回答すると次のステップに進めます。`}
                 {generated && ' 回答の文章は受験のたびに変わるので、内容をよく読んで選んでください。'}
               </p>
@@ -354,7 +354,7 @@ export default function QuizPage() {
               {/* 提出直後 */}
               {reviewMode && justSubmitted && submissionStatus === 'under_review' && (
                 <div className="mb-6 p-4 rounded-lg border border-blue-300 bg-blue-50 text-blue-800">
-                  回答を提出しました。AI講師が添削しています（1分ほどかかります）。結果はこの画面と課題ページに表示されます。
+                  回答を提出しました。講師が添削しています（1分ほどかかります）。結果はこの画面と課題ページに表示されます。
                   <div className="mt-3">
                     <Link href="/homework"><Button size="sm">課題ページへ</Button></Link>
                   </div>

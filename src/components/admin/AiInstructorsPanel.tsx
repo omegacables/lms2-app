@@ -1,8 +1,8 @@
 'use client';
 
-// AI講師の設定（小テスト管理の「AI講師」タブ）。
-// 小テスト・最終テストは回答・提出の直後に AI講師が自動で添削して返却する。ここで AI講師の名前を最大5名まで登録し、
-// コースごとの担当は「テスト管理」タブのコース設定で選ぶ。署名は必ず「AI講師　名前」と表示される。
+// 添削の担当講師の設定（小テスト管理の「講師」タブ）。
+// 小テスト・最終テストは回答・提出の直後に自動で添削して返却する。その署名（「講師　名前」）に使う名前を最大5名まで登録し、
+// コースごとの担当は「テスト管理」タブのコース設定で選ぶ。
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/Button';
@@ -79,8 +79,8 @@ export function AiInstructorsPanel({
   };
 
   const remove = async (row: AiInstructorRow) => {
-    const note = row.course_count ? `\n担当している ${row.course_count} コースは「未設定（先頭の AI講師）」に戻ります。` : '';
-    if (!confirm(`AI講師「${row.name}」を削除しますか？${note}\nこれまでの添削の署名はそのまま残ります。`)) return;
+    const note = row.course_count ? `\n担当している ${row.course_count} コースは「未設定（先頭の講師）」に戻ります。` : '';
+    if (!confirm(`講師「${row.name}」を削除しますか？${note}\nこれまでの添削の署名はそのまま残ります。`)) return;
     setBusy(true);
     const res = await fetch(`/api/admin/ai-instructors/${row.id}`, { method: 'DELETE', headers: await authHeaders() });
     const json = await res.json().catch(() => ({}));
@@ -113,14 +113,14 @@ export function AiInstructorsPanel({
   return (
     <div className="space-y-5">
       <div className="p-4 rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/10 text-sm text-gray-700 dark:text-gray-200 space-y-1">
-        <p>小テストは回答した直後に、最終テストは提出した直後に、コースの担当 AI講師が自動で添削して返却します（最終テストは合否もAI講師が判定します）。</p>
-        <p>受講者の画面・課題ページ・学習記録PDFでは、署名が <span className="font-bold text-red-600">「AI講師　名前」</span> と表示され、「AI講師」の表記は外せません（人の講師の添削と区別するためです）。</p>
-        <p>コースごとの担当は「テスト管理」タブのコース設定で選びます。未設定のコースは、一覧の先頭の AI講師が担当します。</p>
+        <p>小テストは回答した直後に、最終テストは提出した直後に、自動で添削して返却します（最終テストは合否も自動で判定します）。</p>
+        <p>受講者の画面・課題ページでは、コースの担当講師の署名が <span className="font-bold text-red-600">「講師　名前」</span> と表示されます。学習記録PDFには、AIによる自動添削であることと、講師が確認した場合は確認者が記録されます。</p>
+        <p>コースごとの担当は「テスト管理」タブのコース設定で選びます。未設定のコースは、一覧の先頭の講師が担当します。</p>
       </div>
 
       <div className="space-y-2">
         {instructors.length === 0 ? (
-          <p className="text-sm text-gray-500 py-4">AI講師はまだ登録されていません。登録するまでは署名が「AI講師」だけになります。</p>
+          <p className="text-sm text-gray-500 py-4">講師はまだ登録されていません。登録するまでは署名が「講師」だけになります。</p>
         ) : (
           instructors.map((row, index) => (
             <div key={row.id} className="p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-wrap items-center gap-3">
@@ -135,7 +135,7 @@ export function AiInstructorsPanel({
                 <>
                   <div className="min-w-0 flex-1">
                     <div className="font-medium text-gray-900 dark:text-gray-100">
-                      <span className="text-red-600" style={{ fontFamily: '"Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif' }}>AI講師　{row.name}</span>
+                      <span className="text-red-600" style={{ fontFamily: '"Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif' }}>講師　{row.name}</span>
                       {index === 0 && <span className="ml-2 text-xs text-gray-500">（未設定のコースの担当）</span>}
                     </div>
                     <div className="text-xs text-gray-500">
@@ -166,20 +166,20 @@ export function AiInstructorsPanel({
       {instructors.length < max ? (
         <div className="p-4 rounded-lg border border-dashed border-gray-300 dark:border-gray-600">
           <div className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
-            AI講師を追加（あと {max - instructors.length} 名まで）
+            講師を追加（あと {max - instructors.length} 名まで）
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-red-600 font-bold">AI講師</span>
-            <input className={`${inputCls} w-48`} value={newName} maxLength={50} onChange={(e) => setNewName(e.target.value)} placeholder="名前（例：みらい）" />
+            <span className="text-sm text-red-600 font-bold">講師</span>
+            <input className={`${inputCls} w-48`} value={newName} maxLength={50} onChange={(e) => setNewName(e.target.value)} placeholder="名前（例：山田）" />
             <input className={`${inputCls} w-56`} value={newTitle} maxLength={100} onChange={(e) => setNewTitle(e.target.value)} placeholder="肩書き（任意）" />
             <Button size="sm" onClick={add} disabled={!newName.trim()} loading={busy}>追加</Button>
           </div>
           <p className="text-xs text-gray-500 mt-2">
-            実在の講師と同じ名前にすると、講師本人が添削したと誤解されるおそれがあります。AI講師用の名前をおすすめします。
+            ここで登録する名前は自動添削の署名に使うもので、ログイン用のアカウントとは別です。
           </p>
         </div>
       ) : (
-        <p className="text-xs text-gray-500">AI講師は最大 {max} 名まで登録できます。</p>
+        <p className="text-xs text-gray-500">講師は最大 {max} 名まで登録できます。</p>
       )}
     </div>
   );

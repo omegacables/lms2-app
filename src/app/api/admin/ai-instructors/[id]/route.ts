@@ -33,13 +33,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     .select('id, name, title, sort_order')
     .single();
   if (error || !data) {
-    return NextResponse.json({ error: 'AI講師の更新に失敗しました', details: error?.message }, { status: 500 });
+    return NextResponse.json({ error: '講師の更新に失敗しました', details: error?.message }, { status: 500 });
   }
   return NextResponse.json({ instructor: data });
 }
 
 // DELETE /api/admin/ai-instructors/[id]
-// 担当にしていたコースは「未設定（最初に登録した AI講師）」に戻る。過去の添削の署名は添削時の名前のまま残る。
+// 担当にしていたコースは「未設定（最初に登録した講師）」に戻る。過去の添削の署名は添削時の名前のまま残る。
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireRole(request, ['admin']);
   if (!auth.ok) return auth.response;
@@ -48,7 +48,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   const admin = createAdminSupabaseClient();
   const { error } = await admin.from('ai_instructors').delete().eq('id', Number(id));
   if (error) {
-    return NextResponse.json({ error: 'AI講師の削除に失敗しました', details: error.message }, { status: 500 });
+    return NextResponse.json({ error: '講師の削除に失敗しました', details: error.message }, { status: 500 });
   }
   return NextResponse.json({ success: true });
 }

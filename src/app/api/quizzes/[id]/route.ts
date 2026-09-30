@@ -4,7 +4,7 @@ import { createAdminSupabaseClient } from '@/lib/database/supabase';
 import { computeGateState } from '@/lib/quiz/gating';
 import { getOrCreateChoiceSet, toStudentOptions } from '@/lib/quiz/choiceSets';
 import { loadAutoReviewView } from '@/lib/quiz/autoReview';
-import { reviewSignature } from '@/lib/quiz/aiInstructors';
+import { reviewDisplayName, reviewSignature } from '@/lib/quiz/aiInstructors';
 
 export const runtime = 'nodejs';
 
@@ -112,8 +112,8 @@ export async function GET(
           ? latestReview.question_reviews.map((r: any) => ({ ...r, is_correct: null }))
           : [],
         reviewed_at: latestReview.reviewed_at,
-        // 署名: AI講師の自動添削は「AI講師　名前」、講師の添削は「講師　名前」
-        reviewer_name: latestReview.auto_reviewed ? reviewSignature(latestReview, null) : reviewerName,
+        // 署名「講師　名前」（自動添削は担当講師の名前、講師が自分で添削したものは講師本人の名前）
+        reviewer_name: reviewDisplayName(latestReview, reviewerName),
         reviewer_label: reviewSignature(latestReview, reviewerName),
         auto_reviewed: !!latestReview.auto_reviewed,
       };
@@ -122,7 +122,7 @@ export async function GET(
 
   const canSubmit = reviewMode && (submissionStatus === 'not_submitted' || submissionStatus === 'needs_revision');
 
-  // 小テストの自動添削（AI の赤ペン・コメント。講師が確認すると署名が付く）
+  // 小テストの自動添削（AI の赤ペン・コメント。署名は「講師　担当講師の名前」）
   const autoReview = !reviewMode && quiz.quiz_type === 'choice' ? await loadAutoReviewView(admin, quizId, user.id) : null;
 
   // 回答文生成：これから回答が必要な設問にだけ回答文を用意する

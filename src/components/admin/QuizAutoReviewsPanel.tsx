@@ -1,8 +1,8 @@
 'use client';
 
-// 小テストの自動添削（AI講師の赤ペン・講評）を講師が確認する画面。
-// 受講者には回答直後に「AI講師　名前」の署名で返却済み。講師が確認（必要なら修正）すると、
-// 受講者の画面に「確認：講師名」が添えられる。複数をまとめて確認することもできる。
+// 小テストの自動添削（赤ペン・講評）を講師が確認する画面。
+// 受講者には回答直後に「講師　担当講師の名前」の署名で返却済み。講師が確認（必要なら修正）すると、
+// 確認した講師と日時が記録され、学習記録PDFにも載る（受講者に見える署名は変わらない）。複数をまとめて確認することもできる。
 
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
@@ -29,7 +29,7 @@ interface AutoItem {
   course_title: string;
   quiz_title: string;
   status: 'pending' | 'ready' | 'failed';
-  /** 「AI講師　名前」 */
+  /** 「講師　名前」 */
   signature: string;
   error: string | null;
   generated_at: string | null;
@@ -162,7 +162,7 @@ export function QuizAutoReviewsPanel() {
   };
 
   const regenerate = async (item: AutoItem) => {
-    if (item.confirmed && !window.confirm('作り直すと確認済みの署名が外れます。よろしいですか？')) return;
+    if (item.confirmed && !window.confirm('作り直すと確認済みの記録が外れます。よろしいですか？')) return;
     setRegenerating(item.id);
     try {
       const res = await fetch('/api/admin/quiz-auto-reviews/regenerate', {
@@ -186,8 +186,8 @@ export function QuizAutoReviewsPanel() {
   return (
     <div>
       <p className="text-sm text-gray-500 mb-4">
-        受講者が小テストに回答すると、コースの担当 AI講師が赤ペンと講評を作り、「AI講師　名前」の署名で受講者にすぐ返却します。
-        内容を確認したいときはここで開いてください。修正して「確認済みにする」を押すと、受講者の画面に「確認：{myName || 'あなたの名前'}」が添えられます。
+        受講者が小テストに回答すると、AIが赤ペンと講評を作り、コースの担当講師の署名（「講師　名前」）で受講者にすぐ返却します。
+        内容を確認したいときはここで開いてください。「確認済みにする」を押すと、確認者（{myName || 'あなた'}）と日時が記録され、学習記録PDFにも載ります（受講者に見える署名は変わりません）。
       </p>
 
       <div className="border-b border-gray-200 dark:border-gray-700 mb-4 flex gap-4">

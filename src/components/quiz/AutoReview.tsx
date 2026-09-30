@@ -1,7 +1,7 @@
 'use client';
 
-// 小テストの自動添削（AI講師の赤ペン・講評）の表示（受講者のテストページ・課題ページで共通）。
-// 署名は必ず「AI講師　{名前}」とし、人の講師の添削と区別する。講師が内容を確認した場合は「確認：講師名」を添える。
+// 小テストの自動添削（赤ペン・講評）の表示（受講者のテストページ・課題ページで共通）。
+// 署名は「講師　{担当講師の名前}」。
 
 import { RedPenView } from '@/components/quiz/RedPenView';
 import type { RedPenSegment } from '@/lib/quiz/redpen';
@@ -11,9 +11,9 @@ export interface AutoReviewData {
   comment: string | null;
   question_reviews: { question_id: number; comment: string | null; markup: RedPenSegment[] | null }[];
   generated_at: string | null;
-  /** 添削した AI講師の名前 */
+  /** 担当講師の名前 */
   instructor_name?: string | null;
-  /** 署名（「AI講師　名前」） */
+  /** 署名（「講師　名前」） */
   signature?: string;
   confirmed: boolean;
   /** 内容を確認した講師の名前 */
@@ -21,10 +21,10 @@ export interface AutoReviewData {
   confirmed_at: string | null;
 }
 
-export const AUTO_REVIEW_LABEL = 'AI講師の添削';
+export const AUTO_REVIEW_LABEL = '添削';
 const PAPER_FONT = '"Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif';
 
-const signatureOf = (data: AutoReviewData) => data.signature || 'AI講師';
+const signatureOf = (data: AutoReviewData) => data.signature || '講師';
 
 /** テスト全体の自動添削（状態・全体コメント・署名） */
 export function AutoReviewSummary({ data }: { data: AutoReviewData }) {
@@ -32,14 +32,14 @@ export function AutoReviewSummary({ data }: { data: AutoReviewData }) {
     return (
       <div className="p-4 rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/10 text-sm text-rose-800 dark:text-rose-200 flex items-center gap-3">
         <span className="inline-block w-4 h-4 border-2 border-rose-400 border-t-transparent rounded-full animate-spin" />
-        AI講師が添削しています…（1分ほどかかることがあります）
+        講師が添削しています…（1分ほどかかることがあります）
       </div>
     );
   }
   if (data.status === 'failed') {
     return (
       <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-300">
-        AI講師の添削を作成できませんでした。しばらくしてから、もう一度ページを開いてください。
+        添削を作成できませんでした。しばらくしてから、もう一度ページを開いてください。
       </div>
     );
   }
@@ -55,19 +55,13 @@ export function AutoReviewSummary({ data }: { data: AutoReviewData }) {
   );
 }
 
-/** 署名（「AI講師　名前」。講師が確認済みなら確認者を添える） */
+/** 署名（「講師　名前」） */
 export function AutoReviewSignature({ data }: { data: AutoReviewData }) {
   return (
     <div className="mt-2 text-right">
       <span className="text-red-600 font-bold" style={{ fontFamily: PAPER_FONT }}>
         {signatureOf(data)}
       </span>
-      {data.confirmed && data.reviewer_name && (
-        <span className="ml-2 text-xs text-gray-500">
-          （確認：{data.reviewer_name}
-          {data.confirmed_at ? `　${new Date(data.confirmed_at).toLocaleDateString('ja-JP')}` : ''}）
-        </span>
-      )}
     </div>
   );
 }

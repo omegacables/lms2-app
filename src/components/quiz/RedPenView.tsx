@@ -10,7 +10,7 @@ interface RedPenViewProps {
   segments: RedPenSegment[];
   /** 吹き出しと署名に表示する講師名 */
   reviewerName?: string | null;
-  /** 署名の完成形（「AI講師　名前」など）。指定すると「講師　{reviewerName}」の代わりに表示する */
+  /** 署名の完成形（「講師　名前」）。指定すると「講師　{reviewerName}」の代わりに表示する */
   signatureLabel?: string | null;
   /** 吹き出しに表示する日付 */
   reviewedAt?: string | null;

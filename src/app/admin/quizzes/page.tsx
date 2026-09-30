@@ -63,7 +63,7 @@ async function authHeaders(): Promise<HeadersInit> {
 
 export default function AdminQuizzesPage() {
   const [tab, setTab] = useState<'manage' | 'attempts' | 'instructors'>('manage');
-  // AI講師（自動添削の署名。最大5名）
+  // 添削の担当講師（自動添削の署名。最大5名）
   const [aiInstructors, setAiInstructors] = useState<AiInstructorRow[]>([]);
   const [aiInstructorMax, setAiInstructorMax] = useState(5);
   const [courses, setCourses] = useState<CourseOpt[]>([]);
@@ -76,7 +76,7 @@ export default function AdminQuizzesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newType, setNewType] = useState<'choice' | 'essay'>('choice');
-  // 'auto' = 回答で通過（小テスト） / 'review' = 提出→AI講師が添削して合否を返却
+  // 'auto' = 回答で通過（小テスト） / 'review' = 提出→自動で添削して合否を返却
   const [newGradingMode, setNewGradingMode] = useState<'auto' | 'review'>('auto');
   // 'plain' = 選択肢をそのまま表示 / 'generated' = 受験ごとに回答文を生成して提示
   const [newAnswerStyle, setNewAnswerStyle] = useState<'plain' | 'generated'>('plain');
@@ -182,7 +182,7 @@ export default function AdminQuizzesPage() {
     if (courseId) loadCourseData(courseId);
   }, [courseId, loadCourseData]);
 
-  // --- AI講師 ---
+  // --- 講師 ---
   const loadAiInstructors = useCallback(async () => {
     try {
       const res = await fetch('/api/admin/ai-instructors', { headers: await authHeaders() });
@@ -508,7 +508,7 @@ export default function AdminQuizzesPage() {
             <button
               className={`pb-2 text-sm font-medium ${tab === 'instructors' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}
               onClick={() => setTab('instructors')}
-            >AI講師</button>
+            >講師</button>
           </div>
 
           {tab === 'instructors' && (
@@ -587,7 +587,7 @@ export default function AdminQuizzesPage() {
                     </div>
                   </div>
                   <div className="mt-4">
-                    <label className="block text-xs text-gray-500 mb-1">添削を担当するAI講師（小テスト・最終テストを自動で添削し、「AI講師　名前」で返却します）</label>
+                    <label className="block text-xs text-gray-500 mb-1">添削を担当する講師（小テスト・最終テストを自動で添削し、「講師　名前」の署名で返却します）</label>
                     <select
                       className="w-full sm:w-80 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm"
                       value={settings.ai_instructor_id ?? ''}
@@ -595,14 +595,14 @@ export default function AdminQuizzesPage() {
                       onChange={(e) => saveSettings({ ai_instructor_id: e.target.value === '' ? null : Number(e.target.value) })}
                     >
                       <option value="">
-                        未設定（{aiInstructors[0] ? `AI講師　${aiInstructors[0].name}` : 'AI講師'}）
+                        未設定（{aiInstructors[0] ? `講師　${aiInstructors[0].name}` : '講師'}）
                       </option>
                       {aiInstructors.map((i) => (
-                        <option key={i.id} value={i.id}>AI講師　{i.name}{i.title ? `（${i.title}）` : ''}</option>
+                        <option key={i.id} value={i.id}>講師　{i.name}{i.title ? `（${i.title}）` : ''}</option>
                       ))}
                     </select>
                     {aiInstructors.length === 0 && (
-                      <p className="text-xs text-amber-600 mt-1">AI講師が未登録です。「AI講師」タブで登録してください（最大{aiInstructorMax}名）。</p>
+                      <p className="text-xs text-amber-600 mt-1">講師が未登録です。「講師」タブで登録してください（最大{aiInstructorMax}名）。</p>
                     )}
                   </div>
                   {!settings.test_required && (
@@ -639,7 +639,7 @@ export default function AdminQuizzesPage() {
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
                   列: コースID, 配置動画ID(動画の数値ID。空欄=コース末), テスト名, 設問, 選択肢1〜4, 正答番号(1始まり), 解説,
-                  採点方式(空欄/回答で通過 = 全問に回答すると通過する小テスト。旧表記「即時採点」も可／提出添削 = 提出後に AI講師が添削して合否を返却),
+                  採点方式(空欄/回答で通過 = 全問に回答すると通過する小テスト。旧表記「即時採点」も可／提出添削 = 提出後に自動で添削して合否を返却),
                   回答形式(空欄/固定 = 選択肢をそのまま表示／生成 = 選択肢を回答パターンとして、受験ごとに回答文を生成)。取込後は「下書き」で作成されます。
                 </p>
                 {importResult && (
@@ -854,8 +854,8 @@ export default function AdminQuizzesPage() {
                     <option value="essay">記述式・提出→添削（最終テスト）</option>
                   </select>
                   <p className="text-xs text-gray-500 mt-1">
-                    「回答で通過」は、すべての問題に回答すると次へ進めます（正解・不正解は表示しません。正答の設定は AI講師の添削と記録に使います）。回答した直後に AI講師が赤ペン・講評を返却します。
-                    「提出→添削」は、提出した直後に AI講師が赤ペン・コメントを付けて合否を返却し、合格で通過扱いになります。
+                    「回答で通過」は、すべての問題に回答すると次へ進めます（正解・不正解は表示しません。正答の設定は自動添削と記録に使います）。回答した直後に、担当講師の署名で赤ペン・講評を返却します。
+                    「提出→添削」は、提出した直後に自動で赤ペン・コメントを付けて合否を返却し、合格で通過扱いになります。
                   </p>
                 </div>
                 {newType === 'choice' && (

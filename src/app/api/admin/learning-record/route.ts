@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/requireAdmin';
 import { createAdminSupabaseClient } from '@/lib/database/supabase';
 import { computeGateState } from '@/lib/quiz/gating';
-import { aiInstructorLabel, reviewSignature } from '@/lib/quiz/aiInstructors';
+import { aiInstructorLabel, isAutoOrigin, reviewSignature } from '@/lib/quiz/aiInstructors';
 
 export const runtime = 'nodejs';
 
@@ -229,22 +229,24 @@ export async function GET(request: NextRequest) {
             review_mark: mark,
           };
         }),
-        // 赤ペンの署名（AI講師の自動添削は「AI講師　名前」、講師の添削は「講師　名前」）
+        // 赤ペンの署名「講師　名前」（自動添削は担当講師の名前、講師が自分で添削したものは講師本人の名前）
         signer_label: latestReview
           ? reviewSignature(latestReview, latestReview.reviewer_id ? reviewerMap.get(latestReview.reviewer_id) || null : null) || ''
           : '',
-        reviews: (reviews || []).map((r) => ({
-          result: r.result,
-          comment: r.review_comment,
-          explanation: r.explanation || '',
-          reviewer_name: r.auto_reviewed
-            ? aiInstructorLabel(r.ai_instructor_name)
-            : r.reviewer_id
-            ? reviewerMap.get(r.reviewer_id) || ''
-            : '',
-          auto: !!r.auto_reviewed,
-          reviewed_at: r.reviewed_at,
-        })),
+        reviews: (reviews || []).map((r) => {
+          const humanName = r.reviewer_id ? reviewerMap.get(r.reviewer_id) || '' : '';
+          const auto = isAutoOrigin(r);
+          return {
+            result: r.result,
+            comment: r.review_comment,
+            explanation: r.explanation || '',
+            // 自動添削は「講師　担当講師の名前」（PDF に「AIによる自動添削」と記載）。講師が確認して返却し直したものは確認した講師も載せる
+            reviewer_name: auto ? aiInstructorLabel(r.ai_instructor_name) : humanName,
+            auto,
+            confirmed_by: auto && !r.auto_reviewed ? humanName : '',
+            reviewed_at: r.reviewed_at,
+          };
+        }),
       });
     }
   }

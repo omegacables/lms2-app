@@ -3,7 +3,7 @@ import { getAuthUser } from '@/lib/auth/getUser';
 import { createAdminSupabaseClient } from '@/lib/database/supabase';
 import { computeGateState } from '@/lib/quiz/gating';
 import { reviewerNames, toAutoReviewView } from '@/lib/quiz/autoReview';
-import { reviewSignature } from '@/lib/quiz/aiInstructors';
+import { reviewDisplayName, reviewSignature } from '@/lib/quiz/aiInstructors';
 
 export const runtime = 'nodejs';
 
@@ -217,8 +217,8 @@ export async function GET(request: NextRequest) {
               comment: latestReview.review_comment,
               explanation: latestReview.explanation || null,
               reviewed_at: latestReview.reviewed_at,
-              // 署名: AI講師の自動添削は「AI講師　名前」、講師の添削は「講師　名前」
-              reviewer_name: latestReview.auto_reviewed ? reviewSignature(latestReview, null) : reviewerName,
+              // 署名「講師　名前」（自動添削は担当講師の名前、講師が自分で添削したものは講師本人の名前）
+              reviewer_name: reviewDisplayName(latestReview, reviewerName),
               reviewer_label: reviewSignature(latestReview, reviewerName),
               auto_reviewed: !!latestReview.auto_reviewed,
             }

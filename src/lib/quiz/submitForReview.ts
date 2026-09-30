@@ -3,7 +3,7 @@
 //
 // 方針:
 //  * quiz_attempts は追記のみ。再提出は attempt_no を増やして新規行を追加する。
-//  * 選択式でもここでは採点しない（is_correct は NULL のまま）。添削は提出後に AI講師が自動で行う（autoFinalReview.ts）。
+//  * 選択式でもここでは採点しない（is_correct は NULL のまま）。添削は提出後に自動で行う（autoFinalReview.ts）。
 //  * 提出後は添削が返るまで再提出不可。'needs_revision' が返ったときのみ再提出できる。
 //  * 回答文生成（answer_style='generated'）では selected_index は表示位置。提示セットでパターンに変換し、
 //    選んだ回答文を answer_text に保存する。
@@ -186,7 +186,7 @@ export async function submitForReview(
   const staffIds = await getStaffUserIds(admin);
   await notifyUsers(admin, staffIds, {
     title: 'テストの提出がありました',
-    message: `${studentName} さんが「${quiz.title}」を提出しました。AI講師が自動で添削します（添削できなかった場合は添削画面から返却してください）。`,
+    message: `${studentName} さんが「${quiz.title}」を提出しました。自動で添削して返却します（添削できなかった場合は添削画面から返却してください）。`,
     type: 'essay_submission',
     related_type: 'quiz',
     related_id: quizId,
