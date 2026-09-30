@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/requireAdmin';
+import { aiInstructorLabel } from '@/lib/quiz/aiInstructors';
 import { createAdminSupabaseClient } from '@/lib/database/supabase';
 import { notifyUsers } from '@/lib/notify';
 import { issueCertificateIfEligible } from '@/lib/certificate/issue';
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
 
     const { data: reviews } = await admin
       .from('essay_reviews')
-      .select('user_id, result, review_comment, explanation, question_reviews, reviewed_at')
+      .select('user_id, result, review_comment, explanation, question_reviews, reviewed_at, reviewer_id, auto_reviewed, ai_instructor_name')
       .eq('quiz_id', quiz.id)
       .order('reviewed_at', { ascending: false });
 
@@ -119,6 +120,8 @@ export async function GET(request: NextRequest) {
         latest_review: latestReview
           ? {
               ...latestReview,
+              // 署名（AI講師の自動添削は「AI講師　名前」。講師の添削は画面側で講師名を表示）
+              signature: latestReview.auto_reviewed ? aiInstructorLabel(latestReview.ai_instructor_name) : null,
               question_reviews: Array.isArray(latestReview.question_reviews) ? latestReview.question_reviews : [],
             }
           : null,

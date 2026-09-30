@@ -4,6 +4,7 @@ import { createAdminSupabaseClient } from '@/lib/database/supabase';
 import { computeGateState } from '@/lib/quiz/gating';
 import { getOrCreateChoiceSet, toStudentOptions } from '@/lib/quiz/choiceSets';
 import { loadAutoReviewView } from '@/lib/quiz/autoReview';
+import { reviewSignature } from '@/lib/quiz/aiInstructors';
 
 export const runtime = 'nodejs';
 
@@ -80,7 +81,7 @@ export async function GET(
   if (reviewMode) {
     const { data: reviews } = await admin
       .from('essay_reviews')
-      .select('result, review_comment, explanation, question_reviews, reviewed_at, reviewer_id')
+      .select('result, review_comment, explanation, question_reviews, reviewed_at, reviewer_id, auto_reviewed, ai_instructor_name')
       .eq('quiz_id', quizId)
       .eq('user_id', user.id)
       .order('reviewed_at', { ascending: false });
@@ -111,7 +112,10 @@ export async function GET(
           ? latestReview.question_reviews.map((r: any) => ({ ...r, is_correct: null }))
           : [],
         reviewed_at: latestReview.reviewed_at,
-        reviewer_name: reviewerName,
+        // 署名: AI講師の自動添削は「AI講師　名前」、講師の添削は「講師　名前」
+        reviewer_name: latestReview.auto_reviewed ? reviewSignature(latestReview, null) : reviewerName,
+        reviewer_label: reviewSignature(latestReview, reviewerName),
+        auto_reviewed: !!latestReview.auto_reviewed,
       };
     }
   }

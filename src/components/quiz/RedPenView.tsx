@@ -10,6 +10,8 @@ interface RedPenViewProps {
   segments: RedPenSegment[];
   /** 吹き出しと署名に表示する講師名 */
   reviewerName?: string | null;
+  /** 署名の完成形（「AI講師　名前」など）。指定すると「講師　{reviewerName}」の代わりに表示する */
+  signatureLabel?: string | null;
   /** 吹き出しに表示する日付 */
   reviewedAt?: string | null;
   /** 署名を表示するか（既定: 講師名があれば表示） */
@@ -22,10 +24,10 @@ interface RedPenViewProps {
 
 const PAPER_FONT = '"Yu Mincho", "YuMincho", "Hiragino Mincho ProN", "Noto Serif JP", serif';
 
-export function RedPenView({ segments, reviewerName, reviewedAt, showSignature, editable }: RedPenViewProps) {
+export function RedPenView({ segments, reviewerName, signatureLabel, reviewedAt, showSignature, editable }: RedPenViewProps) {
   const numbers = noteNumbers(segments);
   const dateLabel = reviewedAt ? new Date(reviewedAt).toLocaleDateString('ja-JP') : '';
-  const signed = (showSignature ?? true) && !!reviewerName;
+  const signed = (showSignature ?? true) && (!!signatureLabel || !!reviewerName);
 
   return (
     <div className="rounded-md border border-red-200 dark:border-red-900/60 bg-[#fffdf7] dark:bg-gray-900">
@@ -115,7 +117,7 @@ export function RedPenView({ segments, reviewerName, reviewedAt, showSignature, 
       {/* 署名 */}
       {signed && (
         <div className="px-4 pb-3 text-right text-red-600 font-bold" style={{ fontFamily: PAPER_FONT }}>
-          講師　{reviewerName}
+          {signatureLabel || `講師　${reviewerName}`}
         </div>
       )}
     </div>

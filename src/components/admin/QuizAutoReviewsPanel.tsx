@@ -1,8 +1,8 @@
 'use client';
 
-// 小テストの自動添削（AI の赤ペン・コメント）を講師が確認して署名する画面。
-// 受講者には回答直後から「自動添削（AI）」として表示されている。講師が確認（必要なら修正）すると、
-// 受講者の画面に確認した講師の名前で署名が付く。複数をまとめて確認することもできる。
+// 小テストの自動添削（AI講師の赤ペン・講評）を講師が確認する画面。
+// 受講者には回答直後に「AI講師　名前」の署名で返却済み。講師が確認（必要なら修正）すると、
+// 受講者の画面に「確認：講師名」が添えられる。複数をまとめて確認することもできる。
 
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
@@ -29,6 +29,8 @@ interface AutoItem {
   course_title: string;
   quiz_title: string;
   status: 'pending' | 'ready' | 'failed';
+  /** 「AI講師　名前」 */
+  signature: string;
   error: string | null;
   generated_at: string | null;
   updated_at: string | null;
@@ -52,7 +54,7 @@ const statusMeta = (item: AutoItem): { label: string; cls: string } => {
   if (item.status === 'pending') return { label: '作成中', cls: 'bg-gray-100 text-gray-600' };
   if (item.status === 'failed') return { label: '作成失敗', cls: 'bg-red-100 text-red-700' };
   if (item.confirmed) return { label: '確認済み', cls: 'bg-green-100 text-green-700' };
-  return { label: '未確認', cls: 'bg-yellow-100 text-yellow-700' };
+  return { label: '返却済み・未確認', cls: 'bg-yellow-100 text-yellow-700' };
 };
 
 export function QuizAutoReviewsPanel() {
@@ -155,7 +157,7 @@ export function QuizAutoReviewsPanel() {
   const confirmSelected = () => {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
-    if (!window.confirm(`選択した ${ids.length} 件の自動添削を、内容を確認したものとして「講師　${myName}」の署名を付けます。よろしいですか？`)) return;
+    if (!window.confirm(`選択した ${ids.length} 件の自動添削を、内容を確認済みにします（確認者：${myName}）。よろしいですか？`)) return;
     confirm(ids.map((id) => ({ id })));
   };
 
@@ -184,8 +186,8 @@ export function QuizAutoReviewsPanel() {
   return (
     <div>
       <p className="text-sm text-gray-500 mb-4">
-        受講者が小テストに回答すると、AIが赤ペンとコメントを作り「自動添削（AI）」として受講者にすぐ表示します。
-        内容を確認（必要なら修正）して署名すると、受講者の画面に「講師　{myName || 'あなたの名前'}」の署名が付きます。
+        受講者が小テストに回答すると、コースの担当 AI講師が赤ペンと講評を作り、「AI講師　名前」の署名で受講者にすぐ返却します。
+        内容を確認したいときはここで開いてください。修正して「確認済みにする」を押すと、受講者の画面に「確認：{myName || 'あなたの名前'}」が添えられます。
       </p>
 
       <div className="border-b border-gray-200 dark:border-gray-700 mb-4 flex gap-4">
@@ -199,7 +201,7 @@ export function QuizAutoReviewsPanel() {
             <input type="checkbox" checked={allSelected} onChange={toggleAll} /> 未確認をすべて選択
           </label>
           <Button size="sm" onClick={confirmSelected} disabled={selected.size === 0} loading={saving}>
-            選択したものを確認して署名{selected.size > 0 ? `（${selected.size}件）` : ''}
+            選択したものを確認済みにする{selected.size > 0 ? `（${selected.size}件）` : ''}
           </Button>
         </div>
       )}
@@ -227,6 +229,7 @@ export function QuizAutoReviewsPanel() {
                       <div className="text-xs text-gray-500">
                         {item.course_title} ／ {item.quiz_title}
                         {item.generated_at && <> ／ 作成 {new Date(item.generated_at).toLocaleString('ja-JP')}</>}
+                        {' ／ '}{item.signature}
                         {item.confirmed && item.reviewer_name && <> ／ 確認 {item.reviewer_name}</>}
                       </div>
                     </div>
@@ -251,7 +254,7 @@ export function QuizAutoReviewsPanel() {
                           {d.markup && d.markup.length > 0 ? (
                             <RedPenView
                               segments={d.markup}
-                              reviewerName={item.confirmed ? item.reviewer_name : '自動添削（AI）'}
+                              reviewerName={item.signature}
                               reviewedAt={item.confirmed_at || item.generated_at}
                               showSignature={false}
                               editable={editable ? {
@@ -292,7 +295,7 @@ export function QuizAutoReviewsPanel() {
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       {item.confirmed && (
                         <span className="text-sm text-green-700 mr-auto">
-                          確認済み（講師　{item.reviewer_name}{item.confirmed_at ? `／${new Date(item.confirmed_at).toLocaleString('ja-JP')}` : ''}）
+                          確認済み（確認者：{item.reviewer_name}{item.confirmed_at ? `／${new Date(item.confirmed_at).toLocaleString('ja-JP')}` : ''}）
                           {item.edited_at ? '・講師が修正' : ''}
                         </span>
                       )}
@@ -301,7 +304,7 @@ export function QuizAutoReviewsPanel() {
                       </Button>
                       {canConfirm && (
                         <Button size="sm" onClick={() => confirmOne(item)} loading={saving} disabled={regenerating !== null}>
-                          確認して署名（講師　{myName}）
+                          確認済みにする（確認者：{myName}）
                         </Button>
                       )}
                     </div>

@@ -43,7 +43,16 @@ interface HwItem {
   status: HomeworkStatus;
   lock_reason: string | null;
   questions: HwQuestion[];
-  review: { result: string; comment: string | null; explanation: string | null; reviewed_at: string; reviewer_name: string | null } | null;
+  review: {
+    result: string;
+    comment: string | null;
+    explanation: string | null;
+    reviewed_at: string;
+    reviewer_name: string | null;
+    /** 署名の完成形（「AI講師　名前」または「講師　名前」） */
+    reviewer_label?: string | null;
+    auto_reviewed?: boolean;
+  } | null;
   can_submit: boolean;
 }
 
@@ -112,6 +121,31 @@ export default function HomeworkPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // AI講師の添削が返るまで（添削中・作成中の項目があるあいだ）、数秒ごとに読み直す。入力中の下書きは触らない
+  const waiting =
+    items.some((it) => it.status === 'under_review') || quizResults.some((qr) => qr.auto_review?.status === 'pending');
+  useEffect(() => {
+    if (!waiting) return;
+    let tries = 0;
+    const timer = setInterval(async () => {
+      tries += 1;
+      if (tries > 40) {
+        clearInterval(timer);
+        return;
+      }
+      try {
+        const res = await fetch('/api/homework', { headers: await authHeaders() });
+        if (!res.ok) return;
+        const json = await res.json();
+        setItems(json.items || []);
+        setQuizResults(json.quizResults || []);
+      } catch {
+        /* 次の読み直しで再試行 */
+      }
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [waiting]);
 
   const submit = async (item: HwItem) => {
     const answers = item.questions.map((q) => ({
@@ -204,8 +238,8 @@ export default function HomeworkPage() {
                             <div className="whitespace-pre-wrap text-gray-700">{item.review.explanation}</div>
                           </div>
                         )}
-                        {item.review.reviewer_name && (
-                          <div className="mt-2 text-right text-red-600 font-bold">講師　{item.review.reviewer_name}</div>
+                        {(item.review.reviewer_label || item.review.reviewer_name) && (
+                          <div className="mt-2 text-right text-red-600 font-bold">{item.review.reviewer_label || `講師　${item.review.reviewer_name}`}</div>
                         )}
                         {stampUrl && (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -321,7 +355,7 @@ export default function HomeworkPage() {
                           </div>
                         )}
                         {item.status === 'under_review' && (
-                          <p className="text-xs text-gray-500">指導者が添削中です。結果が出るまでお待ちください。</p>
+                          <p className="text-xs text-gray-500">添削中です。AI講師の添削が返るまでお待ちください（この画面は自動で更新されます）。</p>
                         )}
                       </div>
                     )}

@@ -3,6 +3,7 @@ import { getAuthUser } from '@/lib/auth/getUser';
 import { createAdminSupabaseClient } from '@/lib/database/supabase';
 import { computeGateState } from '@/lib/quiz/gating';
 import { reviewerNames, toAutoReviewView } from '@/lib/quiz/autoReview';
+import { reviewSignature } from '@/lib/quiz/aiInstructors';
 
 export const runtime = 'nodejs';
 
@@ -141,7 +142,7 @@ export async function GET(request: NextRequest) {
       // 最新添削
       const { data: reviews } = await admin
         .from('essay_reviews')
-        .select('result, review_comment, explanation, question_reviews, reviewed_at, reviewer_id')
+        .select('result, review_comment, explanation, question_reviews, reviewed_at, reviewer_id, auto_reviewed, ai_instructor_name')
         .eq('quiz_id', quiz.id)
         .eq('user_id', user.id)
         .order('reviewed_at', { ascending: false });
@@ -216,7 +217,10 @@ export async function GET(request: NextRequest) {
               comment: latestReview.review_comment,
               explanation: latestReview.explanation || null,
               reviewed_at: latestReview.reviewed_at,
-              reviewer_name: reviewerName,
+              // 署名: AI講師の自動添削は「AI講師　名前」、講師の添削は「講師　名前」
+              reviewer_name: latestReview.auto_reviewed ? reviewSignature(latestReview, null) : reviewerName,
+              reviewer_label: reviewSignature(latestReview, reviewerName),
+              auto_reviewed: !!latestReview.auto_reviewed,
             }
           : null,
         // 再提出可能か（未提出 or 要再提出）

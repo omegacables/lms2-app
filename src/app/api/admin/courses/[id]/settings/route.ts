@@ -6,6 +6,7 @@ export const runtime = 'nodejs';
 
 // 通信制関連のコース設定のみを扱う（既存のコース更新PUTには手を触れない）。
 // test_required = 小テスト・最終テスト・ゲート・修了要件の ON/OFF マスタースイッチ。
+// ai_instructor_id = 小テスト・最終テストを自動で添削する AI講師。
 
 export async function GET(
   request: NextRequest,
@@ -18,7 +19,7 @@ export async function GET(
   const admin = createAdminSupabaseClient();
   const { data, error } = await admin
     .from('courses')
-    .select('id, title, test_required, standard_learning_minutes, standard_learning_period, training_type_note')
+    .select('id, title, test_required, standard_learning_minutes, standard_learning_period, training_type_note, ai_instructor_id')
     .eq('id', Number(id))
     .single();
 
@@ -52,6 +53,11 @@ export async function PATCH(
   if ('training_type_note' in body) {
     update.training_type_note = body.training_type_note ? String(body.training_type_note) : null;
   }
+  // 添削を担当する AI講師（null = 未設定：最初に登録した AI講師）
+  if ('ai_instructor_id' in body) {
+    const v = body.ai_instructor_id;
+    update.ai_instructor_id = v === null || v === '' ? null : Number(v);
+  }
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: '更新項目がありません' }, { status: 400 });
@@ -63,7 +69,7 @@ export async function PATCH(
     .from('courses')
     .update(update)
     .eq('id', Number(id))
-    .select('id, title, test_required, standard_learning_minutes, standard_learning_period, training_type_note')
+    .select('id, title, test_required, standard_learning_minutes, standard_learning_period, training_type_note, ai_instructor_id')
     .single();
 
   if (error) {

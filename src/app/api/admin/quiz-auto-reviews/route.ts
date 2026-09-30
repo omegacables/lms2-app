@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/requireAdmin';
 import { createAdminSupabaseClient } from '@/lib/database/supabase';
 import { effectiveStatus, reviewerNames, sanitizeEditedReviews } from '@/lib/quiz/autoReview';
+import { aiInstructorLabel } from '@/lib/quiz/aiInstructors';
 
 export const runtime = 'nodejs';
 
 // GET /api/admin/quiz-auto-reviews?filter=unconfirmed|all
-// 小テストの自動添削（AI の赤ペン・コメント）の一覧。講師が内容を確認して署名するための画面用。
+// 小テストの自動添削（AI講師の赤ペン・講評）の一覧。受講者には回答直後に返却済み。講師が内容を確認・修正するための画面用。
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, ['admin', 'instructor']);
   if (!auth.ok) return auth.response;
@@ -56,6 +57,7 @@ export async function GET(request: NextRequest) {
       course_title: quiz ? courseMap.get(quiz.course_id) || '' : '',
       quiz_title: quiz?.title || '',
       status: effectiveStatus(r),
+      signature: aiInstructorLabel(r.ai_instructor_name),
       error: r.error,
       generated_at: r.generated_at,
       updated_at: r.updated_at,
@@ -85,7 +87,7 @@ export async function GET(request: NextRequest) {
 
 // POST /api/admin/quiz-auto-reviews
 // body: { items: [{ id, review_comment?, question_reviews?: [{ question_id, comment, markup }] }] }
-// 講師が内容を確認して署名する（1件ずつ修正して確認、または複数をまとめて確認）。
+// 講師が内容を確認済みにする（1件ずつ修正して確認、または複数をまとめて確認）。確認者として講師名が添えられる。
 // 修正した場合は edited_at を記録する（AI の元の内容は ai_* 列に残る）。
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, ['admin', 'instructor']);

@@ -1,15 +1,15 @@
-// 小テストの自動添削（AI の赤ペン・コメント）。サーバー専用（service role クライアントを渡す）。
+// 小テストの自動添削（AI講師の赤ペン・コメント）。サーバー専用（service role クライアントを渡す）。
 //
-// - 受講者が小テスト（grading_mode='auto' の選択式）に回答すると、設問ごとに AI が赤ペンとコメントを作り、
-//   「自動添削（AI）」として受講者にすぐ表示する。
-// - 講師が確認（必要なら修正）すると confirmed_by / confirmed_at が入り、確認した講師の名前で署名が付く。
-//   講師が確認していない添削には講師名を付けない（訓練記録上、講師が添削したことになってしまうため）。
+// - 受講者が小テスト（grading_mode='auto' の選択式）に回答すると、コースの担当 AI講師が設問ごとの赤ペンと
+//   講評を作り、受講者にすぐ表示する。署名は必ず「AI講師　{名前}」（人の講師の添削と区別する）。
+// - 講師が内容を確認（必要なら修正）すると confirmed_by / confirmed_at が入り、「確認：講師名」が添えられる。
 // - AI が作成した元の内容は ai_question_reviews / ai_review_comment に残す。
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { geminiGenerateJSON, geminiModelName, isGeminiConfigured } from '@/lib/ai/gemini';
 import { draftRedPen } from '@/lib/quiz/redpenDraft';
 import { normalizeMarkup, type RedPenSegment } from '@/lib/quiz/redpen';
+import { aiInstructorLabel, resolveCourseAiInstructor } from '@/lib/quiz/aiInstructors';
 
 export type AutoReviewStatus = 'pending' | 'ready' | 'failed';
 
@@ -28,7 +28,11 @@ export interface AutoReviewView {
   comment: string | null;
   question_reviews: { question_id: number; comment: string | null; markup: RedPenSegment[] | null }[];
   generated_at: string | null;
-  /** 講師が確認済みか */
+  /** 添削した AI講師の名前 */
+  instructor_name: string | null;
+  /** 署名（「AI講師　名前」） */
+  signature: string;
+  /** 講師が内容を確認済みか */
   confirmed: boolean;
   /** 確認した講師の名前（確認済みのときだけ） */
   reviewer_name: string | null;
@@ -113,6 +117,7 @@ export async function generateQuizAutoReview(
     }
 
     const { data: course } = await admin.from('courses').select('title').eq('id', quiz.course_id).single();
+    const instructor = await resolveCourseAiInstructor(admin, quiz.course_id);
 
     const { data: questions } = await admin
       .from('quiz_questions')
@@ -211,6 +216,8 @@ ${summaryLines}
         ai_question_reviews: reviews,
         ai_review_comment: overall,
         model: geminiModelName('review'),
+        ai_instructor_id: instructor?.id ?? null,
+        ai_instructor_name: instructor?.name ?? null,
         error: null,
         generated_at: now,
         edited_at: null,
@@ -251,6 +258,8 @@ export function toAutoReviewView(row: any, names: Map<string, string>): AutoRevi
       markup: Array.isArray(r.markup) ? r.markup : null,
     })),
     generated_at: row.generated_at ?? null,
+    instructor_name: row.ai_instructor_name ?? null,
+    signature: aiInstructorLabel(row.ai_instructor_name),
     confirmed,
     reviewer_name: confirmed ? names.get(row.confirmed_by) || null : null,
     confirmed_at: confirmed ? row.confirmed_at : null,

@@ -48,6 +48,9 @@ interface Submission {
     review_comment: string | null;
     explanation?: string | null;
     question_reviews?: QuestionReview[];
+    /** AI講師の自動添削なら「AI講師　名前」 */
+    signature?: string | null;
+    auto_reviewed?: boolean;
     reviewed_at: string;
   } | null;
 }
@@ -267,8 +270,8 @@ export default function AdminEssayReviewsPage() {
           ) : (
           <>
           <p className="text-sm text-gray-500 mb-6">
-            受講者が提出した回答を開くと、AIが赤ペン添削の下書きを作成します。内容を確認・修正し、コメントを付けて「合格」か「要再提出」で返却してください。
-            返却すると受講者の課題ページに赤ペンで表示され、最後にあなたの名前で署名されます。
+            最終テストは提出されると、コースの担当 AI講師が自動で添削して返却します（署名は「AI講師　名前」）。
+            AIの添削ができなかった提出は「添削待ち」に残ります。開くとAIが赤ペン添削の下書きを作成するので、内容を確認・修正して返却してください（あなたの名前で署名されます）。
           </p>
 
           <div className="border-b border-gray-200 dark:border-gray-700 mb-6 flex gap-4">
@@ -298,7 +301,12 @@ export default function AdminEssayReviewsPage() {
                           ／ 提出 {new Date(s.submitted_at).toLocaleString('ja-JP')}
                         </div>
                       </div>
-                      <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded whitespace-nowrap ${meta.cls}`}>{meta.icon}{meta.label}</span>
+                      <span className="flex items-center gap-2">
+                        {s.status !== 'pending' && s.latest_review?.auto_reviewed && (
+                          <span className="text-xs text-rose-600 whitespace-nowrap">{s.latest_review.signature || 'AI講師'}</span>
+                        )}
+                        <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded whitespace-nowrap ${meta.cls}`}>{meta.icon}{meta.label}</span>
+                      </span>
                     </button>
 
                     {expanded === k && (
@@ -391,7 +399,12 @@ export default function AdminEssayReviewsPage() {
                             onChange={(e) => setComment(e.target.value)}
                             placeholder="添削コメントを入力（要再提出の場合は必須）"
                           />
-                          {myName && (
+                          {s.status !== 'pending' && s.latest_review?.auto_reviewed ? (
+                            <div className="text-right text-red-600 font-bold text-sm mt-1">
+                              {s.latest_review.signature || 'AI講師'}
+                              <span className="ml-1 text-xs font-normal text-gray-500">（AIによる自動添削。返却し直すとあなたの名前で署名されます）</span>
+                            </div>
+                          ) : myName && (
                             <div className="text-right text-red-600 font-bold text-sm mt-1">講師　{myName}</div>
                           )}
                         </div>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/requireAdmin';
 import { createAdminSupabaseClient } from '@/lib/database/supabase';
 import { computeGateState } from '@/lib/quiz/gating';
+import { aiInstructorLabel, reviewSignature } from '@/lib/quiz/aiInstructors';
 
 export const runtime = 'nodejs';
 
@@ -142,6 +143,7 @@ export async function GET(request: NextRequest) {
         auto_review: autoReady
           ? {
               comment: autoRow.review_comment ?? null,
+              signature: aiInstructorLabel(autoRow.ai_instructor_name),
               generated_at: autoRow.generated_at,
               confirmed: !!autoRow.confirmed_at,
               reviewer_name: autoReviewer,
@@ -174,7 +176,7 @@ export async function GET(request: NextRequest) {
     } else {
       const { data: reviews } = await admin
         .from('essay_reviews')
-        .select('result, review_comment, explanation, question_reviews, reviewer_id, reviewed_at')
+        .select('result, review_comment, explanation, question_reviews, reviewer_id, reviewed_at, auto_reviewed, ai_instructor_name')
         .eq('quiz_id', quiz.id)
         .eq('user_id', userId)
         .order('reviewed_at', { ascending: true });
@@ -227,12 +229,20 @@ export async function GET(request: NextRequest) {
             review_mark: mark,
           };
         }),
-        signer_name: latestReview?.reviewer_id ? reviewerMap.get(latestReview.reviewer_id) || '' : '',
+        // 赤ペンの署名（AI講師の自動添削は「AI講師　名前」、講師の添削は「講師　名前」）
+        signer_label: latestReview
+          ? reviewSignature(latestReview, latestReview.reviewer_id ? reviewerMap.get(latestReview.reviewer_id) || null : null) || ''
+          : '',
         reviews: (reviews || []).map((r) => ({
           result: r.result,
           comment: r.review_comment,
           explanation: r.explanation || '',
-          reviewer_name: r.reviewer_id ? reviewerMap.get(r.reviewer_id) || '' : '',
+          reviewer_name: r.auto_reviewed
+            ? aiInstructorLabel(r.ai_instructor_name)
+            : r.reviewer_id
+            ? reviewerMap.get(r.reviewer_id) || ''
+            : '',
+          auto: !!r.auto_reviewed,
           reviewed_at: r.reviewed_at,
         })),
       });

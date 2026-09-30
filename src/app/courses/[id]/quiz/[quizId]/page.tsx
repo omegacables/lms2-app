@@ -53,6 +53,9 @@ interface ReviewInfo {
   question_reviews: QuestionReview[];
   reviewed_at: string;
   reviewer_name: string | null;
+  /** 署名の完成形（「AI講師　名前」または「講師　名前」） */
+  reviewer_label?: string | null;
+  auto_reviewed?: boolean;
 }
 type SubmissionStatus = 'not_submitted' | 'under_review' | 'needs_revision' | 'passed';
 
@@ -133,6 +136,31 @@ export default function QuizPage() {
   }, [quizId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // 最終テストの提出後（添削待ち）は、AI講師の添削が返るまで数秒ごとに読み直す（画面全体は読み込み直さない）
+  useEffect(() => {
+    if (!reviewMode || submissionStatus !== 'under_review') return;
+    let tries = 0;
+    const timer = setInterval(async () => {
+      tries += 1;
+      if (tries > 40) {
+        clearInterval(timer);
+        return;
+      }
+      try {
+        const res = await fetch(`/api/quizzes/${quizId}`, { headers: await authHeaders() });
+        if (!res.ok) return;
+        const json = await res.json();
+        if (json.submission_status && json.submission_status !== 'under_review') {
+          clearInterval(timer);
+          await load();
+        }
+      } catch {
+        /* 次の読み直しで再試行 */
+      }
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [reviewMode, submissionStatus, quizId, load]);
 
   // 自動添削の作成中は、できあがるまで数秒ごとに読み直す（画面全体は読み込み直さない）
   useEffect(() => {
@@ -318,15 +346,15 @@ export default function QuizPage() {
               </div>
               <p className="text-sm text-gray-500 mb-6">
                 {reviewMode
-                  ? `全${questions.length}問。回答を選んで提出すると、講師が添削します。添削結果は課題ページで確認できます。`
+                  ? `全${questions.length}問。回答を選んで提出すると、AI講師が添削して返却します（1分ほどかかります）。添削結果はこの画面と課題ページで確認できます。`
                   : `全${questions.length}問。すべての問題に回答すると次のステップに進めます。`}
                 {generated && ' 回答の文章は受験のたびに変わるので、内容をよく読んで選んでください。'}
               </p>
 
               {/* 提出直後 */}
-              {reviewMode && justSubmitted && (
+              {reviewMode && justSubmitted && submissionStatus === 'under_review' && (
                 <div className="mb-6 p-4 rounded-lg border border-blue-300 bg-blue-50 text-blue-800">
-                  回答を提出しました。講師の添削をお待ちください。結果は課題ページに表示されます。
+                  回答を提出しました。AI講師が添削しています（1分ほどかかります）。結果はこの画面と課題ページに表示されます。
                   <div className="mt-3">
                     <Link href="/homework"><Button size="sm">課題ページへ</Button></Link>
                   </div>
@@ -345,8 +373,8 @@ export default function QuizPage() {
                   {review.comment && (
                     <div className="mt-1 whitespace-pre-wrap text-gray-700">{review.comment}</div>
                   )}
-                  {review.reviewer_name && (
-                    <div className="mt-2 text-right text-red-600 font-bold">講師　{review.reviewer_name}</div>
+                  {(review.reviewer_label || review.reviewer_name) && (
+                    <div className="mt-2 text-right text-red-600 font-bold">{review.reviewer_label || `講師　${review.reviewer_name}`}</div>
                   )}
                   <div className="mt-2">
                     <Link href="/homework" className="text-blue-600 hover:underline text-xs">課題ページで詳しく見る →</Link>
@@ -436,7 +464,7 @@ export default function QuizPage() {
                     </div>
                   )}
                   {submissionStatus === 'under_review' && !justSubmitted && (
-                    <p className="mt-6 text-sm text-gray-500">講師が添削中です。結果が出るまでお待ちください。</p>
+                    <p className="mt-6 text-sm text-gray-500">添削中です。結果が出るまでお待ちください（この画面は自動で更新されます）。</p>
                   )}
                 </>
               ) : (
