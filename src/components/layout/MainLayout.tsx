@@ -192,6 +192,18 @@ const laborConsultantNavigation: NavigationItem[] = [
     iconActive: ChartBarIconSolid
   },
   {
+    name: 'テスト・添削',
+    href: '/labor-consultant/tests',
+    icon: ClipboardDocumentListIcon,
+    iconActive: ClipboardDocumentListIconSolid
+  },
+  {
+    name: '帳票・記録',
+    href: '/labor-consultant/records',
+    icon: DocumentTextIcon,
+    iconActive: DocumentTextIconSolid
+  },
+  {
     name: '証明書',
     href: '/labor-consultant/certificates',
     icon: TrophyIcon,

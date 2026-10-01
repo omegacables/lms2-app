@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/requireAdmin';
 import { createAdminSupabaseClient } from '@/lib/database/supabase';
+import { consultantCompanyScope, inScope } from '@/lib/auth/consultantScope';
 
 export const runtime = 'nodejs';
 
@@ -16,6 +17,15 @@ export async function GET(request: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'userId が必要です' }, { status: 400 });
 
   const admin = createAdminSupabaseClient();
+
+  // 社労士は担当会社の受講者の記録だけ
+  const scope = await consultantCompanyScope(admin, auth);
+  if (scope) {
+    const { data: target } = await admin.from('user_profiles').select('company').eq('id', userId).maybeSingle();
+    if (!inScope(scope, target?.company)) {
+      return NextResponse.json({ error: 'この受講者の記録を見る権限がありません' }, { status: 403 });
+    }
+  }
   const inRange = (d: string) => {
     const t = new Date(d).getTime();
     if (from && t < new Date(from).getTime()) return false;

@@ -13,8 +13,8 @@ import {
   ArrowDownIcon,
   DocumentArrowDownIcon,
   PencilIcon,
-  Cog6ToothIcon,
 } from '@heroicons/react/24/outline';
+import { ColumnMenu, ColumnResizeHandle, useColumnLayout, type ColumnDef } from '@/components/table/ColumnLayout';
 
 interface LearningLog {
   id: number;
@@ -38,7 +38,57 @@ interface LearningLog {
   last_updated: string;
 }
 
-type SortField = 'user_name' | 'company' | 'course_title' | 'video_title' | 'progress_percent' | 'start_time' | 'end_time' | 'total_watched_time' | 'status';
+type SortField =
+  | 'user_name'
+  | 'user_email'
+  | 'company'
+  | 'department'
+  | 'course_title'
+  | 'video_title'
+  | 'progress_percent'
+  | 'start_time'
+  | 'end_time'
+  | 'total_watched_time'
+  | 'video_duration'
+  | 'status'
+  | 'last_updated';
+
+// 表の列（「列」メニューで表示する列を選び、見出しの右端をドラッグして幅を変えられる）
+const LOG_COLUMNS: ColumnDef[] = [
+  { key: 'name', label: '氏名', fixed: true, recommended: true, width: 130, minWidth: 80 },
+  { key: 'company', label: '会社名', recommended: true, width: 150 },
+  { key: 'department', label: '部署', width: 120 },
+  { key: 'email', label: 'メールアドレス', width: 200 },
+  { key: 'course', label: 'コース', recommended: true, width: 180 },
+  { key: 'video', label: '動画', recommended: true, width: 220 },
+  { key: 'start', label: '開始時刻', recommended: true, width: 160 },
+  { key: 'end', label: '終了時刻', recommended: true, width: 160 },
+  { key: 'watched', label: '視聴時間', recommended: true, width: 100 },
+  { key: 'duration', label: '動画の長さ', width: 100 },
+  { key: 'progress', label: '進捗', recommended: true, width: 72 },
+  { key: 'status', label: 'ステータス', recommended: true, width: 96 },
+  { key: 'endDate', label: '終了日', width: 100 },
+  { key: 'updated', label: '最終更新', width: 160 },
+  // 編集ボタン。幅が足りないときも最後まで隠さない
+  { key: 'actions', label: '操作', recommended: true, width: 64, minWidth: 56, hideRank: -1 },
+];
+
+const SORT_FIELDS: Record<string, SortField | undefined> = {
+  name: 'user_name',
+  email: 'user_email',
+  company: 'company',
+  department: 'department',
+  course: 'course_title',
+  video: 'video_title',
+  start: 'start_time',
+  end: 'end_time',
+  watched: 'total_watched_time',
+  duration: 'video_duration',
+  progress: 'progress_percent',
+  status: 'status',
+  endDate: 'end_time',
+  updated: 'last_updated',
+};
 
 export default function LaborConsultantLearningLogsPage() {
   const { user } = useAuth();
@@ -55,16 +105,8 @@ export default function LaborConsultantLearningLogsPage() {
   const [courses, setCourses] = useState<{ id: number; title: string }[]>([]);
   const [editingLog, setEditingLog] = useState<LearningLog | null>(null);
   const [savingLog, setSavingLog] = useState(false);
-  const [showColumnSettings, setShowColumnSettings] = useState(false);
-  const [columnVisibility, setColumnVisibility] = useState({
-    startTime: true,
-    endTime: true,
-    watchedTime: true,
-    progress: true,
-    status: true,
-    actions: true
-  });
-  
+  const layout = useColumnLayout('lms.labor-consultant.learning-logs.columns.v1', LOG_COLUMNS);
+
   useEffect(() => {
     fetchLearningLogs();
   }, [user?.id]);
@@ -270,7 +312,7 @@ export default function LaborConsultantLearningLogsPage() {
   };
 
   // 日時系の列は初回クリック時に新しい順（降順）から始める
-  const isTimeField = (field: SortField) => field === 'start_time' || field === 'end_time';
+  const isTimeField = (field: SortField) => field === 'start_time' || field === 'end_time' || field === 'last_updated';
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -413,13 +455,76 @@ export default function LaborConsultantLearningLogsPage() {
     return dateStr.substring(0, 19);
   };
 
-  
-  // カラム表示設定の切り替え
-  const toggleColumnVisibility = (column: keyof typeof columnVisibility) => {
-    setColumnVisibility(prev => ({
-      ...prev,
-      [column]: !prev[column]
-    }));
+
+  // 列ごとのセルの中身
+  const renderCell = (log: LearningLog, key: string) => {
+    switch (key) {
+      case 'name':
+        return <span className="font-medium">{log.user_name}</span>;
+      case 'email':
+        return log.user_email;
+      case 'company':
+        return log.company;
+      case 'department':
+        return log.department || '—';
+      case 'course':
+        return log.course_title;
+      case 'video':
+        return log.video_title;
+      case 'start':
+        return <span className="text-xs text-gray-500 dark:text-gray-400">{formatDateTime(log.start_time)}</span>;
+      case 'end':
+        return <span className="text-xs text-gray-500 dark:text-gray-400">{formatDateTime(log.end_time)}</span>;
+      case 'watched':
+        return formatTime(log.total_watched_time);
+      case 'duration':
+        return log.video_duration ? formatTime(log.video_duration) : '—';
+      case 'progress':
+        return <span className="font-medium">{Math.round(log.progress_percent)}%</span>;
+      case 'status':
+        return (
+          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(log.status)}`}>
+            {getStatusLabel(log.status)}
+          </span>
+        );
+      case 'endDate':
+        return <span className="text-xs text-gray-500 dark:text-gray-400">{log.end_time ? new Date(log.end_time).toLocaleDateString('ja-JP') : '-'}</span>;
+      case 'updated':
+        return <span className="text-xs text-gray-500 dark:text-gray-400">{formatDateTime(log.last_updated)}</span>;
+      case 'actions':
+        return (
+          <button
+            onClick={() => setEditingLog({ ...log })}
+            className="p-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+            title="編集"
+            aria-label={`${log.user_name}さんの「${log.video_title}」の学習ログを編集`}
+          >
+            <PencilIcon className="h-4 w-4" />
+          </button>
+        );
+      default:
+        return null;
+    }
+  };
+
+  // 幅が狭くて省略されたときに、マウスを乗せると全文が見えるようにする
+  const cellTitle = (log: LearningLog, key: string): string | undefined => {
+    switch (key) {
+      case 'name':
+        return log.user_name;
+      case 'email':
+        return log.user_email;
+      case 'company':
+        return log.company;
+      case 'department':
+        return log.department || undefined;
+      case 'course':
+        return log.course_title;
+      case 'video':
+        return log.video_title;
+      default:
+        return undefined;
+    }
   };
 
   // フィルタリング
@@ -451,8 +556,17 @@ export default function LaborConsultantLearningLogsPage() {
         case 'user_name':
           comparison = a.user_name.localeCompare(b.user_name, 'ja');
           break;
+        case 'user_email':
+          comparison = a.user_email.localeCompare(b.user_email, 'ja');
+          break;
         case 'company':
           comparison = a.company.localeCompare(b.company, 'ja');
+          break;
+        case 'department':
+          comparison = (a.department || '').localeCompare(b.department || '', 'ja');
+          break;
+        case 'video_duration':
+          comparison = (a.video_duration || 0) - (b.video_duration || 0);
           break;
         case 'course_title':
           // コース順でソートし、同じコース内では動画順でソート
@@ -475,9 +589,12 @@ export default function LaborConsultantLearningLogsPage() {
           comparison = (statusRank[a.status] ?? 0) - (statusRank[b.status] ?? 0);
           break;
         case 'start_time':
-        case 'end_time': {
-          const tx = timeValue(sortField === 'start_time' ? a.start_time : a.end_time);
-          const ty = timeValue(sortField === 'start_time' ? b.start_time : b.end_time);
+        case 'end_time':
+        case 'last_updated': {
+          const pick = (log: LearningLog) =>
+            sortField === 'start_time' ? log.start_time : sortField === 'end_time' ? log.end_time : log.last_updated;
+          const tx = timeValue(pick(a));
+          const ty = timeValue(pick(b));
           // 昇順・降順にかかわらず、日時が無い行は常に末尾に置く
           if (tx === null || ty === null) {
             if (tx === null && ty === null) return 0;
@@ -522,78 +639,7 @@ export default function LaborConsultantLearningLogsPage() {
                 </div>
               </div>
               <div className="flex items-center space-x-2">
-                <div className="relative">
-                  <button
-                    onClick={() => setShowColumnSettings(!showColumnSettings)}
-                    className="px-4 py-2 bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-neutral-700 flex items-center border border-gray-300 dark:border-gray-600"
-                  >
-                    <Cog6ToothIcon className="h-5 w-5 mr-2" />
-                    表示設定
-                  </button>
-                  {showColumnSettings && (
-                    <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
-                      <div className="p-3">
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">カラム表示設定</h3>
-                        <div className="space-y-2">
-                          <label className="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-neutral-700 p-1 rounded">
-                            <input
-                              type="checkbox"
-                              checked={columnVisibility.startTime}
-                              onChange={() => toggleColumnVisibility('startTime')}
-                              className="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 dark:border-gray-600"
-                            />
-                            <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">開始時刻</span>
-                          </label>
-                          <label className="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-neutral-700 p-1 rounded">
-                            <input
-                              type="checkbox"
-                              checked={columnVisibility.endTime}
-                              onChange={() => toggleColumnVisibility('endTime')}
-                              className="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 dark:border-gray-600"
-                            />
-                            <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">終了時刻</span>
-                          </label>
-                          <label className="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-neutral-700 p-1 rounded">
-                            <input
-                              type="checkbox"
-                              checked={columnVisibility.progress}
-                              onChange={() => toggleColumnVisibility('progress')}
-                              className="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 dark:border-gray-600"
-                            />
-                            <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">進捗</span>
-                          </label>
-                          <label className="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-neutral-700 p-1 rounded">
-                            <input
-                              type="checkbox"
-                              checked={columnVisibility.watchedTime}
-                              onChange={() => toggleColumnVisibility('watchedTime')}
-                              className="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 dark:border-gray-600"
-                            />
-                            <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">視聴時間</span>
-                          </label>
-                          <label className="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-neutral-700 p-1 rounded">
-                            <input
-                              type="checkbox"
-                              checked={columnVisibility.status}
-                              onChange={() => toggleColumnVisibility('status')}
-                              className="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 dark:border-gray-600"
-                            />
-                            <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">ステータス</span>
-                          </label>
-                          <label className="flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-neutral-700 p-1 rounded">
-                            <input
-                              type="checkbox"
-                              checked={columnVisibility.actions}
-                              onChange={() => toggleColumnVisibility('actions')}
-                              className="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 dark:border-gray-600"
-                            />
-                            <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">操作</span>
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <ColumnMenu layout={layout} />
                 <button
                   onClick={exportToCSV}
                   disabled={exportingCSV || filteredAndSortedLogs.length === 0}
@@ -687,189 +733,69 @@ export default function LaborConsultantLearningLogsPage() {
                 </div>
               </div>
 
-              {/* 学習ログテーブル */}
+              {/* 学習ログテーブル（列は「列」メニューで選び、見出しの右端をドラッグして幅を変えられる） */}
               <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-sm dark:shadow-gray-900/20 border overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                {layout.hiddenByWidth.length > 0 && (
+                  <div className="px-3 py-2 text-xs text-amber-800 bg-amber-50 border-b border-amber-100 dark:bg-amber-900/20 dark:text-amber-200 dark:border-amber-900/40">
+                    幅が足りないため {layout.hiddenByWidth.length} 列（{layout.hiddenByWidth.map((c) => c.label).join('・')}）を隠しています。「列」メニューから表示できます。
+                  </div>
+                )}
+                <div ref={layout.containerRef} className="overflow-x-auto">
+                  <table className="table-fixed divide-y divide-gray-200 dark:divide-gray-700" style={{ width: layout.tableWidth }}>
+                    <colgroup>
+                      {layout.visibleColumns.map((c) => (
+                        <col key={c.key} style={{ width: layout.widthOf(c.key) }} />
+                      ))}
+                    </colgroup>
                     <thead className="bg-gray-50 dark:bg-neutral-800">
                       <tr>
-                        <th
-                          className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-neutral-700"
-                          onClick={() => handleSort('user_name')}
-                        >
-                          <div className="flex items-center">
-                            生徒
-                            {sortField === 'user_name' && (
-                              sortOrder === 'asc' ? <ArrowUpIcon className="h-4 w-4 ml-1" /> : <ArrowDownIcon className="h-4 w-4 ml-1" />
-                            )}
-                          </div>
-                        </th>
-                        <th
-                          className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-neutral-700"
-                          onClick={() => handleSort('company')}
-                        >
-                          <div className="flex items-center">
-                            会社名
-                            {sortField === 'company' && (
-                              sortOrder === 'asc' ? <ArrowUpIcon className="h-4 w-4 ml-1" /> : <ArrowDownIcon className="h-4 w-4 ml-1" />
-                            )}
-                          </div>
-                        </th>
-                        <th
-                          className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-neutral-700"
-                          onClick={() => handleSort('course_title')}
-                        >
-                          <div className="flex items-center">
-                            コース・動画
-                            {sortField === 'course_title' && (
-                              sortOrder === 'asc' ? <ArrowUpIcon className="h-4 w-4 ml-1" /> : <ArrowDownIcon className="h-4 w-4 ml-1" />
-                            )}
-                          </div>
-                        </th>
-                        {columnVisibility.startTime && (
-                          <th
-                            className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-neutral-700"
-                            onClick={() => handleSort('start_time')}
-                          >
-                            <div className="flex items-center">
-                              開始時刻
-                              {sortField === 'start_time' && (
-                                sortOrder === 'asc' ? <ArrowUpIcon className="h-4 w-4 ml-1" /> : <ArrowDownIcon className="h-4 w-4 ml-1" />
-                              )}
-                            </div>
-                          </th>
-                        )}
-                        {columnVisibility.endTime && (
-                          <th
-                            className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-neutral-700"
-                            onClick={() => handleSort('end_time')}
-                          >
-                            <div className="flex items-center">
-                              終了時刻
-                              {sortField === 'end_time' && (
-                                sortOrder === 'asc' ? <ArrowUpIcon className="h-4 w-4 ml-1" /> : <ArrowDownIcon className="h-4 w-4 ml-1" />
-                              )}
-                            </div>
-                          </th>
-                        )}
-                        {columnVisibility.progress && (
-                          <th
-                            className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-neutral-700"
-                            onClick={() => handleSort('progress_percent')}
-                          >
-                            <div className="flex items-center">
-                              進捗
-                              {sortField === 'progress_percent' && (
-                                sortOrder === 'asc' ? <ArrowUpIcon className="h-4 w-4 ml-1" /> : <ArrowDownIcon className="h-4 w-4 ml-1" />
-                              )}
-                            </div>
-                          </th>
-                        )}
-                        {columnVisibility.watchedTime && (
-                          <th
-                            className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-neutral-700"
-                            onClick={() => handleSort('total_watched_time')}
-                          >
-                            <div className="flex items-center">
-                              視聴時間
-                              {sortField === 'total_watched_time' && (
-                                sortOrder === 'asc' ? <ArrowUpIcon className="h-4 w-4 ml-1" /> : <ArrowDownIcon className="h-4 w-4 ml-1" />
-                              )}
-                            </div>
-                          </th>
-                        )}
-                        {columnVisibility.status && (
-                          <th
-                            className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-neutral-700"
-                            onClick={() => handleSort('status')}
-                          >
-                            <div className="flex items-center">
-                              ステータス
-                              {sortField === 'status' && (
-                                sortOrder === 'asc' ? <ArrowUpIcon className="h-4 w-4 ml-1" /> : <ArrowDownIcon className="h-4 w-4 ml-1" />
-                              )}
-                            </div>
-                          </th>
-                        )}
-                        <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                          終了日
-                        </th>
-                        {columnVisibility.actions && (
-                          <th className="px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            操作
-                          </th>
-                        )}
+                        {layout.visibleColumns.map((c) => {
+                          const field = SORT_FIELDS[c.key];
+                          const sorted = !!field && sortField === field;
+                          return (
+                            <th
+                              key={c.key}
+                              scope="col"
+                              aria-sort={sorted ? (sortOrder === 'asc' ? 'ascending' : 'descending') : undefined}
+                              className={`relative px-2 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 tracking-wider select-none ${
+                                field ? 'cursor-pointer hover:bg-gray-100 dark:hover:bg-neutral-700' : ''
+                              }`}
+                              onClick={field ? () => handleSort(field) : undefined}
+                            >
+                              <div className="flex items-center overflow-hidden pr-1">
+                                <span className="truncate">{c.label}</span>
+                                {sorted &&
+                                  (sortOrder === 'asc' ? (
+                                    <ArrowUpIcon className="h-4 w-4 ml-1 shrink-0" />
+                                  ) : (
+                                    <ArrowDownIcon className="h-4 w-4 ml-1 shrink-0" />
+                                  ))}
+                              </div>
+                              <ColumnResizeHandle layout={layout} columnKey={c.key} />
+                            </th>
+                          );
+                        })}
                       </tr>
                     </thead>
                     <tbody className="bg-white dark:bg-neutral-900 divide-y divide-gray-200 dark:divide-gray-700">
                       {filteredAndSortedLogs.length === 0 ? (
                         <tr>
-                          <td colSpan={4 + (columnVisibility.startTime ? 1 : 0) + (columnVisibility.endTime ? 1 : 0) + (columnVisibility.progress ? 1 : 0) + (columnVisibility.watchedTime ? 1 : 0) + (columnVisibility.status ? 1 : 0) + (columnVisibility.actions ? 1 : 0)} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                          <td colSpan={layout.visibleColumns.length} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
                             学習ログが見つかりません
                           </td>
                         </tr>
                       ) : (
                         filteredAndSortedLogs.map((log) => (
                           <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-neutral-800">
-                            <td className="px-2 py-3 whitespace-nowrap">
-                              <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                {log.user_name}
-                              </div>
-                            </td>
-                            <td className="px-2 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                              {log.company}
-                            </td>
-                            <td className="px-2 py-3">
-                              <div className="text-sm text-gray-900 dark:text-white max-w-[140px] truncate" title={log.course_title}>
-                                {log.course_title}
-                              </div>
-                              <div className="text-xs text-gray-500 dark:text-gray-400 max-w-[140px] truncate" title={log.video_title}>
-                                {log.video_title}
-                              </div>
-                            </td>
-                            {columnVisibility.startTime && (
-                              <td className="px-2 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
-                                {formatDateTime(log.start_time)}
+                            {layout.visibleColumns.map((c) => (
+                              <td
+                                key={c.key}
+                                className="px-2 py-2.5 text-sm text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis"
+                                title={cellTitle(log, c.key)}
+                              >
+                                {renderCell(log, c.key)}
                               </td>
-                            )}
-                            {columnVisibility.endTime && (
-                              <td className="px-2 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
-                                {formatDateTime(log.end_time)}
-                              </td>
-                            )}
-                            {columnVisibility.progress && (
-                              <td className="px-2 py-3 whitespace-nowrap">
-                                <span className="text-sm font-medium text-gray-900 dark:text-white">
-                                  {Math.round(log.progress_percent)}%
-                                </span>
-                              </td>
-                            )}
-                            {columnVisibility.watchedTime && (
-                              <td className="px-2 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                                {formatTime(log.total_watched_time)}
-                              </td>
-                            )}
-                            {columnVisibility.status && (
-                              <td className="px-2 py-3 whitespace-nowrap">
-                                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(log.status)}`}>
-                                  {getStatusLabel(log.status)}
-                                </span>
-                              </td>
-                            )}
-                            <td className="px-2 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
-                              {log.end_time ? new Date(log.end_time).toLocaleDateString('ja-JP') : '-'}
-                            </td>
-                            {columnVisibility.actions && (
-                              <td className="px-2 py-3 whitespace-nowrap text-sm">
-                                <button
-                                  onClick={() => setEditingLog({ ...log })}
-                                  className="p-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                                  title="編集"
-                                >
-                                  <PencilIcon className="h-4 w-4" />
-                                </button>
-                              </td>
-                            )}
+                            ))}
                           </tr>
                         ))
                       )}

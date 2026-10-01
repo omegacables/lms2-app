@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/requireAdmin';
 import { createAdminSupabaseClient } from '@/lib/database/supabase';
 import { computeGateState } from '@/lib/quiz/gating';
+import { chunk, consultantCompanyScope, inScope } from '@/lib/auth/consultantScope';
 
 export const runtime = 'nodejs';
 
@@ -31,11 +32,19 @@ export async function GET(request: NextRequest) {
   const userIds = (ucs || []).map((u) => u.user_id);
   if (userIds.length === 0) return NextResponse.json({ course, rows: [] });
 
-  const { data: profiles } = await admin
-    .from('user_profiles')
-    .select('id, display_name, email, company, department')
-    .in('id', userIds);
-  const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
+  const profiles: { id: string; display_name: string | null; email: string | null; company: string | null; department: string | null }[] = [];
+  for (const ids of chunk(userIds)) {
+    const { data } = await admin
+      .from('user_profiles')
+      .select('id, display_name, email, company, department')
+      .in('id', ids);
+    profiles.push(...(data || []));
+  }
+  const profileMap = new Map(profiles.map((p) => [p.id, p]));
+
+  // 社労士は担当会社の受講者だけ
+  const scope = await consultantCompanyScope(admin, auth);
+  const visibleUcs = (ucs || []).filter((u) => inScope(scope, profileMap.get(u.user_id)?.company));
 
   // 動画
   const { data: videos } = await admin
@@ -61,7 +70,7 @@ export async function GET(request: NextRequest) {
   const certMap = new Map((certs || []).map((c) => [c.user_id, c.completion_date]));
 
   const rows: any[] = [];
-  for (const uc of ucs || []) {
+  for (const uc of visibleUcs) {
     const uid = uc.user_id;
     const p = profileMap.get(uid);
     const ulogs = (logs || []).filter((l) => l.user_id === uid);

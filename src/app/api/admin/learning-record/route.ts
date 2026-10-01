@@ -3,6 +3,7 @@ import { requireRole } from '@/lib/auth/requireAdmin';
 import { createAdminSupabaseClient } from '@/lib/database/supabase';
 import { computeGateState } from '@/lib/quiz/gating';
 import { aiInstructorLabel, isAutoOrigin, reviewSignature } from '@/lib/quiz/aiInstructors';
+import { consultantCompanyScope, inScope } from '@/lib/auth/consultantScope';
 
 export const runtime = 'nodejs';
 
@@ -26,6 +27,12 @@ export async function GET(request: NextRequest) {
     .select('display_name, email, company, department')
     .eq('id', userId)
     .single();
+
+  // 社労士は担当会社の受講者の記録だけ
+  const scope = await consultantCompanyScope(admin, auth);
+  if (!inScope(scope, student?.company)) {
+    return NextResponse.json({ error: 'この受講者の記録を見る権限がありません' }, { status: 403 });
+  }
 
   // コース
   const { data: course } = await admin
