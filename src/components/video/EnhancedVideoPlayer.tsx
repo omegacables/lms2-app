@@ -72,34 +72,142 @@ export function EnhancedVideoPlayer({
   const skipLocked = !isCompleted && enableSkipPrevention;
 
   // ===== 再生の自動復旧（ネットワーク断・社内フィルタによる遮断対策） =====
+  //
+  // 方針（2026-10 見直し）: 1時間前後・1〜2GB の動画で「途切れる」報告があったため、
+  //  - 「再生が進まない」だけでは復旧しない。読み込み（buffered）も進んでいない＝通信が止まっている
+  //    ときだけ復旧する。回線が遅いだけなら読み込み中の表示のまま待つ（以前は20秒で再読み込みしていた）。
+  //  - 復旧は 同じURLの読み直し → 予備URL（サイト経由）→ 元のURL … と交互に試し、5回で断念する。
+  //  - 何が起きたかを /api/videos/[id]/playback-events に記録して原因を追えるようにする。
   const [currentSrc, setCurrentSrc] = useState(videoUrl);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [slowNetwork, setSlowNetwork] = useState(false); // 読み込みが進んでいるが遅い
   const recoveryResumePosRef = useRef<number | null>(null); // 復旧後に戻る再生位置
   const recoveryAttemptsRef = useRef(0);
   const usedFallbackRef = useRef(false);
   const lastRecoveryAtRef = useRef(0);
   const lastTimeUpdateAtRef = useRef(0);
+  const lastBufferedEndRef = useRef(0);
+  const lastBufferGrowthAtRef = useRef(0);
+  const waitingSinceRef = useRef<number | null>(null);
+  const lastGoodPosRef = useRef(0); // 最後に再生が進んでいた位置（切替直後に 0 に戻っても失わないため）
   // 再生中の進捗通知（onProgressUpdate）の間引き用：最後に通知した時刻
   const lastProgressEmitAtRef = useRef(0);
+
+  // 再生の不調の記録（まとめて送る）
+  const sessionIdRef = useRef<string>(generateUUID());
+  const issueEventsRef = useRef<{ type: string; at: string; position: number; buffered_ahead: number; src_kind: string; attempt?: number; detail?: string }[]>([]);
+  const issueSentCountRef = useRef(0);
+  const issueFlushTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const accessTokenRef = useRef<string | null>(null);
+  const stallCountRef = useRef(0);
+  const stallSecondsRef = useRef(0);
+
+  useEffect(() => {
+    // 離脱時にも送れるように、トークンを先に手元に置いておく
+    supabase.auth.getSession().then(({ data }) => {
+      accessTokenRef.current = data.session?.access_token ?? null;
+    });
+  }, []);
+
+  const srcKind = (src: string) => (fallbackVideoUrl && src === fallbackVideoUrl ? 'relay' : src.includes('supabase.co') ? 'supabase' : 'cdn');
+
+  /** 現在位置から先に読み込めている秒数 */
+  const bufferedAheadOf = (video: HTMLVideoElement) => {
+    const t = video.currentTime;
+    for (let i = 0; i < video.buffered.length; i++) {
+      if (video.buffered.start(i) <= t + 0.5 && video.buffered.end(i) >= t) return video.buffered.end(i) - t;
+    }
+    return 0;
+  };
+
+  const flushIssueEvents = (useKeepalive = false) => {
+    const events = issueEventsRef.current.splice(0, 40);
+    if (events.length === 0 || issueSentCountRef.current >= 80) return;
+    issueSentCountRef.current += events.length;
+    const video = videoRef.current;
+    const nav = typeof navigator !== 'undefined' ? (navigator as any) : null;
+    const conn = nav?.connection;
+    const body = JSON.stringify({
+      access_token: accessTokenRef.current,
+      session: sessionIdRef.current,
+      events,
+      client: {
+        connection: conn?.effectiveType || '',
+        downlink_mbps: conn?.downlink ?? null,
+        duration: video?.duration || null,
+        mobile: isMobile,
+        src: video?.currentSrc || currentSrc,
+      },
+    });
+    fetch(`/api/videos/${videoId}/playback-events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      keepalive: useKeepalive,
+    }).catch(() => {});
+  };
+
+  const reportIssue = (type: string, extra: { attempt?: number; detail?: string } = {}) => {
+    const video = videoRef.current;
+    if (issueEventsRef.current.length >= 40) return;
+    issueEventsRef.current.push({
+      type,
+      at: new Date().toISOString(),
+      position: video?.currentTime || 0,
+      buffered_ahead: video ? bufferedAheadOf(video) : 0,
+      src_kind: srcKind(video?.currentSrc || currentSrc),
+      ...extra,
+    });
+    // 30秒ごとにまとめて送る
+    if (!issueFlushTimerRef.current) {
+      issueFlushTimerRef.current = setTimeout(() => {
+        issueFlushTimerRef.current = null;
+        flushIssueEvents();
+      }, 30000);
+    }
+  };
+
+  // 離脱時は残りをすぐ送る
+  useEffect(() => {
+    const onHide = () => {
+      if (issueFlushTimerRef.current) {
+        clearTimeout(issueFlushTimerRef.current);
+        issueFlushTimerRef.current = null;
+      }
+      flushIssueEvents(true);
+    };
+    window.addEventListener('pagehide', onHide);
+    return () => {
+      window.removeEventListener('pagehide', onHide);
+      onHide();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoId]);
 
   // 動画（videoUrl）が切り替わったら復旧状態をリセット
   useEffect(() => {
     setCurrentSrc(videoUrl);
     setPlaybackError(null);
+    setSlowNetwork(false);
     recoveryAttemptsRef.current = 0;
     usedFallbackRef.current = false;
     recoveryResumePosRef.current = null;
+    lastBufferedEndRef.current = 0;
+    lastBufferGrowthAtRef.current = Date.now();
   }, [videoUrl]);
 
-  // 再生の復旧を試みる：位置を記憶して、予備URLへの切り替え or 再読み込みを行う
+  // 再生の復旧を試みる：位置を記憶して、位置の再指定 → 予備URLへの切り替え → 再読み込み の順に試す
   const attemptRecovery = (reason: string) => {
     const video = videoRef.current;
     if (!video || !currentSrc) return;
 
-    const pos = Math.max(video.currentTime || 0, 0);
+    // 切替直後は currentTime が 0 に戻っていることがあるので、最後に進んでいた位置を使う
+    const pos = (video.currentTime || 0) > 0.5 ? video.currentTime : lastGoodPosRef.current;
 
-    if (recoveryAttemptsRef.current >= 4) {
+    if (recoveryAttemptsRef.current >= 5) {
       console.error('[VideoPlayer] 再生復旧を断念:', reason);
+      reportIssue('gave_up', { attempt: recoveryAttemptsRef.current, detail: reason });
+      flushIssueEvents();
       setPlaybackError(
         '動画の再生に繰り返し失敗しました。\n' +
         'ネットワーク環境（社内のセキュリティ・フィルタリングやWi-Fiの通信制限など）により、動画データが遮断されている可能性があります。\n' +
@@ -110,34 +218,66 @@ export function EnhancedVideoPlayer({
 
     recoveryAttemptsRef.current += 1;
     lastRecoveryAtRef.current = Date.now();
-    recoveryResumePosRef.current = pos;
+    lastBufferGrowthAtRef.current = Date.now();
+    const attempt = recoveryAttemptsRef.current;
 
-    if (fallbackVideoUrl && !usedFallbackRef.current && currentSrc !== fallbackVideoUrl) {
-      // 予備の配信経路（同一ドメイン経由）に切り替えて続きから再開
-      usedFallbackRef.current = true;
-      console.warn('[VideoPlayer] 再生に失敗したため配信経路を切り替えます:', { reason, pos: pos.toFixed(1) });
-      setCurrentSrc(fallbackVideoUrl);
+    recoveryResumePosRef.current = pos;
+    // 奇数回は元の配信URL、偶数回は予備（サイト経由）の配信URL。URL が変わらなければ読み直す
+    const useRelay = !!fallbackVideoUrl && attempt % 2 === 0;
+    const target = useRelay ? fallbackVideoUrl! : videoUrl;
+    if (useRelay) usedFallbackRef.current = true;
+    if (target !== currentSrc) {
+      console.warn('[VideoPlayer] 再生に失敗したため配信経路を切り替えます:', { reason, attempt, relay: useRelay, pos: pos.toFixed(1) });
+      reportIssue(useRelay ? 'recover_relay' : 'recover_primary', { attempt, detail: reason });
+      setCurrentSrc(target); // src が変わると自動で読み直される
     } else {
-      // 同じURLを再読み込みして続きから再開
-      console.warn('[VideoPlayer] 再生を再読み込みで復旧します:', { reason, attempt: recoveryAttemptsRef.current, pos: pos.toFixed(1) });
+      console.warn('[VideoPlayer] 再生を再読み込みで復旧します:', { reason, attempt, pos: pos.toFixed(1) });
+      reportIssue('recover_reload', { attempt, detail: reason });
       video.load();
     }
   };
 
-  // 停止検知ウォッチドッグ：再生中なのに20秒以上 timeupdate が来なければ復旧を試みる
+  // 停止検知ウォッチドッグ：再生中なのに再生も読み込みも30秒以上進まなければ復旧を試みる。
+  // 読み込みが進んでいる（＝通信は生きているが遅い）あいだは待つ。
   useEffect(() => {
     if (!isPlaying) return;
     lastTimeUpdateAtRef.current = Date.now();
+    lastBufferGrowthAtRef.current = Date.now();
     const watchdog = setInterval(() => {
       const video = videoRef.current;
       if (!video || video.paused || video.ended) return;
-      if (Date.now() - lastTimeUpdateAtRef.current > 20000) {
-        lastTimeUpdateAtRef.current = Date.now();
-        attemptRecovery('20秒以上再生が進んでいません');
+      const now = Date.now();
+
+      // 読み込みの進み具合（現在位置の先がどこまで読めているか）
+      const ahead = bufferedAheadOf(video);
+      const bufferedEnd = video.currentTime + ahead;
+      if (bufferedEnd > lastBufferedEndRef.current + 0.5) {
+        lastBufferedEndRef.current = bufferedEnd;
+        lastBufferGrowthAtRef.current = now;
+      }
+
+      const stalledFor = now - lastTimeUpdateAtRef.current;
+      const noDataFor = now - lastBufferGrowthAtRef.current;
+
+      // waiting が出ないまま止まることもあるので、10秒以上進んでいなければ待ちの開始を記録する
+      if (stalledFor > 10000 && waitingSinceRef.current === null) {
+        waitingSinceRef.current = lastTimeUpdateAtRef.current;
+      }
+
+      if (stalledFor > 15000 && noDataFor <= 15000) {
+        // 再生は止まっているが読み込みは進んでいる＝回線が遅い
+        if (!slowNetwork) setSlowNetwork(true);
+        return;
+      }
+      if (stalledFor > 30000 && noDataFor > 30000) {
+        lastTimeUpdateAtRef.current = now;
+        lastBufferGrowthAtRef.current = now;
+        attemptRecovery('30秒以上、再生も読み込みも進んでいません');
       }
     }, 5000);
     return () => clearInterval(watchdog);
-  }, [isPlaying, currentSrc, fallbackVideoUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, currentSrc, fallbackVideoUrl, videoUrl]);
   // ===== 自動復旧ここまで =====
 
   // バッファリング状態の管理
@@ -336,6 +476,7 @@ export function EnhancedVideoPlayer({
     setIsBuffering(true);
     setLoadingMessage('バッファリング中...');
     console.log('[VideoPlayer] バッファリング開始');
+    if (waitingSinceRef.current === null) waitingSinceRef.current = Date.now();
 
     // 5秒経っても再開しない場合は自動的に再開を試みる
     if (autoResumeTimeout.current) {
@@ -393,6 +534,18 @@ export function EnhancedVideoPlayer({
 
       // 停止検知ウォッチドッグ用：再生が進んでいることを記録
       lastTimeUpdateAtRef.current = Date.now();
+      if (current > 0.5) lastGoodPosRef.current = current;
+      if (slowNetwork) setSlowNetwork(false);
+      // 長い読み込み待ち（10秒以上）が終わったら記録する
+      if (waitingSinceRef.current !== null) {
+        const waited = (Date.now() - waitingSinceRef.current) / 1000;
+        waitingSinceRef.current = null;
+        if (waited >= 10) {
+          stallCountRef.current += 1;
+          stallSecondsRef.current += waited;
+          reportIssue('stall', { detail: `${Math.round(waited)}秒の読み込み待ち（${stallCountRef.current}回目・累計${Math.round(stallSecondsRef.current)}秒）` });
+        }
+      }
       // 復旧後2分以上正常に再生できていれば、復旧の試行回数をリセット
       if (recoveryAttemptsRef.current > 0 && Date.now() - lastRecoveryAtRef.current > 120000) {
         recoveryAttemptsRef.current = 0;
@@ -983,7 +1136,10 @@ export function EnhancedVideoPlayer({
         onEnded={handleEnded}
         onError={() => {
           if (currentSrc) {
-            attemptRecovery('動画の読み込みエラー');
+            const err = videoRef.current?.error;
+            const detail = `読み込みエラー code=${err?.code ?? '?'} ${err?.message || ''} networkState=${videoRef.current?.networkState ?? '?'}`.trim();
+            reportIssue('error', { detail: detail.slice(0, 300) });
+            attemptRecovery(detail);
           }
         }}
         onContextMenu={handleContextMenu}
@@ -1019,6 +1175,7 @@ export function EnhancedVideoPlayer({
                 setPlaybackError(null);
                 recoveryAttemptsRef.current = 0;
                 usedFallbackRef.current = false;
+                reportIssue('manual_retry');
                 attemptRecovery('手動での再試行');
               }}
               className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
@@ -1041,6 +1198,9 @@ export function EnhancedVideoPlayer({
 
             {/* 読み込みメッセージ */}
             <p className="text-lg mb-2">{loadingMessage}</p>
+            {slowNetwork && (
+              <p className="text-sm text-yellow-300 mb-2">通信が遅いため、読み込みに時間がかかっています。そのままお待ちください。</p>
+            )}
 
             {/* バッファ進捗バー */}
             {bufferProgress > 0 && (

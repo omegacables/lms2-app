@@ -27,3 +27,24 @@ export function buildMediaUrl(path: string): string | null {
   const encoded = path.split('/').map(encodeURIComponent).join('/');
   return `${MEDIA_BASE_URL}/${encoded}`;
 }
+
+// 配信（Cloudflare 経由の R2）は、ファイルごとの最初の範囲要求（Range）にだけファイル全体を
+// 200 で返すことがある（2026-10-02 に media.stus-lms.com で確認。2回目以降の範囲要求は正しく 206）。
+// Safari はその応答で再生に失敗し、他のブラウザでも途中からの読み直しに不利なので、
+// <video> に渡す前に範囲要求を1回出して本文は受け取らずに切る（2回目以降の正しい応答で読ませる）。
+// ※ Range ヘッダは no-cors では送られない（落とされる）ので通常の要求で送る。配信側の CORS 設定が無く
+//   応答を読めなくても、要求自体は届くので目的は果たせる。失敗しても再生は続ける。最長 2.5 秒。
+export async function warmUpMediaUrl(url: string | null | undefined): Promise<void> {
+  if (!url || !url.startsWith('http') || typeof fetch === 'undefined') return;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 2500);
+  try {
+    const res = await fetch(url, { headers: { Range: 'bytes=0-1' }, signal: ctrl.signal, cache: 'no-store' });
+    await res.body?.cancel().catch(() => {});
+  } catch {
+    // CORS 不可・中断・失敗は無視
+  } finally {
+    clearTimeout(timer);
+    ctrl.abort(); // 本文（最大でファイル全体）を受け取らないよう切る
+  }
+}

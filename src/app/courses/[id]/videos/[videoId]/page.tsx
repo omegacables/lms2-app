@@ -12,7 +12,7 @@ import { supabase } from '@/lib/database/supabase';
 import { useAuth } from '@/stores/auth';
 import { EnhancedVideoPlayer } from '@/components/video/EnhancedVideoPlayer';
 import { generateUUID } from '@/lib/utils/uuid';
-import { buildMediaUrl } from '@/lib/utils/mediaUrl';
+import { buildMediaUrl, warmUpMediaUrl } from '@/lib/utils/mediaUrl';
 import type { Tables } from '@/lib/database/supabase';
 import {
   DocumentTextIcon,
@@ -171,6 +171,9 @@ export default function VideoPlayerPage() {
           setSameOriginUrl(`/media/videos/${encodedPath}`);
           // 配信ベース（R2）が設定されていればそこから直接配信（転送費回避）。未設定なら署名付きURL。
           const mediaUrl = buildMediaUrl(path);
+          // 配信側の「最初の範囲要求にだけ全体を返す」癖を避けるため、先に小さな要求を1回出す
+          await warmUpMediaUrl(mediaUrl || json.signedUrl);
+          if (cancelled) return;
           setPlaybackUrl(mediaUrl || json.signedUrl);
         } else {
           // 外部URL

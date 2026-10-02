@@ -26,7 +26,8 @@ import {
   MoonIcon,
   SunIcon,
   ChatBubbleLeftRightIcon,
-  QuestionMarkCircleIcon
+  QuestionMarkCircleIcon,
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 import { 
   HomeIcon as HomeIconSolid,
@@ -127,6 +128,12 @@ const adminNavigation: NavigationItem[] = [
     href: '/admin/learning-logs',
     icon: ChartBarIcon,
     iconActive: ChartBarIconSolid
+  },
+  {
+    name: '再生の不調',
+    href: '/admin/playback-issues',
+    icon: ExclamationTriangleIcon,
+    iconActive: ExclamationTriangleIcon
   },
   {
     name: '受講状況',

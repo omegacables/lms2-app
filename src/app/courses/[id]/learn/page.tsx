@@ -10,7 +10,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/database/supabase';
 import { generateUUID } from '@/lib/utils/uuid';
-import { buildMediaUrl } from '@/lib/utils/mediaUrl';
+import { buildMediaUrl, warmUpMediaUrl } from '@/lib/utils/mediaUrl';
 import { useAuth } from '@/stores/auth';
 import {
   ChevronLeftIcon,
@@ -139,6 +139,9 @@ export default function CourseLearnPage() {
         const resolvedPath: string | null = json.path;
         if (resolvedPath) {
           const mediaUrl = buildMediaUrl(resolvedPath);
+          // 配信側の「最初の範囲要求にだけ全体を返す」癖を避けるため、先に小さな要求を1回出す
+          await warmUpMediaUrl(mediaUrl || json.signedUrl);
+          if (cancelled) return;
           setPlaybackUrl(mediaUrl || json.signedUrl);
         } else {
           setPlaybackUrl(json.signedUrl);
