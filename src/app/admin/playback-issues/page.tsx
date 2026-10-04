@@ -36,6 +36,7 @@ interface Issue {
 
 const EVENT_LABEL: Record<string, string> = {
   stall: '読み込み待ち',
+  stall_summary: '読み込み待ち（まとめ）',
   recover_reload: '復旧（読み直し）',
   recover_relay: '復旧（サイト経由に切替）',
   recover_primary: '復旧（配信CDNに戻す）',
@@ -103,7 +104,7 @@ export default function AdminPlaybackIssuesPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">動画再生の不調</h1>
           <p className="text-sm text-gray-500 mb-4">
             受講者の画面で「10秒以上の読み込み待ち」「自動復旧」「再生エラー」が起きると、プレイヤーがここに記録します。
-            正常に再生できたときは記録されません。「動画が途切れる」の問い合わせがあったら、ここで誰が・どの動画で・どんな回線だったかを確認してください。
+            正常に再生できたときは記録されません（読み込み待ちは回数・合計時間にまとめ、1回の視聴で最大6件。60日を過ぎた記録は自動で消えます）。「動画が途切れる」の問い合わせがあったら、ここで誰が・どの動画で・どんな回線だったかを確認してください。
           </p>
           <div className="mb-4 flex items-center gap-3 text-sm">
             <label className="text-gray-600 dark:text-gray-300">期間:</label>

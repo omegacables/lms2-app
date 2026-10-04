@@ -70,5 +70,16 @@ export async function POST(
     console.error('[playback-events] insert error:', error);
     return NextResponse.json({ error: '記録に失敗しました' }, { status: 500 });
   }
+
+  // DB を太らせないよう、60日より前の記録はときどき（50回に1回）まとめて消す
+  if (Math.random() < 0.02) {
+    const cutoff = new Date(Date.now() - 60 * 24 * 3600 * 1000).toISOString();
+    const { error: purgeError } = await admin
+      .from('system_logs')
+      .delete()
+      .eq('action', 'video_playback_issue')
+      .lt('created_at', cutoff);
+    if (purgeError) console.warn('[playback-events] purge error:', purgeError.message);
+  }
   return NextResponse.json({ ok: true, saved: events.length });
 }

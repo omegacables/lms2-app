@@ -93,14 +93,17 @@ export function EnhancedVideoPlayer({
   // 再生中の進捗通知（onProgressUpdate）の間引き用：最後に通知した時刻
   const lastProgressEmitAtRef = useRef(0);
 
-  // 再生の不調の記録（まとめて送る）
+  // 再生の不調の記録（まとめて送る）。DB の行を増やしすぎないよう、
+  // 読み込み待ちは1件ずつではなく「回数・合計・最長」にまとめ、送るのは最短5分おき・1回の視聴で最大6行まで
   const sessionIdRef = useRef<string>(generateUUID());
   const issueEventsRef = useRef<{ type: string; at: string; position: number; buffered_ahead: number; src_kind: string; attempt?: number; detail?: string }[]>([]);
-  const issueSentCountRef = useRef(0);
+  const issueFlushCountRef = useRef(0);
   const issueFlushTimerRef = useRef<NodeJS.Timeout | null>(null);
   const accessTokenRef = useRef<string | null>(null);
   const stallCountRef = useRef(0);
   const stallSecondsRef = useRef(0);
+  // 前回送ってから今回までの読み込み待ちのまとめ
+  const stallSummaryRef = useRef<{ count: number; seconds: number; max: number; from: number; to: number } | null>(null);
 
   useEffect(() => {
     // 離脱時にも送れるように、トークンを先に手元に置いておく
@@ -109,7 +112,9 @@ export function EnhancedVideoPlayer({
     });
   }, []);
 
-  const srcKind = (src: string) => (fallbackVideoUrl && src === fallbackVideoUrl ? 'relay' : src.includes('supabase.co') ? 'supabase' : 'cdn');
+  // video.currentSrc は絶対URL、fallbackVideoUrl は相対URL（/media/videos/...）なので中身で見分ける
+  const srcKind = (src: string) =>
+    src.includes('/media/videos/') ? 'relay' : src.includes('supabase.co') ? 'supabase' : 'cdn';
 
   /** 現在位置から先に読み込めている秒数 */
   const bufferedAheadOf = (video: HTMLVideoElement) => {
@@ -121,9 +126,22 @@ export function EnhancedVideoPlayer({
   };
 
   const flushIssueEvents = (useKeepalive = false) => {
+    // 読み込み待ちのまとめを1件の記録にする
+    const summary = stallSummaryRef.current;
+    if (summary) {
+      stallSummaryRef.current = null;
+      issueEventsRef.current.unshift({
+        type: 'stall_summary',
+        at: new Date().toISOString(),
+        position: summary.to,
+        buffered_ahead: 0,
+        src_kind: srcKind(videoRef.current?.currentSrc || currentSrc),
+        detail: `${summary.count}回・合計${Math.round(summary.seconds)}秒・最長${Math.round(summary.max)}秒（${Math.floor(summary.from / 60)}分〜${Math.floor(summary.to / 60)}分）。この視聴の累計 ${stallCountRef.current}回・${Math.round(stallSecondsRef.current)}秒`,
+      });
+    }
     const events = issueEventsRef.current.splice(0, 40);
-    if (events.length === 0 || issueSentCountRef.current >= 80) return;
-    issueSentCountRef.current += events.length;
+    if (events.length === 0 || issueFlushCountRef.current >= 6) return;
+    issueFlushCountRef.current += 1;
     const video = videoRef.current;
     const nav = typeof navigator !== 'undefined' ? (navigator as any) : null;
     const conn = nav?.connection;
@@ -147,6 +165,16 @@ export function EnhancedVideoPlayer({
     }).catch(() => {});
   };
 
+  // 最短5分おきにまとめて送る（離脱時は残りをすぐ送る）
+  const scheduleIssueFlush = () => {
+    if (!issueFlushTimerRef.current) {
+      issueFlushTimerRef.current = setTimeout(() => {
+        issueFlushTimerRef.current = null;
+        flushIssueEvents();
+      }, 5 * 60 * 1000);
+    }
+  };
+
   const reportIssue = (type: string, extra: { attempt?: number; detail?: string } = {}) => {
     const video = videoRef.current;
     if (issueEventsRef.current.length >= 40) return;
@@ -158,13 +186,23 @@ export function EnhancedVideoPlayer({
       src_kind: srcKind(video?.currentSrc || currentSrc),
       ...extra,
     });
-    // 30秒ごとにまとめて送る
-    if (!issueFlushTimerRef.current) {
-      issueFlushTimerRef.current = setTimeout(() => {
-        issueFlushTimerRef.current = null;
-        flushIssueEvents();
-      }, 30000);
+    scheduleIssueFlush();
+  };
+
+  /** 10秒以上の読み込み待ちを、まとめに足す（1件ずつは記録しない） */
+  const recordStall = (seconds: number, position: number) => {
+    stallCountRef.current += 1;
+    stallSecondsRef.current += seconds;
+    const s = stallSummaryRef.current;
+    if (s) {
+      s.count += 1;
+      s.seconds += seconds;
+      s.max = Math.max(s.max, seconds);
+      s.to = position;
+    } else {
+      stallSummaryRef.current = { count: 1, seconds, max: seconds, from: position, to: position };
     }
+    scheduleIssueFlush();
   };
 
   // 離脱時は残りをすぐ送る
@@ -196,8 +234,10 @@ export function EnhancedVideoPlayer({
     lastBufferGrowthAtRef.current = Date.now();
   }, [videoUrl]);
 
-  // 再生の復旧を試みる：位置を記憶して、位置の再指定 → 予備URLへの切り替え → 再読み込み の順に試す
-  const attemptRecovery = (reason: string) => {
+  // 再生の復旧を試みる：位置を記憶して読み直す。
+  // 予備（サイト経由＝Vercel を通るので転送費がかかる）に切り替えるのは、配信元がエラーで読めないとき
+  // （社内フィルタでの遮断など）に1回だけ。通信が遅い・止まっただけのときは配信元を読み直す
+  const attemptRecovery = (reason: string, kind: 'stall' | 'error' = 'stall') => {
     const video = videoRef.current;
     if (!video || !currentSrc) return;
 
@@ -222,13 +262,12 @@ export function EnhancedVideoPlayer({
     const attempt = recoveryAttemptsRef.current;
 
     recoveryResumePosRef.current = pos;
-    // 奇数回は元の配信URL、偶数回は予備（サイト経由）の配信URL。URL が変わらなければ読み直す
-    const useRelay = !!fallbackVideoUrl && attempt % 2 === 0;
-    const target = useRelay ? fallbackVideoUrl! : videoUrl;
-    if (useRelay) usedFallbackRef.current = true;
+    const switchToRelay = kind === 'error' && !!fallbackVideoUrl && !usedFallbackRef.current;
+    if (switchToRelay) usedFallbackRef.current = true;
+    const target = usedFallbackRef.current && fallbackVideoUrl ? fallbackVideoUrl : videoUrl;
     if (target !== currentSrc) {
-      console.warn('[VideoPlayer] 再生に失敗したため配信経路を切り替えます:', { reason, attempt, relay: useRelay, pos: pos.toFixed(1) });
-      reportIssue(useRelay ? 'recover_relay' : 'recover_primary', { attempt, detail: reason });
+      console.warn('[VideoPlayer] 配信元を読めないため経路を切り替えます:', { reason, attempt, relay: switchToRelay, pos: pos.toFixed(1) });
+      reportIssue(switchToRelay ? 'recover_relay' : 'recover_primary', { attempt, detail: reason });
       setCurrentSrc(target); // src が変わると自動で読み直される
     } else {
       console.warn('[VideoPlayer] 再生を再読み込みで復旧します:', { reason, attempt, pos: pos.toFixed(1) });
@@ -541,9 +580,8 @@ export function EnhancedVideoPlayer({
         const waited = (Date.now() - waitingSinceRef.current) / 1000;
         waitingSinceRef.current = null;
         if (waited >= 10) {
-          stallCountRef.current += 1;
-          stallSecondsRef.current += waited;
-          reportIssue('stall', { detail: `${Math.round(waited)}秒の読み込み待ち（${stallCountRef.current}回目・累計${Math.round(stallSecondsRef.current)}秒）` });
+          // 読み直し直後は位置が一瞬 0 に戻るので、最後に進んでいた位置で記録する
+          recordStall(waited, current > 0.5 ? current : lastGoodPosRef.current);
         }
       }
       // 復旧後2分以上正常に再生できていれば、復旧の試行回数をリセット
@@ -1139,7 +1177,7 @@ export function EnhancedVideoPlayer({
             const err = videoRef.current?.error;
             const detail = `読み込みエラー code=${err?.code ?? '?'} ${err?.message || ''} networkState=${videoRef.current?.networkState ?? '?'}`.trim();
             reportIssue('error', { detail: detail.slice(0, 300) });
-            attemptRecovery(detail);
+            attemptRecovery(detail, 'error');
           }
         }}
         onContextMenu={handleContextMenu}
