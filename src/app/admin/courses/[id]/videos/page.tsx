@@ -522,9 +522,10 @@ export default function CourseVideosPage() {
         throw new Error('動画情報の更新に失敗しました');
       }
 
-      // 古いファイルを削除（他コース/他レコードと共有している場合はスキップ＝参照カウント）
+      // 古いファイルを削除（Supabase Storage と R2 の両方。他コース/他レコードと共有している場合は残す＝参照カウント）
       // コース複製で共有されたファイルを消して元コースを壊さないよう、サーバー側で安全に処理する
-      if (video.file_url) {
+      let cleanupNote = '';
+      if (video.file_url && video.file_url !== uploaded.fileUrl) {
         try {
           const cleanupRes = await fetch('/api/videos/cleanup-file', {
             method: 'POST',
@@ -532,19 +533,25 @@ export default function CourseVideosPage() {
               'Content-Type': 'application/json',
               'Authorization': session.access_token ? `Bearer ${session.access_token}` : '',
             },
-            body: JSON.stringify({ file_url: video.file_url }),
+            body: JSON.stringify({ file_url: video.file_url, video_id: videoId }),
           });
-          if (!cleanupRes.ok) {
-            const err = await cleanupRes.json().catch(() => ({}));
-            console.warn('古いファイルのクリーンアップに失敗:', cleanupRes.status, err.error || '');
+          const result = await cleanupRes.json().catch(() => ({}));
+          if (!cleanupRes.ok || result.error) {
+            console.warn('古いファイルの削除に失敗:', cleanupRes.status, result.error || '');
+            cleanupNote = '\n※ 古い動画ファイルの削除に失敗しました。管理者にお知らせください。';
+          } else if (result.sharedWith > 0) {
+            cleanupNote = `\n※ 古い動画ファイルは他のコースでも使われているため残しました（${result.sharedWith}件）。`;
+          } else if (result.deleted) {
+            cleanupNote = '\n古い動画ファイルは削除しました。';
           }
         } catch (deleteError) {
-          console.warn('古いファイルのクリーンアップ呼び出しに失敗:', deleteError);
+          console.warn('古いファイルの削除の呼び出しに失敗:', deleteError);
+          cleanupNote = '\n※ 古い動画ファイルの削除に失敗しました。管理者にお知らせください。';
         }
       }
 
       setUploadProgress(100);
-      alert('動画を置き換えました');
+      alert(`動画を置き換えました${cleanupNote}`);
       await fetchVideos();
       setReplacingVideo(null);
       setReplaceFile(null);

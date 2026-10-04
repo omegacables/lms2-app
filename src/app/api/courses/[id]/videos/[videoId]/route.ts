@@ -161,6 +161,7 @@ export async function PUT(
           bucket: 'videos',
           column: 'file_url',
           excludeVideoId: videoId,
+          actor: { userId: user.id, reason: 'replace' },
         });
       } catch (deleteError) {
         console.warn('Failed to delete old video:', deleteError);
@@ -248,35 +249,6 @@ export async function DELETE(
       }, { status: 404 });
     }
 
-    // ストレージから動画ファイルを削除（他レコードと共有していない場合のみ＝参照カウント）
-    // コース複製で共有されたファイルを消して元コースを壊さないための保護
-    if (video.file_url) {
-      try {
-        await removeVideoAssetIfUnreferenced(adminSupabase, {
-          url: video.file_url,
-          bucket: 'videos',
-          column: 'file_url',
-          excludeVideoId: videoIdNum,
-        });
-      } catch (deleteError) {
-        console.warn('Failed to delete video file:', deleteError);
-      }
-    }
-
-    // サムネイルも同様に、共有していない場合のみ削除
-    if (video.thumbnail_url) {
-      try {
-        await removeVideoAssetIfUnreferenced(adminSupabase, {
-          url: video.thumbnail_url,
-          bucket: 'thumbnails',
-          column: 'thumbnail_url',
-          excludeVideoId: videoIdNum,
-        });
-      } catch (deleteError) {
-        console.warn('Failed to delete thumbnail:', deleteError);
-      }
-    }
-
     // データベースから動画レコードを削除（admin client で RLS バイパス）
     // FK ON DELETE CASCADE で video_view_logs, chapter_videos も自動削除される
     const { error: deleteError } = await adminSupabase
@@ -290,6 +262,35 @@ export async function DELETE(
       return NextResponse.json({
         error: `動画の削除に失敗しました: ${deleteError.message}`,
       }, { status: 500 });
+    }
+
+    // DB から消えたあとに、動画ファイル・サムネイルを削除する（他レコードと共有していない場合のみ＝参照カウント）。
+    // 動画は Supabase Storage と R2（配信元）の両方から消す。コース複製で共有されたファイルは残す
+    if (video.file_url) {
+      try {
+        await removeVideoAssetIfUnreferenced(adminSupabase, {
+          url: video.file_url,
+          bucket: 'videos',
+          column: 'file_url',
+          excludeVideoId: videoIdNum,
+          actor: { userId: user.id, reason: 'delete' },
+        });
+      } catch (removeError) {
+        console.warn('Failed to delete video file:', removeError);
+      }
+    }
+    if (video.thumbnail_url) {
+      try {
+        await removeVideoAssetIfUnreferenced(adminSupabase, {
+          url: video.thumbnail_url,
+          bucket: 'thumbnails',
+          column: 'thumbnail_url',
+          excludeVideoId: videoIdNum,
+          actor: { userId: user.id, reason: 'delete' },
+        });
+      } catch (removeError) {
+        console.warn('Failed to delete thumbnail:', removeError);
+      }
     }
 
     return NextResponse.json({

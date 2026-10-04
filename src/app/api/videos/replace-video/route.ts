@@ -128,6 +128,7 @@ export async function POST(request: NextRequest) {
           bucket: 'videos',
           column: 'file_url',
           excludeVideoId: videoId,
+          actor: { userId: user.id, reason: 'replace' },
         });
       } catch (deleteError) {
         console.warn('Failed to delete old video:', deleteError);

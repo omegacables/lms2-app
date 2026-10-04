@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/database/supabase';
-import { extractStoragePath } from '@/lib/database/safeStorage';
+import { removeVideoAssetIfUnreferenced } from '@/lib/database/safeStorage';
 import { cookies } from 'next/headers';
 
 export async function GET(
@@ -240,60 +240,6 @@ export async function DELETE(
       .select('id, file_url')
       .eq('course_id', courseId);
 
-    // Storage から動画ファイル本体を削除（失敗してもDB削除は続行）
-    if (relatedVideos && relatedVideos.length > 0) {
-      const courseIdNum = parseInt(courseId);
-
-      // 他コースと共有しているファイルは削除対象から除外（コピー元/他コピーを壊さない）
-      const urls = relatedVideos
-        .map((v: { file_url: string | null }) => v.file_url)
-        .filter((u): u is string => !!u);
-
-      // .in() のURL長制限（クエリ文字列肥大→414）を避けるためチャンク照会。
-      // 照会が1回でも失敗したら安全側に倒して物理削除を全てスキップする（fail-safe。
-      // ファイルは残るがデータ損失しない。safeStorage 側と同じ方針）
-      let sharedCheckFailed = false;
-      const sharedUrls = new Set<string>();
-      const CHUNK_SIZE = 30;
-      for (let i = 0; i < urls.length; i += CHUNK_SIZE) {
-        const chunk = urls.slice(i, i + CHUNK_SIZE);
-        const { data: sharedRows, error: sharedErr } = await adminSupabase
-          .from('videos')
-          .select('file_url, course_id')
-          .in('file_url', chunk);
-        if (sharedErr) {
-          sharedCheckFailed = true;
-          console.warn('[コース削除] 共有チェックに失敗:', sharedErr.message);
-          break;
-        }
-        for (const r of sharedRows || []) {
-          // course_id が NULL の行も「他の参照」として扱う
-          // （SQLの neq は NULL 行を返さないため、JS側で判定する）
-          if (r.file_url && r.course_id !== courseIdNum) sharedUrls.add(r.file_url);
-        }
-      }
-
-      if (sharedCheckFailed) {
-        console.warn('[コース削除] 共有チェック不能のため動画ファイルの物理削除をスキップします（DB削除は続行）');
-      } else {
-        const paths = urls
-          .filter((u) => !sharedUrls.has(u))
-          .map((u) => extractStoragePath(u, 'videos'))
-          .filter((p): p is string => !!p);
-
-        if (sharedUrls.size > 0) {
-          console.log(`[コース削除] 他コースと共有中の ${sharedUrls.size} ファイルは物理削除をスキップ`);
-        }
-
-        if (paths.length > 0) {
-          const { error: storageError } = await adminSupabase.storage.from('videos').remove(paths);
-          if (storageError) {
-            console.warn('Storage cleanup warning:', storageError.message);
-          }
-        }
-      }
-    }
-
     // コースを物理削除（ON DELETE CASCADE で videos / user_courses / video_view_logs 等も自動削除）
     const { data, error } = await adminSupabase
       .from('courses')
@@ -314,8 +260,31 @@ export async function DELETE(
       return NextResponse.json({ error: '対象のコースが見つかりません' }, { status: 404 });
     }
 
+    // DB から消えたあとに、動画ファイル本体を削除する（Supabase Storage と R2 の両方）。
+    // 他コースと共有しているファイルは残す（参照カウント。コース複製のコピー元/他コピーを壊さない）。
+    // 失敗してもコースの削除は完了しているので、記録だけ残して続ける
+    const urls = Array.from(
+      new Set((relatedVideos || []).map((v: { file_url: string | null }) => v.file_url).filter((u): u is string => !!u))
+    );
+    let removedFiles = 0;
+    for (const url of urls) {
+      try {
+        const r = await removeVideoAssetIfUnreferenced(adminSupabase, {
+          url,
+          bucket: 'videos',
+          column: 'file_url',
+          excludeVideoId: -1,
+          actor: { userId: user.id, reason: 'course_delete' },
+        });
+        if (r.deleted) removedFiles += 1;
+      } catch (removeError) {
+        console.warn('[コース削除] 動画ファイルの削除に失敗:', removeError);
+      }
+    }
+
     return NextResponse.json({
       message: 'コースが削除されました',
+      removedFileCount: removedFiles,
       course: data,
       deletedVideoCount: relatedVideos?.length ?? 0,
     });
