@@ -21,6 +21,13 @@ interface AuthLayoutProps {
 const APP_STORE_URL =
   'https://apps.apple.com/jp/app/minova-%E4%BC%81%E6%A5%AD%E7%A0%94%E4%BF%AE%E7%94%A8e%E3%83%A9%E3%83%BC%E3%83%8B%E3%83%B3%E3%82%B0%E3%82%A2%E3%83%97%E3%83%AA/id6789630514';
 
+/**
+ * iOSアプリ版の案内を表示するか。
+ * App Store の新バージョン公開まで一時的に非表示にしている。
+ * 公開されたら true に戻す。
+ */
+const SHOW_IOS_APP_BANNER = false;
+
 export function AuthLayout({
   children,
   title = 'Minova',
@@ -120,6 +127,7 @@ export function AuthLayout({
             </div>
 
             {/* iOSアプリ版の案内（スマホでは目立つカード、PCでは控えめに） */}
+            {SHOW_IOS_APP_BANNER && (
             <div className="lg:hidden mb-8 rounded-xl border border-gray-300 bg-gray-50 p-5 text-center">
               <p className="text-sm font-semibold text-gray-900 mb-1">
                 iOS向けアプリ版はこちら
@@ -142,6 +150,7 @@ export function AuthLayout({
                 />
               </a>
             </div>
+            )}
 
             {/* フォームコンテンツ */}
             <div>
@@ -149,6 +158,7 @@ export function AuthLayout({
             </div>
 
             {/* PC向け: iOSアプリ版の案内 */}
+            {SHOW_IOS_APP_BANNER && (
             <div className="hidden lg:flex mt-8 items-center justify-center gap-3">
               <span className="text-sm text-gray-600">
                 iOS向けアプリ版はこちら
@@ -167,6 +177,7 @@ export function AuthLayout({
                 />
               </a>
             </div>
+            )}
 
             {/* フッター */}
             <div className="mt-8 text-center">

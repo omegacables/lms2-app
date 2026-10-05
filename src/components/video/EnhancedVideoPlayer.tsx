@@ -1096,11 +1096,11 @@ export function EnhancedVideoPlayer({
   // 警告ダイアログまたは動画プレイヤーを表示
   if (showWarning && !isCompleted && showViewingNotice) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white dark:bg-neutral-900 rounded-lg p-8 max-w-2xl mx-4 shadow-xl">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white dark:bg-neutral-900 rounded-lg p-5 sm:p-8 w-full max-w-2xl max-h-full overflow-y-auto shadow-xl">
           <div className="flex items-center mb-4">
-            <ExclamationTriangleIcon className="h-8 w-8 text-yellow-500 mr-3" />
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">視聴に関する重要な注意事項</h2>
+            <ExclamationTriangleIcon className="h-7 w-7 sm:h-8 sm:w-8 flex-shrink-0 text-yellow-500 mr-3" />
+            <h2 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white">視聴に関する重要な注意事項</h2>
           </div>
 
           <div className="space-y-4 mb-6">
@@ -1138,16 +1138,16 @@ export function EnhancedVideoPlayer({
             )}
           </div>
 
-          <div className="flex justify-center space-x-4">
+          <div className="flex justify-center gap-3 sm:gap-4">
             <button
               onClick={() => window.history.back()}
-              className="px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-900 dark:text-white"
+              className="whitespace-nowrap px-5 sm:px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-900 dark:text-white"
             >
               戻る
             </button>
             <button
               onClick={handleAcceptWarning}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="whitespace-nowrap px-5 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
               理解して視聴を開始
             </button>

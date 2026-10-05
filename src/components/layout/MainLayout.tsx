@@ -516,9 +516,9 @@ export function MainLayout({ children }: MainLayoutProps) {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0">
         {/* Top header */}
-        <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-6 border-b border-zinc-950/10 dark:border-white/10 bg-white/95 dark:bg-zinc-950/95 backdrop-blur px-6">
+        <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 sm:gap-x-6 border-b border-zinc-950/10 dark:border-white/10 bg-white/95 dark:bg-zinc-950/95 backdrop-blur px-4 sm:px-6">
             <button
               onClick={() => setSidebarOpen(true)}
               className="lg:hidden -ml-2 p-2 text-zinc-500 hover:text-zinc-600 dark:text-zinc-400 dark:hover:text-zinc-300"
@@ -621,7 +621,7 @@ export function MainLayout({ children }: MainLayoutProps) {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-6 bg-zinc-50 dark:bg-zinc-900">
+        <main className="flex-1 min-w-0 p-4 sm:p-6 bg-zinc-50 dark:bg-zinc-900">
           {children}
         </main>
       </div>

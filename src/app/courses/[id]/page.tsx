@@ -120,11 +120,11 @@ export default function CourseDetailPage() {
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="text-sm font-bold text-gray-900 dark:text-white">
                 ★ {q.title}
               </span>
-              <span className={`text-xs px-2 py-0.5 rounded ${quizTypeClass(q)}`}>
+              <span className={`text-xs px-2 py-0.5 rounded whitespace-nowrap ${quizTypeClass(q)}`}>
                 {quizTypeLabel(q)}
               </span>
             </div>
@@ -308,7 +308,7 @@ export default function CourseDetailPage() {
     return (
       <AuthGuard>
         <MainLayout>
-          <div className="container mx-auto px-4 py-8">
+          <div className="container mx-auto px-0 py-2 sm:px-4 sm:py-8">
             <div className="flex justify-center items-center min-h-64">
               <LoadingSpinner size="lg" />
             </div>
@@ -322,7 +322,7 @@ export default function CourseDetailPage() {
     return (
       <AuthGuard>
         <MainLayout>
-          <div className="container mx-auto px-4 py-8">
+          <div className="container mx-auto px-0 py-2 sm:px-4 sm:py-8">
             <div className="text-center py-12">
               <p className="text-destructive mb-4">
                 {error || 'コースが見つかりませんでした'}
@@ -342,13 +342,13 @@ export default function CourseDetailPage() {
   return (
     <AuthGuard>
       <MainLayout>
-        <div className="container mx-auto px-4 py-8">
+        <div className="container mx-auto px-0 py-2 sm:px-4 sm:py-8">
         <div className="max-w-4xl mx-auto">
           {/* パンくずリスト */}
           <nav className="mb-6">
-            <ol className="flex items-center space-x-2 text-sm text-muted-foreground">
+            <ol className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
               <li>
-                <Link href="/dashboard" className="hover:text-foreground">
+                <Link href="/dashboard" className="hover:text-foreground whitespace-nowrap">
                   ダッシュボード
                 </Link>
               </li>
@@ -358,7 +358,7 @@ export default function CourseDetailPage() {
                 </svg>
               </li>
               <li>
-                <Link href="/my-courses" className="hover:text-foreground">
+                <Link href="/my-courses" className="hover:text-foreground whitespace-nowrap">
                   マイコース
                 </Link>
               </li>
@@ -516,7 +516,7 @@ export default function CourseDetailPage() {
                     key={video.id}
                     className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-4 sm:p-6 hover:shadow-lg dark:shadow-gray-900/50 hover:border-blue-300 transition-all duration-200"
                   >
-                    <div className="flex items-start gap-4 sm:gap-6">
+                    <div className="flex items-start gap-3 sm:gap-6">
                       <div className="flex-shrink-0">
                         <div className="relative">
                           {getStatusIcon(status)}
@@ -636,7 +636,7 @@ export default function CourseDetailPage() {
                     <div
                       className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-4 sm:p-6 hover:shadow-lg dark:shadow-gray-900/50 hover:border-blue-300 transition-all duration-200"
                     >
-                      <div className="flex items-start gap-4 sm:gap-6">
+                      <div className="flex items-start gap-3 sm:gap-6">
                         <div className="flex-shrink-0">
                           <div className="relative">
                             {getStatusIcon(status)}
@@ -774,9 +774,9 @@ export default function CourseDetailPage() {
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                             <span className="text-sm font-bold text-gray-900 dark:text-white">★ {q.title}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded ${quizTypeClass(q)}`}>
+                            <span className={`text-xs px-2 py-0.5 rounded whitespace-nowrap ${quizTypeClass(q)}`}>
                               {quizTypeLabel(q)}
                             </span>
                           </div>
