@@ -628,9 +628,9 @@ export default function LaborConsultantLearningLogsPage() {
         <div className="container mx-auto px-4 py-8">
           {/* ヘッダー */}
           <div className="mb-8">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center">
-                <div className="w-12 h-12 bg-cyan-100 rounded-lg flex items-center justify-center mr-4">
+                <div className="w-12 h-12 shrink-0 bg-cyan-100 rounded-lg flex items-center justify-center mr-4">
                   <ChartBarIcon className="h-6 w-6 text-cyan-600" />
                 </div>
                 <div>
@@ -638,12 +638,12 @@ export default function LaborConsultantLearningLogsPage() {
                   <p className="text-gray-600 dark:text-gray-400">担当生徒の学習履歴を確認できます。</p>
                 </div>
               </div>
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                 <ColumnMenu layout={layout} />
                 <button
                   onClick={exportToCSV}
                   disabled={exportingCSV || filteredAndSortedLogs.length === 0}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 flex items-center"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 flex items-center whitespace-nowrap"
                 >
                   <DocumentArrowDownIcon className="h-5 w-5 mr-2" />
                   {exportingCSV ? 'エクスポート中...' : 'CSVエクスポート'}

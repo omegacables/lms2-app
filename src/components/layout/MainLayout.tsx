@@ -7,6 +7,7 @@ import { supabase } from '@/lib/database/supabase';
 import { useAuth } from '@/stores/auth';
 import { ThemeToggleSwitch } from '@/components/ui/ThemeToggleSwitch';
 import { messageEvents } from '@/lib/utils/events';
+import { IOS_APP_STORE_URL, SHOW_IOS_APP_LINKS } from '@/lib/iosApp';
 import { 
   HomeIcon,
   AcademicCapIcon,
@@ -27,7 +28,8 @@ import {
   SunIcon,
   ChatBubbleLeftRightIcon,
   QuestionMarkCircleIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  DevicePhoneMobileIcon
 } from '@heroicons/react/24/outline';
 import { 
   HomeIcon as HomeIconSolid,
@@ -493,6 +495,26 @@ export function MainLayout({ children }: MainLayoutProps) {
               </p>
             </div>
           </div>
+
+          {/* iOSアプリ版のダウンロード (モバイル用メニュー) */}
+          {SHOW_IOS_APP_LINKS && (
+            <a
+              href={IOS_APP_STORE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setSidebarOpen(false)}
+              className="lg:hidden mt-2 flex w-full items-center gap-x-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300 dark:hover:bg-blue-900/40 transition-colors"
+            >
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+                <DevicePhoneMobileIcon className="h-4 w-4" />
+              </span>
+              {/* 幅が足りないときは「iOSアプリの／ダウンロードはこちら」で改行させる */}
+              <span className="leading-snug">
+                <span className="inline-block">iOSアプリの</span>
+                <span className="inline-block">ダウンロードはこちら</span>
+              </span>
+            </a>
+          )}
 
           {/* テーマ切り替え (モバイル用) */}
           <div className="lg:hidden px-3 py-2 border-t border-zinc-950/5 dark:border-white/5 mt-2">

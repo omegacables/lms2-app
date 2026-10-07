@@ -350,11 +350,11 @@ export default function ViewingHistoryPage() {
           {/* Actions */}
           {selectedRecords.length > 0 && (
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-lg p-4 mb-6">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm font-medium text-blue-800">
                   {selectedRecords.length}件選択中
                 </span>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button
                     size="sm"
                     variant="outline"

@@ -122,14 +122,14 @@ export default function StorageSetupPage() {
           </div>
 
           <div className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-6 mb-6">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">ストレージバケット初期化</h2>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                   必要なストレージバケットを自動的に作成します
                 </p>
               </div>
-              <div className="flex space-x-3">
+              <div className="flex flex-wrap gap-2 sm:gap-3">
                 <Button
                   variant="outline"
                   onClick={checkBuckets}

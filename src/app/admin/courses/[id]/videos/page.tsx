@@ -667,9 +667,9 @@ export default function CourseVideosPage() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             {/* Header */}
             <div className="bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 p-6 mb-6">
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center space-x-4">
-                  <VideoCameraIcon className="h-8 w-8 text-blue-600 dark:text-blue-500" />
+                  <VideoCameraIcon className="h-8 w-8 shrink-0 text-blue-600 dark:text-blue-500" />
                   <div>
                     <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
                       動画管理
@@ -679,7 +679,7 @@ export default function CourseVideosPage() {
                     </p>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 sm:justify-end">
                   <Link href={`/admin/courses/${courseId}/chapters`}>
                     <Button variant="outline">
                       <BookOpenIcon className="h-4 w-4 mr-2" />

@@ -327,9 +327,9 @@ export default function AdminUsersPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* ヘッダーセクション */}
           <div className="mb-8">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center">
-                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
+                <div className="w-12 h-12 shrink-0 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
                   <UsersIcon className="h-6 w-6 text-blue-600" />
                 </div>
                 <div>
@@ -586,7 +586,7 @@ export default function AdminUsersPage() {
 
           {/* ページネーション */}
           {totalPages > 1 && (
-            <div className="mt-6 flex items-center justify-between">
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
               <div className="text-sm text-gray-700 dark:text-gray-300">
                 {filteredUsers.length} 件中 {(currentPage - 1) * itemsPerPage + 1} - {Math.min(currentPage * itemsPerPage, filteredUsers.length)} 件を表示
               </div>

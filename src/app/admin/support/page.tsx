@@ -518,9 +518,9 @@ export default function AdminSupportChat() {
         <div className="max-w-7xl mx-auto">
           {/* ヘッダーセクション */}
           <div className="mb-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center">
-                <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mr-4">
+                <div className="w-12 h-12 shrink-0 bg-indigo-100 rounded-lg flex items-center justify-center mr-4">
                   <ChatBubbleLeftRightIcon className="h-6 w-6 text-indigo-600" />
                 </div>
                 <div>

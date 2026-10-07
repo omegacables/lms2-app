@@ -1220,9 +1220,9 @@ export default function LearningLogsPage() {
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="mb-6">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-4">
               <div className="flex items-center">
-                <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg flex items-center justify-center mr-4">
+                <div className="w-12 h-12 shrink-0 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg flex items-center justify-center mr-4">
                   <ChartBarIcon className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />
                 </div>
                 <div>

@@ -163,7 +163,7 @@ export default function LaborConsultantStudentsPage() {
                 </div>
                 <button
                   onClick={fetchStudentProgress}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  className="shrink-0 whitespace-nowrap px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
                   更新
                 </button>

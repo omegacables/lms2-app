@@ -766,9 +766,9 @@ export default function CertificatesManagement() {
         <div className="max-w-7xl mx-auto px-4 py-8">
           {/* ヘッダーセクション */}
           <div className="mb-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center">
-                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mr-4">
+                <div className="w-12 h-12 shrink-0 bg-orange-100 rounded-lg flex items-center justify-center mr-4">
                   <DocumentCheckIcon className="h-6 w-6 text-orange-600" />
                 </div>
                 <div>
@@ -776,7 +776,7 @@ export default function CertificatesManagement() {
                   <p className="text-gray-600 dark:text-gray-400">発行された証明書の管理・監視ができます。</p>
                 </div>
               </div>
-              <div className="flex space-x-3">
+              <div className="flex flex-wrap gap-2 sm:gap-3 sm:justify-end">
                 <Button onClick={fetchCertificates} variant="outline" className="flex items-center">
                   <ArrowPathIcon className="h-4 w-4 mr-2" />
                   更新
@@ -851,11 +851,11 @@ export default function CertificatesManagement() {
           {/* 一括操作セクション */}
           {selectedIds.size > 0 && (
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
                   {selectedIds.size}件の証明書を選択中
                 </span>
-                <div className="flex space-x-3">
+                <div className="flex flex-wrap gap-2 sm:gap-3">
                   <Button
                     variant="outline"
                     size="sm"

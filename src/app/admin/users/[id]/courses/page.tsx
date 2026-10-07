@@ -927,7 +927,7 @@ export default function StudentCoursesPage() {
                 </div>
 
                 <div className="p-6 border-t border-gray-200 dark:border-neutral-800 bg-gray-50 dark:bg-neutral-800/50">
-                  <div className="flex justify-between items-center">
+                  <div className="flex flex-wrap justify-between items-center gap-3">
                     <p className="text-sm text-gray-600 dark:text-gray-400">
                       {selectedGroups.length > 0 ? (
                         <span className="font-semibold text-blue-600 dark:text-blue-400">
@@ -937,7 +937,7 @@ export default function StudentCoursesPage() {
                         'グループを選択してください'
                       )}
                     </p>
-                    <div className="flex gap-3">
+                    <div className="flex flex-wrap gap-3">
                       <Button
                         onClick={() => {
                           setShowAddGroupModal(false);
