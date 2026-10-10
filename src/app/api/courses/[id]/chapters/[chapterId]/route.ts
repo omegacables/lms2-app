@@ -3,9 +3,10 @@ import { createServerClient } from '@/lib/supabase-server';
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string; chapterId: string } }
+  { params }: { params: Promise<{ id: string; chapterId: string }> }
 ) {
   try {
+    const { id, chapterId } = await params;
     const supabase = await createServerClient();
     const { title } = await request.json();
 
@@ -13,7 +14,7 @@ export async function PUT(
     const { data: course, error: courseError } = await supabase
       .from('courses')
       .select('metadata')
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     if (courseError) {
@@ -26,7 +27,7 @@ export async function PUT(
     // チャプターを更新
     const chapters = metadata.chapters || [];
     const updatedChapters = chapters.map((chapter: any) =>
-      chapter.id === params.chapterId
+      chapter.id === chapterId
         ? { ...chapter, title }
         : chapter
     );
@@ -38,7 +39,7 @@ export async function PUT(
         metadata: { ...metadata, chapters: updatedChapters },
         updated_at: new Date().toISOString()
       })
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
@@ -56,16 +57,17 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string; chapterId: string } }
+  { params }: { params: Promise<{ id: string; chapterId: string }> }
 ) {
   try {
+    const { id, chapterId } = await params;
     const supabase = await createServerClient();
 
     // 現在のコース情報を取得
     const { data: course, error: courseError } = await supabase
       .from('courses')
       .select('metadata')
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     if (courseError) {
@@ -78,7 +80,7 @@ export async function DELETE(
     // チャプターを削除
     const chapters = metadata.chapters || [];
     const updatedChapters = chapters.filter(
-      (chapter: any) => chapter.id !== params.chapterId
+      (chapter: any) => chapter.id !== chapterId
     );
 
     // metadataを更新
@@ -88,7 +90,7 @@ export async function DELETE(
         metadata: { ...metadata, chapters: updatedChapters },
         updated_at: new Date().toISOString()
       })
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });

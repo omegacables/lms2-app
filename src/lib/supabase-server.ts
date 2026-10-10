@@ -1,27 +1,31 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient as createSsrClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import type { Database } from './database.types';
-import type { RequestCookies } from 'next/dist/compiled/@edge-runtime/cookies';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 /**
- * Next.js 15対応のSupabaseクライアント作成関数
- * Route Handlerで使用
+ * Route Handler 用の Supabase クライアント（Cookie セッション）
+ * 以前は @supabase/auth-helpers-nextjs を使っていたが、廃止されたため @supabase/ssr に置き換えた。
  */
 export async function createServerClient() {
   const cookieStore = await cookies();
 
-  return createRouteHandlerClient<Database>({
-    cookies: () => cookieStore
-  });
-}
-
-/**
- * Cookie Storeを渡してSupabaseクライアントを作成
- * APIルートで使用
- */
-export function createServerSupabaseClient(cookieStore: RequestCookies) {
-  return createRouteHandlerClient<Database>({
-    cookies: () => cookieStore
+  return createSsrClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
+          });
+        } catch {
+          // Server Component から呼ばれた場合は Cookie を書けないので無視する
+        }
+      },
+    },
   });
 }
 
