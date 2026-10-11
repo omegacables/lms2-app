@@ -5,14 +5,11 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
     remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'tjzdsiaehksqpxuvzqvp.supabase.co',
-      },
-      {
-        protocol: 'https',
-        hostname: '**',
-      },
+      { protocol: 'https', hostname: 'tjzdsiaehksqpxuvzqvp.supabase.co' },
+      { protocol: 'https', hostname: 'ewtnyhfizuyvzvxkllva.supabase.co' },
+      { protocol: 'https', hostname: 'btxlrrjcifynhnujsgyf.supabase.co' },
+      { protocol: 'https', hostname: 'media.stus-lms.com' },
+      { protocol: 'https', hostname: 'media.axialms.com' },
     ],
   },
 
@@ -55,23 +52,16 @@ const nextConfig: NextConfig = {
   },
 
   // セキュリティヘッダー
+  // ※ 以前は /api/* に Access-Control-Allow-Origin: * を付けていたが、
+  //    iOS/Android アプリは Bearer トークンで直接呼ぶため CORS は不要。任意サイトからの API 読み取りを防ぐため削除。
   async headers() {
     return [
       {
-        source: '/api/:path*',
+        source: '/(.*)',
         headers: [
-          {
-            key: 'Access-Control-Allow-Origin',
-            value: '*',
-          },
-          {
-            key: 'Access-Control-Allow-Methods',
-            value: 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
-          },
-          {
-            key: 'Access-Control-Allow-Headers',
-            value: 'Content-Type, Authorization',
-          },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
         ],
       },
     ]

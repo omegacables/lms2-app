@@ -156,7 +156,7 @@ export function CourseCertificate({
         // 証明書専用クライアントを使用
         const { data, error } = await certificatesClient
           .select(user.id, course.id)
-          .then(query => query.maybeSingle());
+          .maybeSingle();
 
         console.log('Checking existing certificate:', {
           userId: user.id,
@@ -384,7 +384,7 @@ export function CourseCertificate({
       await new Promise(resolve => setTimeout(resolve, 500));
       const { data } = await certificatesClient
         .select(user.id, course.id)
-        .then(query => query.maybeSingle());
+        .maybeSingle();
       if (data) setExistingCertificate(data);
     } finally {
       setIsGenerating(false);

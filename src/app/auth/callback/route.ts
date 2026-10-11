@@ -8,7 +8,9 @@ export async function GET(request: NextRequest) {
   
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
-  const next = requestUrl.searchParams.get('next') || '/dashboard';
+  // 外部サイトへのオープンリダイレクトを防ぐ（サイト内パスのみ許可）
+  const rawNext = requestUrl.searchParams.get('next') || '/dashboard';
+  const next = /^\/(?!\/)/.test(rawNext) ? rawNext : '/dashboard';
   
   console.log('[Auth Callback] Received code:', code ? 'Yes' : 'No');
   console.log('[Auth Callback] Redirect destination:', next);
@@ -60,7 +62,7 @@ export async function GET(request: NextRequest) {
         if (profile?.role === 'admin') {
           redirectUrl = '/admin';
         } else if (profile?.role === 'instructor') {
-          redirectUrl = '/instructor';
+          redirectUrl = '/admin';
         }
         
         console.log('[Auth Callback] Final redirect URL:', redirectUrl);

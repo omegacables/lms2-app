@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/database/supabase';
+import { createAdminSupabaseClient } from '@/lib/database/supabase';
 import { requireAdmin } from '@/lib/auth/requireAdmin';
 
 // Get all viewing history (admin only)
@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await requireAdmin(request);
     if (!auth.ok) return auth.response;
+    const supabase = createAdminSupabaseClient();
 
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
@@ -50,6 +51,7 @@ export async function DELETE(request: NextRequest) {
   try {
     const auth = await requireAdmin(request);
     if (!auth.ok) return auth.response;
+    const supabase = createAdminSupabaseClient();
 
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
@@ -84,6 +86,7 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await requireAdmin(request);
     if (!auth.ok) return auth.response;
+    const supabase = createAdminSupabaseClient();
 
     const { userId, courseId, videoIds } = await request.json();
 

@@ -4,9 +4,10 @@ import { cookies } from 'next/headers';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const cookieStore = await cookies();
     const supabase = createServerSupabaseClient(cookieStore);
 
@@ -36,7 +37,7 @@ export async function GET(
           title
         )
       `)
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     if (error || !message) {
@@ -49,7 +50,7 @@ export async function GET(
       await supabase
         .from('messages')
         .update({ is_read: true, updated_at: new Date().toISOString() })
-        .eq('id', params.id);
+        .eq('id', id);
       
       message.is_read = true;
     }
@@ -80,9 +81,10 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const cookieStore = await cookies();
     const supabase = createServerSupabaseClient(cookieStore);
 
@@ -102,7 +104,7 @@ export async function PATCH(
         is_read,
         updated_at: new Date().toISOString()
       })
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single();
 
@@ -123,9 +125,10 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const cookieStore = await cookies();
     const supabase = createServerSupabaseClient(cookieStore);
 
@@ -139,7 +142,7 @@ export async function DELETE(
     const { error } = await supabase
       .from('messages')
       .delete()
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('sender_id', user.id);
 
     if (error) {

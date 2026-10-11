@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     if (authError || !authUser) {
       return NextResponse.json({ success: false, error: '認証に失敗しました' }, { status: 401 });
     }
-    // 本人、または admin / instructor / labor_consultant のみ発行可
+    // 本人、または admin / instructor のみ発行可（社労士は /api/labor-consultant/certificates で担当会社分のみ）
     if (authUser.id !== userId) {
       const { data: requester } = await supabaseAdmin
         .from('user_profiles')
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
         .eq('id', authUser.id)
         .single();
       const role = requester?.role;
-      if (role !== 'admin' && role !== 'instructor' && role !== 'labor_consultant') {
+      if (role !== 'admin' && role !== 'instructor') {
         return NextResponse.json({ success: false, error: '権限がありません' }, { status: 403 });
       }
     }

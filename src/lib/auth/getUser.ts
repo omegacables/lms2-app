@@ -20,17 +20,37 @@ export async function getAuthUser(
   const supabase = createServerSupabaseClient(cookieStore);
 
   const token = bearer || bodyToken || null;
+  let found: AuthedUser | null = null;
   if (token) {
     const admin = createAdminSupabaseClient();
     const { data, error } = await admin.auth.getUser(token);
-    if (!error && data?.user) return { user: { id: data.user.id, email: data.user.email } };
+    if (!error && data?.user) found = { id: data.user.id, email: data.user.email };
   }
 
-  const { data } = await supabase.auth.getUser();
-  if (data?.user) return { user: { id: data.user.id, email: data.user.email } };
+  if (!found) {
+    const { data } = await supabase.auth.getUser();
+    if (data?.user) found = { id: data.user.id, email: data.user.email };
+  }
 
-  return {
-    user: null,
-    response: NextResponse.json({ error: '認証が必要です' }, { status: 401 }),
-  };
+  if (!found) {
+    return {
+      user: null,
+      response: NextResponse.json({ error: '認証が必要です' }, { status: 401 }),
+    };
+  }
+
+  // 無効化されたアカウントは受講者向け API も拒否する
+  const { data: profile } = await createAdminSupabaseClient()
+    .from('user_profiles')
+    .select('is_active')
+    .eq('id', found.id)
+    .maybeSingle();
+  if (profile?.is_active === false) {
+    return {
+      user: null,
+      response: NextResponse.json({ error: 'このアカウントは無効化されています' }, { status: 403 }),
+    };
+  }
+
+  return { user: found };
 }

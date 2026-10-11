@@ -3,12 +3,13 @@ import { createServerClient } from '@/lib/supabase-server';
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { videoId: string } }
+  { params }: { params: Promise<{ videoId: string }> }
 ) {
   try {
+    const { videoId: videoIdParam } = await params;
     const supabase = await createServerClient();
     const { chapterId } = await request.json();
-    const videoId = parseInt(params.videoId);
+    const videoId = parseInt(videoIdParam);
 
     // ビデオの情報を取得
     const { data: video, error: videoError } = await supabase

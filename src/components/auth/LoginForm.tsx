@@ -24,7 +24,9 @@ export function LoginForm({ className, redirectTo = '/dashboard' }: LoginFormPro
 
   // URLパラメータからredirectToを取得
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-  const urlRedirectTo = searchParams?.get('redirectTo') || redirectTo;
+  // 外部サイトへのオープンリダイレクトを防ぐため、"/" で始まり "//" で始まらないパスだけ受け付ける
+  const rawRedirectTo = searchParams?.get('redirectTo');
+  const urlRedirectTo = rawRedirectTo && /^\/(?!\/)/.test(rawRedirectTo) ? rawRedirectTo : redirectTo;
   
   console.log('[LoginForm] Redirect destination:', urlRedirectTo);
 

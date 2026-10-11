@@ -54,10 +54,11 @@ export function AuthGuard({
     }
 
     // 権限チェック
-    if (requiredRoles && user.profile) {
-      if (!requiredRoles.includes(user.profile.role)) {
-        console.log('[AuthGuard] Insufficient permissions, setting redirect to /unauthorized');
-        setShouldRedirect('/unauthorized');
+    // プロフィールが取れていない場合も「権限なし」として扱う（以前は役割チェックが丸ごとスキップされていた）
+    if (requiredRoles) {
+      if (!user.profile || !requiredRoles.includes(user.profile.role)) {
+        console.log('[AuthGuard] Insufficient permissions, redirecting to /dashboard');
+        setShouldRedirect('/dashboard');
         return;
       }
     }

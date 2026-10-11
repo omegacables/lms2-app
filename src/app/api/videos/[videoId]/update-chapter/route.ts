@@ -4,12 +4,13 @@ import { cookies } from 'next/headers';
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { videoId: string } }
+  { params }: { params: Promise<{ videoId: string }> }
 ) {
   try {
+    const { videoId: videoIdParam } = await params;
     const cookieStore = await cookies();
     const supabase = createServerSupabaseClient(cookieStore);
-    const videoId = params.videoId;
+    const videoId = videoIdParam;
 
     // 認証チェック
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -65,9 +66,10 @@ export async function PUT(
 // 一括更新用のエンドポイント
 export async function POST(
   request: NextRequest,
-  { params }: { params: { videoId: string } }
+  { params }: { params: Promise<{ videoId: string }> }
 ) {
   try {
+    const { videoId: videoIdParam } = await params;
     const cookieStore = await cookies();
     const supabase = createServerSupabaseClient(cookieStore);
 

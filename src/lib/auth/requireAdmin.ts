@@ -73,7 +73,7 @@ export async function requireRole(
   const adminClient = createAdminSupabaseClient();
   const { data: profile, error: profileError } = await adminClient
     .from('user_profiles')
-    .select('role')
+    .select('role, is_active')
     .eq('id', user.id)
     .single();
 
@@ -85,6 +85,14 @@ export async function requireRole(
         { error: 'ユーザープロフィールが取得できませんでした' },
         { status: 403 }
       ),
+    };
+  }
+
+  // 無効化されたアカウントは役割に関係なく拒否する
+  if (profile.is_active === false) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: 'このアカウントは無効化されています' }, { status: 403 }),
     };
   }
 

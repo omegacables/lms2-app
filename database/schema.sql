@@ -272,6 +272,45 @@ CREATE POLICY "Admins can update all profiles" ON user_profiles
     )
   );
 
+-- 他人のプロフィールを読めるのは管理者と、担当会社の受講者に限った社労士だけ。
+-- 「ログイン中なら全員分読める」ポリシー（auth.role() = 'authenticated'）は作らないこと。受講者でも全ユーザーの
+-- 氏名・メール・会社を読めてしまう（stus-lms にあったものを 20261002_stus_lms_restrict_user_profiles_select.sql で削除）。
+-- 社労士用は labor_consultant_companies があるプロジェクト（stus-lms）でだけ作る。
+DO $do$
+BEGIN
+  IF to_regclass('public.labor_consultant_companies') IS NULL THEN
+    RETURN;
+  END IF;
+
+  -- user_profiles のポリシーから labor_consultant_companies を直接読むと無限再帰になるため、
+  -- SECURITY DEFINER の関数で読む。API に公開していない private スキーマに置く
+  CREATE SCHEMA IF NOT EXISTS private;
+  GRANT USAGE ON SCHEMA private TO authenticated;
+
+  CREATE OR REPLACE FUNCTION private.labor_consultant_assigned_companies()
+  RETURNS SETOF text
+  LANGUAGE sql
+  STABLE
+  SECURITY DEFINER
+  SET search_path = ''
+  AS $fn$
+    SELECT DISTINCT lcc.company::text
+    FROM public.labor_consultant_companies lcc
+    JOIN public.user_profiles me ON me.id = lcc.labor_consultant_id
+    WHERE lcc.labor_consultant_id = (SELECT auth.uid())
+      AND me.role = 'labor_consultant'
+      AND btrim(lcc.company) <> '';
+  $fn$;
+  REVOKE ALL ON FUNCTION private.labor_consultant_assigned_companies() FROM PUBLIC, anon;
+  GRANT EXECUTE ON FUNCTION private.labor_consultant_assigned_companies() TO authenticated;
+
+  DROP POLICY IF EXISTS "Labor consultants can view assigned company students" ON user_profiles;
+  CREATE POLICY "Labor consultants can view assigned company students" ON user_profiles
+    FOR SELECT TO authenticated
+    USING (role = 'student' AND company::text IN (SELECT private.labor_consultant_assigned_companies()));
+END
+$do$;
+
 -- user_courses ポリシー
 CREATE POLICY "Users can view own course assignments" ON user_courses
   FOR SELECT USING (auth.uid() = user_id);
@@ -321,6 +360,13 @@ CREATE POLICY "Admins can manage all messages" ON messages
 -- system_settings ポリシー
 CREATE POLICY "Public settings visible to all" ON system_settings
   FOR SELECT USING (is_public = true);
+
+-- middleware のメンテナンス判定用に匿名でも読めるようにする（20250102_fix_system_settings_rls.sql）。
+-- ただし SMTP 認証情報（email.smtp_*）は除外し、管理者ポリシー経由でのみ読めるようにする
+-- （20260915_fix_settings_smtp_exposure_and_quiz_view_grants.sql）
+CREATE POLICY "Allow anonymous read for maintenance check" ON system_settings
+  FOR SELECT TO anon, authenticated
+  USING (setting_key NOT LIKE 'email.smtp\_%');
 
 CREATE POLICY "Admins can view all settings" ON system_settings
   FOR SELECT USING (
@@ -695,6 +741,11 @@ CREATE TABLE IF NOT EXISTS essay_reviews (
 CREATE OR REPLACE VIEW quiz_questions_student AS
   SELECT id, quiz_id, question_text, choices, sort_order, created_at
   FROM quiz_questions;
+
+-- 自動更新可能ビューのため、anon / authenticated に権限があると RLS を迂回して quiz_questions を
+-- 書き換え・削除できてしまう。アプリからは未使用なので権限を付けない
+-- （20260915_fix_settings_smtp_exposure_and_quiz_view_grants.sql）
+REVOKE ALL ON quiz_questions_student FROM anon, authenticated;
 
 ALTER TABLE quizzes        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE quiz_questions ENABLE ROW LEVEL SECURITY;

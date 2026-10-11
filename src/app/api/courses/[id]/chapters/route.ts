@@ -3,18 +3,19 @@ import { createServerClient } from '@/lib/supabase-server';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createServerClient();
 
-    console.log(`[GET /api/courses/${params.id}/chapters] Fetching chapters from chapters table`);
+    console.log(`[GET /api/courses/${id}/chapters] Fetching chapters from chapters table`);
 
     // chaptersテーブルから章を取得
     const { data: chapters, error: chaptersError } = await supabase
       .from('chapters')
       .select('id, title, display_order')
-      .eq('course_id', params.id)
+      .eq('course_id', id)
       .order('display_order', { ascending: true });
 
     if (chaptersError) {
@@ -28,7 +29,7 @@ export async function GET(
     const { data: allVideos, error: videosError } = await supabase
       .from('videos')
       .select('*')
-      .eq('course_id', params.id)
+      .eq('course_id', id)
       .eq('status', 'active')
       .not('file_url', 'is', null)
       .order('order_index', { ascending: true });
@@ -97,19 +98,20 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createServerClient();
     const { title } = await request.json();
 
-    console.log(`[POST /api/courses/${params.id}/chapters] Creating chapter with title:`, title);
+    console.log(`[POST /api/courses/${id}/chapters] Creating chapter with title:`, title);
 
     // 現在のコース情報を取得
     const { data: course, error: courseError } = await supabase
       .from('courses')
       .select('metadata')
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     if (courseError) {
@@ -146,7 +148,7 @@ export async function POST(
         metadata: updatedMetadata,
         updated_at: new Date().toISOString()
       })
-      .eq('id', params.id)
+      .eq('id', id)
       .select();
 
     if (updateError) {
@@ -161,7 +163,7 @@ export async function POST(
     const { data: verifyData, error: verifyError } = await supabase
       .from('courses')
       .select('metadata')
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     console.log(`[POST] Verification - Updated metadata in DB:`, JSON.stringify(verifyData?.metadata, null, 2));
@@ -170,7 +172,7 @@ export async function POST(
     if (verifyData?.metadata?.chapters?.length === 0) {
       console.error('[POST] WARNING: Chapters were not saved to database!');
       console.log('[POST] Attempting to debug the issue...');
-      console.log('[POST] Course ID:', params.id);
+      console.log('[POST] Course ID:', id);
       console.log('[POST] Expected chapters count:', chapters.length);
       console.log('[POST] Actual chapters count in DB:', verifyData?.metadata?.chapters?.length);
     }
@@ -187,9 +189,10 @@ export async function POST(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await createServerClient();
     const { chapters } = await request.json();
 
@@ -200,7 +203,7 @@ export async function PUT(
         metadata: { chapters },
         updated_at: new Date().toISOString()
       })
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
