@@ -8,6 +8,7 @@ import { useAuth } from '@/stores/auth';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/database/supabase';
+import { safeHttpsUrl } from '@/lib/utils/safeUrl';
 import {
   ChatBubbleLeftRightIcon,
   PaperAirplaneIcon,
@@ -699,12 +700,12 @@ export default function AdminSupportChat() {
                             </span>
                           </div>
                           {/* ファイル表示 */}
-                          {message.fileUrl && (
+                          {safeHttpsUrl(message.fileUrl) && (
                             <div className="mb-2">
                               {message.fileType?.startsWith('image/') ? (
-                                <a href={message.fileUrl} target="_blank" rel="noopener noreferrer">
+                                <a href={safeHttpsUrl(message.fileUrl)} target="_blank" rel="noopener noreferrer">
                                   <img
-                                    src={message.fileUrl}
+                                    src={safeHttpsUrl(message.fileUrl)}
                                     alt={message.fileName || 'Image'}
                                     className="max-w-full rounded-lg cursor-pointer hover:opacity-90"
                                     style={{ maxHeight: '200px' }}
@@ -712,7 +713,7 @@ export default function AdminSupportChat() {
                                 </a>
                               ) : (
                                 <a
-                                  href={message.fileUrl}
+                                  href={safeHttpsUrl(message.fileUrl)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className={`flex items-center p-2 rounded-lg ${

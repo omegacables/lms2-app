@@ -195,6 +195,13 @@ export const useAuthStore = create<AuthStore>()(
             // プロフィール取得失敗でも続行（デフォルトプロフィールで続行）
           }
 
+          // 無効化されたアカウントはログインさせない
+          if (profile && (profile as any).is_active === false) {
+            await supabase.auth.signOut();
+            set({ user: null, loading: false });
+            return { error: 'このアカウントは無効化されています。管理者にお問い合わせください。' };
+          }
+
           // 最終ログイン日時を更新
           try {
             await supabase

@@ -216,7 +216,7 @@ export default function CoursesPage() {
   const categories = Array.from(new Set(courses.map(c => c.category).filter(Boolean)));
 
   return (
-    <AuthGuard requireAdmin>
+    <AuthGuard requiredRoles={['admin', 'instructor']}>
       <MainLayout>
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
           {/* ヘッダー */}

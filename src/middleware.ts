@@ -35,16 +35,19 @@ export async function middleware(req: NextRequest) {
     }
     // 管理者用の緊急バイパス（?emergency_bypass=トークン）。
     // 一度合致したらCookieを付与し、以降は付けなくても通す（作業確認用）
+    // EMERGENCY_BYPASS_TOKEN が未設定のときは誰も通さない（undefined === undefined で全員素通りになっていた）
+    const bypassSecret = process.env.EMERGENCY_BYPASS_TOKEN;
     const bypassToken = req.nextUrl.searchParams.get('emergency_bypass');
-    const hasBypassCookie = req.cookies.get('mnt_bypass')?.value === process.env.EMERGENCY_BYPASS_TOKEN;
+    const hasBypassCookie = !!bypassSecret && req.cookies.get('mnt_bypass')?.value === bypassSecret;
     if (
-      (bypassToken && bypassToken === process.env.EMERGENCY_BYPASS_TOKEN) ||
-      hasBypassCookie
+      !!bypassSecret &&
+      ((bypassToken && bypassToken === bypassSecret) || hasBypassCookie)
     ) {
       const passRes = NextResponse.next({ request: { headers: req.headers } });
       if (bypassToken) {
         passRes.cookies.set('mnt_bypass', bypassToken, {
           httpOnly: true,
+          secure: true,
           sameSite: 'lax',
           maxAge: 60 * 60 * 6, // 6時間
         });
@@ -70,13 +73,6 @@ export async function middleware(req: NextRequest) {
   if (req.nextUrl.pathname === '/auth/login' ||
       req.nextUrl.pathname === '/auth/signup' ||
       req.nextUrl.pathname === '/auth/reset-password') {
-    return res;
-  }
-
-  // 緊急バイパスパラメータをチェック（一時的な対策）
-  const bypassToken = req.nextUrl.searchParams.get('emergency_bypass');
-  if (bypassToken === process.env.EMERGENCY_BYPASS_TOKEN) {
-    console.log('[Middleware] Emergency bypass activated');
     return res;
   }
 
@@ -147,8 +143,6 @@ export async function middleware(req: NextRequest) {
 
       const isMaintenanceMode = maintenanceSetting?.setting_value === 'true';
 
-      console.log('[Middleware] Maintenance setting:', maintenanceSetting);
-      console.log('[Middleware] Maintenance mode:', isMaintenanceMode);
 
       // メンテナンスモード中の場合
       if (isMaintenanceMode) {

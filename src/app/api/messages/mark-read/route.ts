@@ -1,40 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-// Admin client for bypassing RLS
-function getSupabaseAdmin() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl) {
-    return null;
-  }
-
-  // Service Role Keyがある場合は使用、なければAnon Keyを使用
-  const key = supabaseServiceRoleKey || supabaseAnonKey;
-  if (!key) {
-    return null;
-  }
-
-  return createClient(supabaseUrl, key);
-}
+import { getAuthUser } from '@/lib/auth/getUser';
+import { createAdminSupabaseClient } from '@/lib/database/supabase';
 
 export async function POST(request: NextRequest) {
-  const supabase = getSupabaseAdmin();
-
-  if (!supabase) {
-    return NextResponse.json({
-      success: false,
-      error: 'Database configuration error'
-    }, { status: 503 });
-  }
-
   try {
     const body = await request.json();
-    const { conversationId, userId } = body;
+    // 以前は body の userId を信用して無認証で既読にしていた。呼び出し元を認証し、本人の ID だけを使う
+    const { user, response } = await getAuthUser(request, body.access_token);
+    if (!user) return response!;
+    const userId = user.id;
+    const { conversationId } = body;
+    const supabase = createAdminSupabaseClient();
 
-    if (!conversationId || !userId) {
+    if (!conversationId) {
       return NextResponse.json({
         success: false,
         error: 'Missing required parameters'

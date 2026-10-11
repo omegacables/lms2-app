@@ -263,7 +263,7 @@ export default function StudentProgressPage() {
   };
 
   return (
-    <AuthGuard requireAdmin>
+    <AuthGuard requiredRoles={['admin', 'instructor']}>
       <MainLayout>
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
           {/* ヘッダー */}

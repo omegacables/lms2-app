@@ -4,9 +4,10 @@ import { cookies } from 'next/headers';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const cookieStore = await cookies();
     const supabase = createServerSupabaseClient(cookieStore);
     const adminSupabase = createAdminSupabaseClient();
@@ -52,11 +53,11 @@ export async function POST(
     const { data: currentCourse } = await supabase
       .from('courses')
       .select('thumbnail_url')
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     // サムネイルファイルのアップロード
-    const thumbnailFileName = `course-${params.id}-${Date.now()}.${thumbnailFile.name.split('.').pop()}`;
+    const thumbnailFileName = `course-${id}-${Date.now()}.${thumbnailFile.name.split('.').pop()}`;
     const thumbnailPath = `course-thumbnails/${thumbnailFileName}`;
 
     const { data: thumbnailUpload, error: thumbnailUploadError } = await adminSupabase.storage
@@ -83,7 +84,7 @@ export async function POST(
         thumbnail_url: thumbnailUrl.publicUrl,
         updated_at: new Date().toISOString()
       })
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single();
 
@@ -120,9 +121,10 @@ export async function POST(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const cookieStore = await cookies();
     const supabase = createServerSupabaseClient(cookieStore);
     const adminSupabase = createAdminSupabaseClient();
@@ -148,7 +150,7 @@ export async function DELETE(
     const { data: currentCourse } = await supabase
       .from('courses')
       .select('thumbnail_url')
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     if (!currentCourse?.thumbnail_url) {
@@ -162,7 +164,7 @@ export async function DELETE(
         thumbnail_url: null,
         updated_at: new Date().toISOString()
       })
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single();
 

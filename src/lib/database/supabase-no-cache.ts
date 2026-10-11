@@ -1,33 +1,14 @@
-import { createClient } from '@supabase/supabase-js';
-import type { Database } from './database.types';
+import { supabase } from '@/lib/database/supabase';
 
-// スキーマキャッシュを無効化したSupabaseクライアント
-export const supabaseNoCache = createClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  {
-    db: {
-      schema: 'public'
-    },
-    auth: {
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: true
-    },
-    global: {
-      headers: {
-        'x-client-info': 'supabase-js-web'
-      }
-    }
-  }
-);
-
-// 証明書専用のクライアント（スキーマキャッシュ問題を回避）
-export const certificatesClient = {
-  async select(userId: string, courseId?: number) {
-    const query = supabaseNoCache
-      .from('certificates')
-      .select(`
+/**
+ * 証明書用のクライアント。
+ *
+ * 以前はここで別の Supabase クライアントを生成していたが、メインのクライアントとセッションの保存先が
+ * 異なるため常に未ログイン（anon）として動き、証明書の取得・発行が失敗していた。
+ * いまはメインの `supabase` クライアントを使い、発行（insert）はサーバー API に委ねる
+ * （受講者本人による certificates への直接 INSERT は RLS で禁止する方針のため）。
+ */
+const CERT_COLUMNS = `
         id,
         user_id,
         course_id,
@@ -37,7 +18,13 @@ export const certificatesClient = {
         pdf_url,
         is_active,
         created_at
-      `)
+      `;
+
+export const certificatesClient = {
+  select(userId: string, courseId?: number) {
+    const query = supabase
+      .from('certificates')
+      .select(CERT_COLUMNS)
       .eq('user_id', userId);
 
     if (courseId) {
@@ -47,38 +34,36 @@ export const certificatesClient = {
     return query;
   },
 
-  async insert(data: any) {
-    // certificate_numberなどの問題のあるフィールドを除外
-    const cleanData = {
-      id: data.id,
-      user_id: data.user_id,
-      course_id: data.course_id,
-      user_name: data.user_name,
-      course_title: data.course_title,
-      completion_date: data.completion_date,
-      pdf_url: data.pdf_url || null,
-      is_active: data.is_active !== undefined ? data.is_active : true,
-      created_at: data.created_at || new Date().toISOString()
-    };
-
-    return supabaseNoCache
+  /**
+   * サーバー API で発行し、発行後の行を返す。
+   * 戻り値の形（{ data, error }）は以前の insert と同じにして呼び出し側の変更を最小にしている。
+   */
+  async insert(data: { user_id: string; course_id: number }) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch('/api/certificates/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      },
+      body: JSON.stringify({ userId: data.user_id, courseId: data.course_id, access_token: session?.access_token }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.success) {
+      return { data: null, error: { message: json?.error || '証明書の発行に失敗しました', code: String(res.status) } };
+    }
+    const { data: rows, error } = await supabase
       .from('certificates')
-      .insert(cleanData)
-      .select(`
-        id,
-        user_id,
-        course_id,
-        user_name,
-        course_title,
-        completion_date,
-        pdf_url,
-        is_active,
-        created_at
-      `);
+      .select(CERT_COLUMNS)
+      .eq('user_id', data.user_id)
+      .eq('course_id', data.course_id)
+      .eq('is_active', true)
+      .limit(1);
+    return { data: rows, error };
   },
 
   async delete(certificateId: string) {
-    return supabaseNoCache
+    return supabase
       .from('certificates')
       .delete()
       .eq('id', certificateId);

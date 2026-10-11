@@ -391,7 +391,7 @@ export default function EditVideoPage() {
 
   if (loading) {
     return (
-      <AuthGuard requiredRole="admin">
+      <AuthGuard requiredRoles={['admin', 'instructor']}>
         <MainLayout>
           <div className="flex justify-center items-center min-h-64">
             <LoadingSpinner size="lg" />
@@ -403,7 +403,7 @@ export default function EditVideoPage() {
 
   if (!video) {
     return (
-      <AuthGuard requiredRole="admin">
+      <AuthGuard requiredRoles={['admin', 'instructor']}>
         <MainLayout>
           <div className="text-center py-12">
             <p className="text-gray-500">動画が見つかりません</p>
@@ -417,7 +417,7 @@ export default function EditVideoPage() {
   }
 
   return (
-    <AuthGuard requiredRole="admin">
+    <AuthGuard requiredRoles={['admin', 'instructor']}>
       <MainLayout>
         <div className="max-w-7xl mx-auto">
           {/* Header */}

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/database/supabase';
+import { createAdminSupabaseClient } from '@/lib/database/supabase';
 import { requireAdmin } from '@/lib/auth/requireAdmin';
 
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireAdmin(request);
     if (!auth.ok) return auth.response;
+    const supabase = createAdminSupabaseClient();
 
     // URLパラメータから user_id を取得
     const searchParams = request.nextUrl.searchParams;
@@ -44,6 +45,7 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await requireAdmin(request);
     if (!auth.ok) return auth.response;
+    const supabase = createAdminSupabaseClient();
 
     const body = await request.json();
     const { user_id, course_id } = body;
@@ -98,6 +100,7 @@ export async function DELETE(request: NextRequest) {
   try {
     const auth = await requireAdmin(request);
     if (!auth.ok) return auth.response;
+    const supabase = createAdminSupabaseClient();
 
     const searchParams = request.nextUrl.searchParams;
     const userId = searchParams.get('user_id');

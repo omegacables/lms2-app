@@ -54,7 +54,7 @@ export async function requireLaborConsultant(
   const adminClient = createAdminSupabaseClient();
   const { data: profile } = await adminClient
     .from('user_profiles')
-    .select('role')
+    .select('role, is_active')
     .eq('id', user.id)
     .single();
 
@@ -65,6 +65,13 @@ export async function requireLaborConsultant(
         { error: 'ユーザープロフィールが取得できませんでした' },
         { status: 403 }
       ),
+    };
+  }
+
+  if (profile.is_active === false) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: 'このアカウントは無効化されています' }, { status: 403 }),
     };
   }
 
