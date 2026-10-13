@@ -72,7 +72,8 @@ export async function middleware(req: NextRequest) {
   // ログインページと認証関連ページへのアクセスは常に許可
   if (req.nextUrl.pathname === '/auth/login' ||
       req.nextUrl.pathname === '/auth/signup' ||
-      req.nextUrl.pathname === '/auth/reset-password') {
+      req.nextUrl.pathname === '/auth/reset-password' ||
+      req.nextUrl.pathname === '/auth/update-password') {
     return res;
   }
 

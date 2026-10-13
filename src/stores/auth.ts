@@ -371,9 +371,12 @@ export const useAuthStore = create<AuthStore>()(
     // パスワードリセット
     resetPassword: async (email: string) => {
       try {
+        // メールのリンク先は「新しいパスワードを決める画面」。
+        // Supabase のテンプレートで token_hash 形式のリンク（/auth/update-password?token_hash=…&type=recovery）を
+        // 使っていない場合も、この redirectTo に戻って同じ画面で設定できる。
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: typeof window !== 'undefined' 
-            ? `${window.location.origin}/auth/reset-password`
+          redirectTo: typeof window !== 'undefined'
+            ? `${window.location.origin}/auth/update-password`
             : undefined,
         });
 
