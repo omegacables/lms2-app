@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/requireAdmin';
 import { createAdminSupabaseClient } from '@/lib/database/supabase';
-import { emailFromAddress, emailSendingConfigured, sendEmailsIndividually } from '@/lib/email/resend';
+import { emailCopyRecipients, emailFromAddress, emailSendingConfigured, sendEmailsIndividually } from '@/lib/email/resend';
 
 export const runtime = 'nodejs';
 
@@ -12,13 +12,14 @@ export const runtime = 'nodejs';
 //   本文の {氏名} {メールアドレス} は宛先ごとに置き換える。
 //   本文に「XXXXXX」（初回パスワードの書き換え忘れ）が残っていたら送らない。
 //   送った記録は system_logs（action = 'admin_email_sent'）に残す。
+//   EMAIL_COPY_TO があれば、宛先一覧と本文を載せた控えを管理者に1通送る。
 
 const MAX_RECIPIENTS = 500;
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, ['admin']);
   if (!auth.ok) return auth.response;
-  return NextResponse.json({ configured: emailSendingConfigured(), from: emailFromAddress() });
+  return NextResponse.json({ configured: emailSendingConfigured(), from: emailFromAddress(), copy_to: emailCopyRecipients() });
 }
 
 export async function POST(request: NextRequest) {
@@ -72,6 +73,43 @@ export async function POST(request: NextRequest) {
     `admin-email-${requestId}`
   );
 
+  // 管理者への控え（1人にでも送れたときだけ）
+  const copyTo = emailCopyRecipients();
+  let copy: { sent: number; failed: { to: string; error: string }[] } | null = null;
+  if (copyTo.length > 0 && result.sent.length > 0) {
+    const sentAt = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+    const byEmail = new Map(recipients.map((p) => [p.email, p]));
+    const line = (to: string) => `・${byEmail.get(to)?.display_name || '（名前なし）'} <${to}>`;
+    const copyText = [
+      'このメールは、管理画面から送信したメールの控えです（管理者用）。',
+      '',
+      `送信日時：${sentAt}`,
+      context ? `内容：${context}` : null,
+      `送信元：${emailFromAddress()}`,
+      '',
+      `送信した宛先（${result.sent.length}名・1人ずつ別々のメール）：`,
+      ...result.sent.map((s) => line(s.to)),
+      ...(result.failed.length > 0
+        ? ['', `送れなかった宛先（${result.failed.length}名）：`, ...result.failed.map((f) => `${line(f.to)}　${f.error}`)]
+        : []),
+      ...(missing > 0 ? ['', `メールアドレスが無いため送っていない：${missing}名`] : []),
+      '',
+      '――――――――――――――――――――',
+      '以下、送信した件名と本文です（{氏名}・{メールアドレス} は宛先ごとに置き換えて送っています）。',
+      '',
+      `件名：${subject}`,
+      '',
+      text,
+    ]
+      .filter((l): l is string => l !== null)
+      .join('\n');
+    const copyResult = await sendEmailsIndividually(
+      copyTo.map((to) => ({ to, subject: `【控え】${subject}`, text: copyText })),
+      `admin-email-copy-${requestId}`
+    );
+    copy = { sent: copyResult.sent.length, failed: copyResult.failed };
+  }
+
   const { error: logError } = await admin.from('system_logs').insert({
     user_id: auth.user.id,
     action: 'admin_email_sent',
@@ -86,9 +124,10 @@ export async function POST(request: NextRequest) {
       recipients: recipients.map((p) => ({ id: p.id, email: p.email })),
       missing_email: missing,
       body_length: text.length,
+      copy,
     },
   });
   if (logError) console.error('[admin email] system_logs への記録に失敗:', logError);
 
-  return NextResponse.json({ sent: result.sent.length, failed: result.failed, missing_email: missing });
+  return NextResponse.json({ sent: result.sent.length, failed: result.failed, missing_email: missing, copy });
 }

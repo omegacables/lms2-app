@@ -38,10 +38,15 @@ export function EmailSendConfirmModal({ recipients, subject, body, context, onCl
     () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`),
     []
   );
-  const [config, setConfig] = useState<{ configured: boolean; from: string } | null>(null);
+  const [config, setConfig] = useState<{ configured: boolean; from: string; copy_to?: string[] } | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ sent: number; failed: { to: string; error: string }[]; missing_email: number } | null>(null);
+  const [result, setResult] = useState<{
+    sent: number;
+    failed: { to: string; error: string }[];
+    missing_email: number;
+    copy?: { sent: number; failed: { to: string; error: string }[] } | null;
+  } | null>(null);
 
   const withEmail = recipients.filter((r) => r.email);
   const withoutEmail = recipients.length - withEmail.length;
@@ -134,6 +139,13 @@ export function EmailSendConfirmModal({ recipients, subject, body, context, onCl
               {result.missing_email > 0 && (
                 <p className="text-xs text-gray-500">メールアドレスが無い{result.missing_email}名には送っていません。</p>
               )}
+              {result.copy && (
+                <p className={`text-xs ${result.copy.failed.length > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                  {result.copy.failed.length > 0
+                    ? `管理者への控えを送れませんでした（${result.copy.failed.map((f) => f.error).join('、')}）。`
+                    : '管理者への控えも送りました。'}
+                </p>
+              )}
             </>
           ) : (
             <>
@@ -155,6 +167,12 @@ export function EmailSendConfirmModal({ recipients, subject, body, context, onCl
                   <dt className="text-xs font-medium text-gray-500 dark:text-gray-400">送信元</dt>
                   <dd className="text-gray-900 dark:text-gray-100">{config?.from || '…'}</dd>
                 </div>
+                {config?.copy_to && config.copy_to.length > 0 && (
+                  <div>
+                    <dt className="text-xs font-medium text-gray-500 dark:text-gray-400">管理者への控え（宛先一覧と本文を1通）</dt>
+                    <dd className="break-all text-gray-900 dark:text-gray-100">{config.copy_to.join('、')}</dd>
+                  </div>
+                )}
                 <div>
                   <dt className="text-xs font-medium text-gray-500 dark:text-gray-400">
                     宛先（{withEmail.length}名・1人ずつ別々のメールで送ります）

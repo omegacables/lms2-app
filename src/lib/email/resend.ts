@@ -4,6 +4,7 @@
 //   RESEND_API_KEY  … Resend の API キー（Sending access）。無ければ送信しない
 //   EMAIL_FROM      … 送信元（既定 "eラーニングシステム <noreply@stus-lms.com>"。Resend で認証したドメインのアドレス）
 //   EMAIL_REPLY_TO  … 返信先（任意）
+//   EMAIL_COPY_TO   … 管理者への控えの送り先（任意・カンマ区切りで複数可）。公開リポジトリなのでアドレスはコードに書かない
 //
 // 1宛先1通で送る（ほかの受信者のアドレスが見えないように）。バッチ API は1回100通まで。
 
@@ -27,6 +28,14 @@ export function emailSendingConfigured(): boolean {
 
 export function emailFromAddress(): string {
   return process.env.EMAIL_FROM || 'eラーニングシステム <noreply@stus-lms.com>';
+}
+
+/** 管理者への控えの送り先（EMAIL_COPY_TO）。無ければ空 */
+export function emailCopyRecipients(): string[] {
+  return (process.env.EMAIL_COPY_TO || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s));
 }
 
 /**
