@@ -2,7 +2,7 @@
 //
 // 環境変数（Vercel に登録）:
 //   RESEND_API_KEY  … Resend の API キー（Sending access）。無ければ送信しない
-//   EMAIL_FROM      … 送信元（既定 "Minova <noreply@stus-lms.com>"。Resend で認証したドメインのアドレス）
+//   EMAIL_FROM      … 送信元（既定 "eラーニングシステム <noreply@stus-lms.com>"。Resend で認証したドメインのアドレス）
 //   EMAIL_REPLY_TO  … 返信先（任意）
 //
 // 1宛先1通で送る（ほかの受信者のアドレスが見えないように）。バッチ API は1回100通まで。
@@ -26,7 +26,7 @@ export function emailSendingConfigured(): boolean {
 }
 
 export function emailFromAddress(): string {
-  return process.env.EMAIL_FROM || 'Minova <noreply@stus-lms.com>';
+  return process.env.EMAIL_FROM || 'eラーニングシステム <noreply@stus-lms.com>';
 }
 
 /**
