@@ -574,7 +574,9 @@ export default function SupportMessages() {
               PC(lg以上): 従来どおり左リスト+右チャットの2ペイン */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100dvh-240px)] min-h-[400px] lg:h-[600px] mb-6">
             {/* 会話一覧（モバイルでは会話選択中は非表示） */}
-            <div className={`${selectedConversation ? 'hidden lg:flex' : 'flex'} lg:col-span-1 bg-white dark:bg-neutral-900 rounded-lg border flex-col`}>
+            {/* min-h-0 + overflow-hidden: グリッドの高さの中に収め、中の一覧だけをスクロールさせる
+                （無いとメッセージの量だけ伸びて枠からはみ出し、下の「サポート機能について」に重なる） */}
+            <div className={`${selectedConversation ? 'hidden lg:flex' : 'flex'} lg:col-span-1 min-h-0 overflow-hidden bg-white dark:bg-neutral-900 rounded-lg border flex-col`}>
               <div className="p-4 border-b border-gray-200 dark:border-neutral-800">
                 <h2 className="font-semibold text-gray-900 dark:text-white">問い合わせ履歴</h2>
               </div>
@@ -636,7 +638,7 @@ export default function SupportMessages() {
             </div>
 
             {/* チャット画面（モバイルでは未選択時は非表示） */}
-            <div className={`${selectedConversation ? 'flex' : 'hidden lg:flex'} lg:col-span-2 bg-white dark:bg-neutral-900 rounded-lg border flex-col`}>
+            <div className={`${selectedConversation ? 'flex' : 'hidden lg:flex'} lg:col-span-2 min-h-0 overflow-hidden bg-white dark:bg-neutral-900 rounded-lg border flex-col`}>
               {selectedConversation ? (
                 <>
                   {/* チャットヘッダー */}

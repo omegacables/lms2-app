@@ -88,6 +88,8 @@ export default function VideoPlayerPage() {
   //    beacon 送信）が再生中に何度も実行され、/api/videos/save-progress への大量リクエストが
   //    発生する（2026-07 のVercel課金急増の原因）。
   const viewLogRef = useRef<VideoViewLog | null>(null);
+  // 再生開始時の視聴ログ作成中（二重作成を防ぐ）
+  const creatingLogRef = useRef<Promise<void> | null>(null);
   const hasCompletedBeforeRef = useRef(false);
   const saveProgressImmediatelyRef = useRef<() => void>(() => {});
 
@@ -471,15 +473,15 @@ export default function VideoPlayerPage() {
         console.log('[続きから再生] 最新のログなし、新規作成します');
       }
 
-      // 新しい視聴セッション（新しいログ）を開始
-      // ⭐ 100%完了済みの動画、または既存のログがある場合は新しいログを作成しない
-      if (!isCompleted && (!latestLogs || latestLogs.length === 0)) {
-        await startViewingSession(videoData);
-        console.log('[視聴セッション] 新しいログを作成しました');
-      } else if (isCompleted) {
+      // 視聴ログは「再生を始めたとき」に作る（handlePlayStart）。
+      // ページを開いただけ（小テスト未完了などでロック中＝再生できない場合を含む）ではログを作らない。
+      // 以前はここで作っていたため、ロック中の動画でも学習ログに載り「受講中」「学習を再開」になっていた。
+      if (isCompleted) {
         console.log('[視聴セッション] 完了済みのため、ログを作成しません');
-      } else {
+      } else if (latestLogs && latestLogs.length > 0) {
         console.log('[視聴セッション] 既存のログを使用します');
+      } else {
+        console.log('[視聴セッション] 再生開始時にログを作成します');
       }
 
       // リソースを取得
@@ -562,6 +564,7 @@ export default function VideoPlayerPage() {
         });
         alert(`視聴ログの作成に失敗しました。\nエラー: ${error.message}\nコード: ${error.code}\n\n管理者に連絡してください。`);
       } else if (data) {
+        viewLogRef.current = data; // 続けて再生ボタンが押されても二重に作らないよう、state の反映を待たずに持つ
         setViewLog(data);
         console.log('[セッション開始] 成功 - ログID:', data.id, 'ユーザーID:', user.id);
       } else {
@@ -838,8 +841,25 @@ export default function VideoPlayerPage() {
       return;
     }
 
-    if (!user || !video || !viewLog) {
-      console.log('[再生開始] スキップ:', { user: !!user, video: !!video, viewLog: !!viewLog });
+    // ロック中（小テスト未完了など）は再生できないのでログを作らない
+    if (gateLock || !user || !video) {
+      console.log('[再生開始] スキップ:', { gateLock: !!gateLock, user: !!user, video: !!video });
+      return;
+    }
+
+    // まだ視聴ログが無ければ、再生を始めたこのときに作る（開始時刻＝再生開始時刻）
+    if (!viewLogRef.current) {
+      if (!creatingLogRef.current) {
+        creatingLogRef.current = startViewingSession(video).finally(() => {
+          creatingLogRef.current = null;
+        });
+      }
+      await creatingLogRef.current;
+      return;
+    }
+
+    if (!viewLog) {
+      console.log('[再生開始] スキップ: ログの反映待ち');
       return;
     }
 

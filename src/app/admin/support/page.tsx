@@ -542,7 +542,8 @@ export default function AdminSupportChat() {
               PC(lg以上): 従来どおり左リスト+右チャットの2ペイン */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100dvh-240px)] min-h-[400px] lg:h-[600px]">
             {/* 会話一覧（モバイルでは会話選択中は非表示） */}
-            <div className={`${selectedConversation ? 'hidden lg:flex' : 'flex'} lg:col-span-1 bg-white dark:bg-neutral-900 dark:bg-neutral-900 rounded-lg border flex-col`}>
+            {/* min-h-0 + overflow-hidden: グリッドの高さの中に収め、中の一覧だけをスクロールさせる */}
+            <div className={`${selectedConversation ? 'hidden lg:flex' : 'flex'} lg:col-span-1 min-h-0 overflow-hidden bg-white dark:bg-neutral-900 rounded-lg border flex-col`}>
               <div className="p-4 border-b border-gray-200 dark:border-neutral-800">
                 <div className="mb-4">
                   <div className="relative">
@@ -635,7 +636,7 @@ export default function AdminSupportChat() {
             </div>
 
             {/* チャット画面（モバイルでは未選択時は非表示） */}
-            <div className={`${selectedConversation ? 'flex' : 'hidden lg:flex'} lg:col-span-2 bg-white dark:bg-neutral-900 rounded-lg border flex-col`}>
+            <div className={`${selectedConversation ? 'flex' : 'hidden lg:flex'} lg:col-span-2 min-h-0 overflow-hidden bg-white dark:bg-neutral-900 rounded-lg border flex-col`}>
               {selectedConversation ? (
                 <>
                   {/* チャットヘッダー */}
