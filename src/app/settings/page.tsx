@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/Input';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { supabase } from '@/lib/database/supabase';
 import { AvatarCropperModal } from '@/components/settings/AvatarCropperModal';
+import { PasswordChangeForm } from '@/components/settings/PasswordChangeForm';
 import {
   UserCircleIcon,
   KeyIcon,
@@ -41,12 +42,6 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('profile');
-  const [passwordForm, setPasswordForm] = useState({
-    current: '',
-    new: '',
-    confirm: ''
-  });
-  const [changingPassword, setChangingPassword] = useState(false);
 
   // アバタークロップ用
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
@@ -110,48 +105,6 @@ export default function SettingsPage() {
       alert('保存に失敗しました。時間をおいて再度お試しください。');
     } finally {
       setSaving(false);
-    }
-  };
-
-  const changePassword = async () => {
-    if (!passwordForm.current || !passwordForm.new || !passwordForm.confirm) {
-      alert('すべてのフィールドを入力してください');
-      return;
-    }
-    if (passwordForm.new !== passwordForm.confirm) {
-      alert('新しいパスワードが一致しません');
-      return;
-    }
-    if (passwordForm.new.length < 6) {
-      alert('パスワードは6文字以上で設定してください');
-      return;
-    }
-    if (!user?.email) return;
-
-    setChangingPassword(true);
-    try {
-      // 現在のパスワードを実際に検証する（誤入力のまま変更してしまう事故を防ぐ）
-      const { error: verifyError } = await supabase.auth.signInWithPassword({
-        email: user.email,
-        password: passwordForm.current
-      });
-      if (verifyError) {
-        alert('現在のパスワードが正しくありません');
-        return;
-      }
-
-      const { error } = await supabase.auth.updateUser({
-        password: passwordForm.new
-      });
-      if (error) throw error;
-
-      setPasswordForm({ current: '', new: '', confirm: '' });
-      alert('パスワードが変更されました');
-    } catch (error) {
-      console.error('パスワード変更エラー:', error);
-      alert('パスワードの変更に失敗しました');
-    } finally {
-      setChangingPassword(false);
     }
   };
 
@@ -394,41 +347,7 @@ export default function SettingsPage() {
                     <h2 className="text-xl font-semibold text-gray-900 dark:text-white">セキュリティ設定</h2>
 
                     {/* Password Change */}
-                    <div className="bg-gray-50 dark:bg-black rounded-lg p-6">
-                      <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">パスワード変更</h3>
-                      <div className="space-y-4">
-                        <Input
-                          label="現在のパスワード"
-                          type="password"
-                          value={passwordForm.current}
-                          onChange={(e) => setPasswordForm({ ...passwordForm, current: e.target.value })}
-                          autoComplete="current-password"
-                        />
-                        <Input
-                          label="新しいパスワード"
-                          type="password"
-                          value={passwordForm.new}
-                          onChange={(e) => setPasswordForm({ ...passwordForm, new: e.target.value })}
-                          helperText="6文字以上で入力してください"
-                          autoComplete="new-password"
-                        />
-                        <Input
-                          label="新しいパスワード（確認）"
-                          type="password"
-                          value={passwordForm.confirm}
-                          onChange={(e) => setPasswordForm({ ...passwordForm, confirm: e.target.value })}
-                          autoComplete="new-password"
-                        />
-                        <Button
-                          onClick={changePassword}
-                          variant="outline"
-                          className="w-full sm:w-auto"
-                          loading={changingPassword}
-                        >
-                          {changingPassword ? '変更中...' : 'パスワードを変更'}
-                        </Button>
-                      </div>
-                    </div>
+                    <PasswordChangeForm email={user?.email || ''} />
                   </div>
                 )}
               </div>

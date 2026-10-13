@@ -392,49 +392,42 @@ export default function CourseDetailPage() {
                 </p>
               )}
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6">
+              {/* コースの概要（中身の幅に合わせた小さなタグ。収まらなければ折り返す） */}
+              <div className="flex flex-wrap gap-2 mb-5">
                 {course.difficulty_level && (
-                  <div className="bg-background rounded-lg p-4 border border-border">
-                    <div className="flex items-center gap-2 mb-2">
-                      <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                      <span className="text-sm font-medium text-muted-foreground">難易度</span>
-                    </div>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${difficultyBadgeClass(course.difficulty_level)}`}>
+                  <div className="inline-flex items-center gap-2 whitespace-nowrap bg-background rounded-lg px-3 py-1.5 border border-border">
+                    <svg className="w-4 h-4 flex-shrink-0 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    <span className="text-xs text-muted-foreground">難易度</span>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${difficultyBadgeClass(course.difficulty_level)}`}>
                       {difficultyLabel(course.difficulty_level)}
                     </span>
                   </div>
                 )}
-                
-                <div className="bg-background rounded-lg p-4 border border-border">
-                  <div className="flex items-center gap-2 mb-2">
-                    <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                    <span className="text-sm font-medium text-muted-foreground">動画数</span>
-                  </div>
-                  <span className="text-lg font-bold">{totalVideoCount}本</span>
-                </div>
-                
-                <div className="bg-background rounded-lg p-4 border border-border">
-                  <div className="flex items-center gap-2 mb-2">
-                    <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                    <span className="text-sm font-medium text-muted-foreground">進捗</span>
-                  </div>
-                  <span className="text-lg font-bold">{calculateCourseProgress()}%</span>
+
+                <div className="inline-flex items-center gap-2 whitespace-nowrap bg-background rounded-lg px-3 py-1.5 border border-border">
+                  <svg className="w-4 h-4 flex-shrink-0 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  <span className="text-xs text-muted-foreground">動画数</span>
+                  <span className="text-sm font-bold tabular-nums">{totalVideoCount}本</span>
                 </div>
 
-                <div className="bg-background rounded-lg p-4 border border-border">
-                  <div className="flex items-center gap-2 mb-2">
-                    <svg className="w-5 h-5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="text-sm font-medium text-muted-foreground">総時間</span>
-                  </div>
-                  <span className="text-lg font-bold">
+                <div className="inline-flex items-center gap-2 whitespace-nowrap bg-background rounded-lg px-3 py-1.5 border border-border">
+                  <svg className="w-4 h-4 flex-shrink-0 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  <span className="text-xs text-muted-foreground">進捗</span>
+                  <span className="text-sm font-bold tabular-nums">{calculateCourseProgress()}%</span>
+                </div>
+
+                <div className="inline-flex items-center gap-2 whitespace-nowrap bg-background rounded-lg px-3 py-1.5 border border-border">
+                  <svg className="w-4 h-4 flex-shrink-0 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="text-xs text-muted-foreground">総時間</span>
+                  <span className="text-sm font-bold tabular-nums">
                     {formatDuration(course.estimated_duration || videos.reduce((sum, v) => sum + (v.duration || 0), 0))}
                   </span>
                 </div>

@@ -339,23 +339,21 @@ export default function MyCoursesPage() {
             </p>
           </div>
 
-          {/* Stats Cards（モバイルは2×2のコンパクト表示、コース一覧までのスクロールを短く） */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-6 mb-4 sm:mb-8">
+          {/* Stats Cards（コンパクト表示。コース一覧までのスクロールを短く） */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 mb-4 sm:mb-6">
             {[
-              { icon: BookOpenIcon, iconBg: 'bg-blue-100', iconColor: 'text-blue-600', value: stats.totalCourses, label: '受講コース' },
-              { icon: CheckCircleIcon, iconBg: 'bg-green-100', iconColor: 'text-green-600', value: stats.completedCourses, label: '完了済み' },
-              { icon: PlayIcon, iconBg: 'bg-yellow-100', iconColor: 'text-yellow-600', value: stats.inProgressCourses, label: '学習中' },
-              { icon: ClockIcon, iconBg: 'bg-purple-100', iconColor: 'text-purple-600', value: formatDuration(stats.totalWatchTime), label: '総学習時間' },
+              { icon: BookOpenIcon, iconBg: 'bg-blue-100 dark:bg-blue-900/30', iconColor: 'text-blue-600 dark:text-blue-400', value: stats.totalCourses, label: '受講コース' },
+              { icon: CheckCircleIcon, iconBg: 'bg-green-100 dark:bg-green-900/30', iconColor: 'text-green-600 dark:text-green-400', value: stats.completedCourses, label: '完了済み' },
+              { icon: PlayIcon, iconBg: 'bg-yellow-100 dark:bg-yellow-900/30', iconColor: 'text-yellow-600 dark:text-yellow-400', value: stats.inProgressCourses, label: '学習中' },
+              { icon: ClockIcon, iconBg: 'bg-purple-100 dark:bg-purple-900/30', iconColor: 'text-purple-600 dark:text-purple-400', value: formatDuration(stats.totalWatchTime), label: '総学習時間' },
             ].map(({ icon: Icon, iconBg, iconColor, value, label }) => (
-              <div key={label} className="bg-white dark:bg-neutral-900 rounded-lg sm:rounded-xl px-3 py-2.5 sm:p-6 border border-gray-200 dark:border-neutral-800">
-                <div className="flex items-center">
-                  <div className={`p-1.5 sm:p-2 ${iconBg} rounded-lg shrink-0`}>
-                    <Icon className={`h-4 w-4 sm:h-6 sm:w-6 ${iconColor}`} />
-                  </div>
-                  <div className="ml-2.5 sm:ml-4 min-w-0">
-                    <p className="text-base sm:text-2xl font-bold text-gray-900 dark:text-white truncate">{value}</p>
-                    <p className="text-[11px] sm:text-sm text-gray-600 dark:text-gray-400 truncate">{label}</p>
-                  </div>
+              <div key={label} className="flex items-center gap-2.5 bg-white dark:bg-neutral-900 rounded-lg px-3 py-2 border border-gray-200 dark:border-neutral-800">
+                <div className={`p-1.5 ${iconBg} rounded-md shrink-0`}>
+                  <Icon className={`h-4 w-4 ${iconColor}`} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-base font-bold leading-tight text-gray-900 dark:text-white truncate">{value}</p>
+                  <p className="text-[11px] sm:text-xs text-gray-600 dark:text-gray-400 truncate">{label}</p>
                 </div>
               </div>
             ))}
