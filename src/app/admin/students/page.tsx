@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { supabase } from '@/lib/database/supabase';
+import { EmailSendConfirmModal } from '@/components/admin/EmailSendConfirmModal';
 import {
   MagnifyingGlassIcon,
   FunnelIcon,
@@ -104,11 +105,15 @@ export default function StudentsManagePage() {
   const [emailBodyEdited, setEmailBodyEdited] = useState(false);
   const [emailLoginUrl, setEmailLoginUrl] = useState<string>('https://www.stus-lms.com/');
   const [emailSenderCompany, setEmailSenderCompany] = useState<string>('株式会社○○');
+  // 送信前の再確認モーダル
+  const [emailConfirmOpen, setEmailConfirmOpen] = useState(false);
 
   useEffect(() => {
     fetchStudents();
     fetchCourses();
     fetchCompanyConsultantMap();
+    // ログインURLの初期値は今開いているサイト（stus-lms / axialms / 人への投資）のログイン画面
+    setEmailLoginUrl(`${window.location.origin}/auth/login`);
   }, []);
 
   // 初期表示時に全ての会社を展開
@@ -794,29 +799,23 @@ ${accounts}
     setEmailBodyEdited(false);
   };
 
-  const openMailerForLoginEmail = () => {
+  // システムから送信（Resend）。送る前に再確認モーダルを出す
+  const openSendConfirmForLoginEmail = () => {
     if (!emailModalCompany) return;
     const members = getEmailTargetStudents(emailModalCompany);
     if (members.length === 0) {
       alert('対象の生徒がいません');
       return;
     }
-    const to = members.map(s => s.email).filter(Boolean).join(',');
-    const url =
-      `mailto:${encodeURIComponent(to)}` +
-      `?subject=${encodeURIComponent(emailSubject)}` +
-      `&body=${encodeURIComponent(emailBody)}`;
-
-    // mailto は URL 長制限（Outlookで約2000バイト等）があるため、長すぎる場合は警告
-    if (url.length > 2000) {
-      const ok = confirm(
-        'メール本文が長いため、メーラーによっては末尾が切れる可能性があります。\n' +
-        'その場合は「本文をコピー」してメーラーに貼り付けてください。\n\n' +
-        'このままメーラーを開きますか？'
-      );
-      if (!ok) return;
+    if (!emailSubject.trim() || !emailBody.trim()) {
+      alert('件名と本文を入力してください');
+      return;
     }
-    window.location.href = url;
+    if (emailBody.includes('XXXXXX')) {
+      alert('本文に「XXXXXX」が残っています。初回パスワードに書き換えてから送信してください。');
+      return;
+    }
+    setEmailConfirmOpen(true);
   };
 
   const copyLoginEmailBody = async () => {
@@ -2256,7 +2255,8 @@ ${accounts}
                     className="w-full px-3 py-2 text-sm font-mono border border-gray-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-gray-900 dark:text-white whitespace-pre"
                   />
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    ※ パスワード欄は「XXXXXX」のままです。送信前にメーラー上で書き換えてください。
+                    ※ パスワード欄の「XXXXXX」を書き換えないと送信できません。
+                    本文や件名に {'{氏名}'}・{'{メールアドレス}'} と書くと、宛先ごとにその人の名前・アドレスに置き換わります。
                   </p>
                 </div>
               </div>
@@ -2276,17 +2276,35 @@ ${accounts}
                     閉じる
                   </Button>
                   <Button
-                    onClick={openMailerForLoginEmail}
+                    onClick={openSendConfirmForLoginEmail}
                     disabled={getEmailTargetStudents(emailModalCompany).length === 0}
                     className="bg-indigo-600 hover:bg-indigo-700 text-white"
                   >
                     <EnvelopeIcon className="h-4 w-4 mr-1" />
-                    メーラーを開く
+                    送信する
                   </Button>
                 </div>
               </div>
             </div>
           </div>
+        )}
+
+        {/* 送信前の再確認 */}
+        {emailModalCompany && emailConfirmOpen && (
+          <EmailSendConfirmModal
+            recipients={getEmailTargetStudents(emailModalCompany).map((s) => ({
+              id: s.id,
+              display_name: s.display_name,
+              email: s.email,
+            }))}
+            subject={emailSubject}
+            body={emailBody}
+            context={`ログイン情報メール：${emailModalCompany}`}
+            onClose={(sent) => {
+              setEmailConfirmOpen(false);
+              if (sent) closeLoginEmailModal();
+            }}
+          />
         )}
       </MainLayout>
     </AuthGuard>

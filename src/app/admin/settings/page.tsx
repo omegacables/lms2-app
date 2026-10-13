@@ -8,13 +8,12 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { supabase } from '@/lib/database/supabase';
+import { PasswordChangeForm } from '@/components/settings/PasswordChangeForm';
 import {
   Cog6ToothIcon,
   ServerIcon,
-  EnvelopeIcon,
   ShieldCheckIcon,
   DocumentTextIcon,
-  CloudArrowUpIcon,
   BellIcon,
   ChartBarIcon,
   UserGroupIcon,
@@ -40,30 +39,6 @@ interface SystemSettings {
     timezone: string;
     maintenance_mode: boolean;
   };
-  email: {
-    smtp_host: string;
-    smtp_port: number;
-    smtp_username: string;
-    smtp_password: string;
-    from_email: string;
-    from_name: string;
-    enable_notifications: boolean;
-  };
-  security: {
-    password_min_length: number;
-    password_require_uppercase: boolean;
-    password_require_lowercase: boolean;
-    password_require_numbers: boolean;
-    password_require_symbols: boolean;
-    session_timeout_hours: number;
-    max_login_attempts: number;
-    enable_two_factor: boolean;
-  };
-  storage: {
-    allowed_video_formats: string[];
-    allowed_image_formats: string[];
-    cleanup_temp_files_days: number;
-  };
   learning: {
     default_completion_threshold: number;
     auto_certificate_generation: boolean;
@@ -84,8 +59,6 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('general');
-  const [testEmailSending, setTestEmailSending] = useState(false);
-  const [initializingStorage, setInitializingStorage] = useState(false);
   const [fixingRoles, setFixingRoles] = useState(false);
   const [uploadingStamp, setUploadingStamp] = useState(false);
 
@@ -115,30 +88,6 @@ export default function AdminSettingsPage() {
           default_language: 'ja',
           timezone: 'Asia/Tokyo',
           maintenance_mode: false
-        },
-        email: {
-          smtp_host: 'smtp.gmail.com',
-          smtp_port: 587,
-          smtp_username: '',
-          smtp_password: '',
-          from_email: 'noreply@skillup-lms.com',
-          from_name: 'SKILLUP LMS',
-          enable_notifications: true
-        },
-        security: {
-          password_min_length: 8,
-          password_require_uppercase: true,
-          password_require_lowercase: true,
-          password_require_numbers: true,
-          password_require_symbols: false,
-          session_timeout_hours: 24,
-          max_login_attempts: 5,
-          enable_two_factor: false
-        },
-        storage: {
-          allowed_video_formats: ['mp4', 'webm', 'avi'],
-          allowed_image_formats: ['jpg', 'jpeg', 'png', 'gif'],
-          cleanup_temp_files_days: 7
         },
         learning: {
           default_completion_threshold: 80,
@@ -243,58 +192,6 @@ export default function AdminSettingsPage() {
     }
   };
 
-  const testEmailConnection = async () => {
-    if (!settings) return;
-
-    setTestEmailSending(true);
-    try {
-      // Mock test email
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      alert('テストメールを送信しました。受信を確認してください。');
-    } catch (error) {
-      console.error('テストメール送信エラー:', error);
-      alert('テストメールの送信に失敗しました');
-    } finally {
-      setTestEmailSending(false);
-    }
-  };
-
-  const initializeStorage = async () => {
-    setInitializingStorage(true);
-    
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      const response = await fetch('/api/admin/init-storage', {
-        method: 'POST',
-        headers: {
-          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
-        },
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'ストレージの初期化に失敗しました');
-      }
-
-      console.log('Storage initialization results:', result);
-      
-      // 結果を表示
-      const messages = result.results.map((r: any) => 
-        `${r.bucket}: ${r.message}`
-      ).join('\n');
-      
-      alert(`ストレージ初期化結果:\n${messages}`);
-    } catch (error) {
-      console.error('Storage initialization error:', error);
-      alert(`ストレージの初期化に失敗しました: ${error instanceof Error ? error.message : 'エラーが発生しました'}`);
-    } finally {
-      setInitializingStorage(false);
-    }
-  };
-
   const fixUserRoles = async () => {
     setFixingRoles(true);
     
@@ -344,9 +241,7 @@ export default function AdminSettingsPage() {
 
   const tabs = [
     { id: 'general', name: '一般設定', icon: Cog6ToothIcon },
-    { id: 'email', name: 'メール設定', icon: EnvelopeIcon },
     { id: 'security', name: 'セキュリティ', icon: ShieldCheckIcon },
-    { id: 'storage', name: 'ストレージ', icon: CloudArrowUpIcon },
     { id: 'learning', name: '学習設定', icon: AcademicCapIcon },
     { id: 'certificate', name: '証明書署名', icon: DocumentDuplicateIcon }
   ];
@@ -487,266 +382,11 @@ export default function AdminSettingsPage() {
                   </div>
                 )}
 
-                {/* Email Settings */}
-                {activeTab === 'email' && settings && (
+                {/* Security Settings（自分のパスワード変更。受講者の「設定 → セキュリティ」と同じ） */}
+                {activeTab === 'security' && (
                   <div className="space-y-6">
-                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white">メール設定</h2>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <Input
-                        label="SMTPホスト"
-                        value={settings.email.smtp_host}
-                        onChange={(e) => updateSetting('email', 'smtp_host', e.target.value)}
-                        placeholder="smtp.gmail.com"
-                      />
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          SMTPポート
-                        </label>
-                        <input
-                          type="number"
-                          className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
-                          value={settings.email.smtp_port}
-                          onChange={(e) => updateSetting('email', 'smtp_port', parseInt(e.target.value))}
-                        />
-                      </div>
-
-                      <Input
-                        label="SMTPユーザー名"
-                        value={settings.email.smtp_username}
-                        onChange={(e) => updateSetting('email', 'smtp_username', e.target.value)}
-                      />
-                      
-                      <Input
-                        label="SMTPパスワード"
-                        type="password"
-                        value={settings.email.smtp_password}
-                        onChange={(e) => updateSetting('email', 'smtp_password', e.target.value)}
-                      />
-
-                      <Input
-                        label="送信者メール"
-                        type="email"
-                        value={settings.email.from_email}
-                        onChange={(e) => updateSetting('email', 'from_email', e.target.value)}
-                      />
-                      
-                      <Input
-                        label="送信者名"
-                        value={settings.email.from_name}
-                        onChange={(e) => updateSetting('email', 'from_name', e.target.value)}
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <input
-                          id="enable_notifications"
-                          type="checkbox"
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded"
-                          checked={settings.email.enable_notifications}
-                          onChange={(e) => updateSetting('email', 'enable_notifications', e.target.checked)}
-                        />
-                        <label htmlFor="enable_notifications" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
-                          メール通知を有効にする
-                        </label>
-                      </div>
-                      <Button
-                        variant="outline"
-                        onClick={testEmailConnection}
-                        loading={testEmailSending}
-                        disabled={!settings.email.smtp_host || !settings.email.from_email}
-                      >
-                        接続テスト
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Security Settings */}
-                {activeTab === 'security' && settings && (
-                  <div className="space-y-6">
-                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white">セキュリティ設定</h2>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          パスワード最小文字数
-                        </label>
-                        <input
-                          type="number"
-                          min="6"
-                          max="20"
-                          className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
-                          value={settings.security.password_min_length}
-                          onChange={(e) => updateSetting('security', 'password_min_length', parseInt(e.target.value))}
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          セッションタイムアウト (時間)
-                        </label>
-                        <input
-                          type="number"
-                          min="1"
-                          max="72"
-                          className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
-                          value={settings.security.session_timeout_hours}
-                          onChange={(e) => updateSetting('security', 'session_timeout_hours', parseInt(e.target.value))}
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          最大ログイン試行回数
-                        </label>
-                        <input
-                          type="number"
-                          min="3"
-                          max="10"
-                          className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
-                          value={settings.security.max_login_attempts}
-                          onChange={(e) => updateSetting('security', 'max_login_attempts', parseInt(e.target.value))}
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">パスワード要件</h3>
-                      <div className="space-y-2">
-                        {[
-                          { key: 'password_require_uppercase', label: '大文字を含む' },
-                          { key: 'password_require_lowercase', label: '小文字を含む' },
-                          { key: 'password_require_numbers', label: '数字を含む' },
-                          { key: 'password_require_symbols', label: '記号を含む' },
-                          { key: 'enable_two_factor', label: '二要素認証を有効にする' }
-                        ].map(({ key, label }) => (
-                          <div key={key} className="flex items-center">
-                            <input
-                              id={key}
-                              type="checkbox"
-                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded"
-                              checked={settings.security[key as keyof typeof settings.security] as boolean}
-                              onChange={(e) => updateSetting('security', key, e.target.checked)}
-                            />
-                            <label htmlFor={key} className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
-                              {label}
-                            </label>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Storage Settings */}
-                {activeTab === 'storage' && settings && (
-                  <div className="space-y-6">
-                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white">ストレージ設定</h2>
-                    
-                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-lg p-4 mb-6">
-                      <div className="flex">
-                        <InformationCircleIcon className="h-5 w-5 text-blue-400 mt-0.5" />
-                        <div className="ml-3 flex-1">
-                          <h3 className="text-sm font-medium text-blue-800">
-                            ストレージバケット初期化
-                          </h3>
-                          <p className="mt-1 text-sm text-blue-700">
-                            画像や動画のアップロードでエラーが発生する場合は、ストレージバケットを初期化してください。
-                          </p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="mt-3"
-                            onClick={initializeStorage}
-                            loading={initializingStorage}
-                          >
-                            <CloudArrowUpIcon className="h-4 w-4 mr-2" />
-                            ストレージを初期化
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          一時ファイル保持期間 (日)
-                        </label>
-                        <input
-                          type="number"
-                          min="1"
-                          max="30"
-                          className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
-                          value={settings.storage.cleanup_temp_files_days}
-                          onChange={(e) => updateSetting('storage', 'cleanup_temp_files_days', parseInt(e.target.value))}
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        許可する動画形式
-                      </label>
-                      <div className="flex flex-wrap gap-2">
-                        {['mp4', 'webm', 'avi', 'mov', 'wmv'].map((format) => (
-                          <div key={format} className="flex items-center">
-                            <input
-                              id={`video_${format}`}
-                              type="checkbox"
-                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded"
-                              checked={settings.storage.allowed_video_formats.includes(format)}
-                              onChange={(e) => {
-                                const formats = [...settings.storage.allowed_video_formats];
-                                if (e.target.checked) {
-                                  formats.push(format);
-                                } else {
-                                  const index = formats.indexOf(format);
-                                  if (index > -1) formats.splice(index, 1);
-                                }
-                                updateSetting('storage', 'allowed_video_formats', formats);
-                              }}
-                            />
-                            <label htmlFor={`video_${format}`} className="ml-2 block text-sm text-gray-700 dark:text-gray-300 uppercase">
-                              {format}
-                            </label>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        許可する画像形式
-                      </label>
-                      <div className="flex flex-wrap gap-2">
-                        {['jpg', 'jpeg', 'png', 'gif', 'webp'].map((format) => (
-                          <div key={format} className="flex items-center">
-                            <input
-                              id={`image_${format}`}
-                              type="checkbox"
-                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded"
-                              checked={settings.storage.allowed_image_formats.includes(format)}
-                              onChange={(e) => {
-                                const formats = [...settings.storage.allowed_image_formats];
-                                if (e.target.checked) {
-                                  formats.push(format);
-                                } else {
-                                  const index = formats.indexOf(format);
-                                  if (index > -1) formats.splice(index, 1);
-                                }
-                                updateSetting('storage', 'allowed_image_formats', formats);
-                              }}
-                            />
-                            <label htmlFor={`image_${format}`} className="ml-2 block text-sm text-gray-700 dark:text-gray-300 uppercase">
-                              {format}
-                            </label>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white">セキュリティ</h2>
+                    <PasswordChangeForm email={user?.email || ''} />
                   </div>
                 )}
 
@@ -982,6 +622,7 @@ export default function AdminSettingsPage() {
                 )}
 
                 {/* Save Button */}
+                {activeTab !== 'security' && (
                 <div className="mt-8 flex justify-end space-x-4 pt-6 border-t border-gray-200 dark:border-neutral-800">
                   <Button
                     variant="outline"
@@ -997,6 +638,7 @@ export default function AdminSettingsPage() {
                     {saving ? '保存中...' : '設定を保存'}
                   </Button>
                 </div>
+                )}
               </div>
             </div>
           </div>
@@ -1026,8 +668,6 @@ export default function AdminSettingsPage() {
                 <div className="text-sm text-blue-800 space-y-1">
                   <p>• 設定変更後は必ず「設定を保存」ボタンをクリックしてください</p>
                   <p>• メンテナンスモード中は管理者以外はサイトにアクセスできません</p>
-                  <p>• セキュリティ設定の変更は既存ユーザーの次回ログイン時から適用されます</p>
-                  <p>• ストレージ設定の変更は新規アップロードから適用されます</p>
                 </div>
               </div>
             </div>
