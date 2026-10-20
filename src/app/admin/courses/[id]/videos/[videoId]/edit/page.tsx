@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { supabase } from '@/lib/database/supabase';
+import { getVideoUrlDuration, parseDurationInput, formatDurationHms } from '@/lib/utils/videoDuration';
 import {
   ArrowLeftIcon,
   PlusIcon,
@@ -70,6 +71,39 @@ export default function EditVideoPage() {
     duration: 0
   });
   const [manualDuration, setManualDuration] = useState(false);
+  // 入力欄の文字列は別に持つ（入力のたびに秒へ変換して表示に戻すと、途中の文字が消えて入力できない）
+  const [durationText, setDurationText] = useState('');
+  const [durationError, setDurationError] = useState<string | null>(null);
+  const [refetchingDuration, setRefetchingDuration] = useState(false);
+
+  const commitDurationText = () => {
+    const parsed = parseDurationInput(durationText);
+    if (parsed === null) {
+      setDurationError('「H:MM:SS」「MM:SS」または秒数で入力してください');
+      return;
+    }
+    setDurationError(null);
+    setVideoForm((prev) => ({ ...prev, duration: parsed }));
+    setDurationText(formatDurationHms(parsed));
+  };
+
+  // 動画ファイルから長さを読み直して反映する
+  const refetchDurationFromVideo = async () => {
+    if (!video?.file_url) return;
+    setRefetchingDuration(true);
+    try {
+      const d = await getVideoUrlDuration(video.file_url);
+      if (d > 0) {
+        setVideoForm((prev) => ({ ...prev, duration: d }));
+        setDurationText(formatDurationHms(d));
+        setDurationError(null);
+      } else {
+        setDurationError('動画から長さを読み取れませんでした。手動で入力してください');
+      }
+    } finally {
+      setRefetchingDuration(false);
+    }
+  };
 
   // リソース追加フォーム
   const [showAddResource, setShowAddResource] = useState(false);
@@ -119,6 +153,7 @@ export default function EditVideoPage() {
         status: data.status,
         duration: data.duration || 0
       });
+      setDurationText(formatDurationHms(data.duration || 0));
     } catch (error) {
       console.error('動画取得エラー:', error);
     } finally {
@@ -202,18 +237,6 @@ export default function EditVideoPage() {
       return `${hours}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
     }
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
-
-  const parseDuration = (timeString: string): number => {
-    const parts = timeString.split(':').map(p => parseInt(p) || 0);
-    if (parts.length === 3) {
-      // H:MM:SS
-      return parts[0] * 3600 + parts[1] * 60 + parts[2];
-    } else if (parts.length === 2) {
-      // MM:SS
-      return parts[0] * 60 + parts[1];
-    }
-    return 0;
   };
 
   const uploadResourceFile = async (file: File): Promise<string | null> => {
@@ -539,7 +562,20 @@ export default function EditVideoPage() {
                       <button
                         type="button"
                         onClick={() => {
-                          setManualDuration(!manualDuration);
+                          if (manualDuration) {
+                            // 自動取得に戻す: 動画ファイルから読み直す（読めなければ保存済みの値に戻す）
+                            setManualDuration(false);
+                            setDurationError(null);
+                            if (video?.file_url) {
+                              refetchDurationFromVideo();
+                            } else {
+                              setVideoForm((prev) => ({ ...prev, duration: video?.duration || 0 }));
+                              setDurationText(formatDurationHms(video?.duration || 0));
+                            }
+                          } else {
+                            setDurationText(formatDurationHms(videoForm.duration));
+                            setManualDuration(true);
+                          }
                         }}
                         className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
                       >
@@ -551,17 +587,29 @@ export default function EditVideoPage() {
                       <div className="space-y-2">
                         <input
                           type="text"
-                          placeholder="H:MM:SS または MM:SS"
-                          value={formatDuration(videoForm.duration)}
+                          inputMode="numeric"
+                          placeholder="H:MM:SS、MM:SS、または秒数"
+                          value={durationText}
                           onChange={(e) => {
-                            const duration = parseDuration(e.target.value);
-                            setVideoForm({ ...videoForm, duration });
+                            setDurationText(e.target.value);
+                            setDurationError(null);
+                          }}
+                          onBlur={commitDurationText}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              commitDurationText();
+                            }
                           }}
                           className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                         />
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          形式: {formatDuration(videoForm.duration)} ({videoForm.duration}秒)
-                        </p>
+                        {durationError ? (
+                          <p className="text-xs text-red-600 dark:text-red-400">{durationError}</p>
+                        ) : (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            保存される値: {formatDuration(videoForm.duration)}（{videoForm.duration}秒）。欄を離れるか Enter で確定します
+                          </p>
+                        )}
                         {video && video.duration !== videoForm.duration && (
                           <p className="text-xs text-amber-600 dark:text-amber-400">
                             ⚠️ 手動設定中（元の時間: {formatDuration(video.duration)}）
@@ -569,14 +617,29 @@ export default function EditVideoPage() {
                         )}
                       </div>
                     ) : (
-                      <div className="px-3 py-2 bg-gray-50 dark:bg-gray-700 rounded-md border border-gray-300 dark:border-gray-600">
-                        <span className="text-gray-900 dark:text-gray-100">
-                          {formatDuration(videoForm.duration)}
+                      <div className="px-3 py-2 bg-gray-50 dark:bg-gray-700 rounded-md border border-gray-300 dark:border-gray-600 flex items-center justify-between">
+                        <span>
+                          <span className="text-gray-900 dark:text-gray-100">
+                            {formatDuration(videoForm.duration)}
+                          </span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+                            ({videoForm.duration}秒)
+                          </span>
                         </span>
-                        <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
-                          ({videoForm.duration}秒)
-                        </span>
+                        {video?.file_url && (
+                          <button
+                            type="button"
+                            onClick={refetchDurationFromVideo}
+                            disabled={refetchingDuration}
+                            className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 disabled:opacity-50"
+                          >
+                            {refetchingDuration ? '読み取り中…' : '動画から再取得'}
+                          </button>
+                        )}
                       </div>
+                    )}
+                    {!manualDuration && durationError && (
+                      <p className="text-xs text-red-600 dark:text-red-400 mt-1">{durationError}</p>
                     )}
                   </div>
 

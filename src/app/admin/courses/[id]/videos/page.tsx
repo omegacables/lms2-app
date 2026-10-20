@@ -17,6 +17,7 @@ import {
 } from '@/utils/supabase-storage';
 import { BulkVideoUploader } from '@/components/admin/BulkVideoUploader';
 import { uploadVideoFile, removeUploadedVideo } from '@/lib/utils/videoUpload';
+import { getVideoFileDuration } from '@/lib/utils/videoDuration';
 import {
   ArrowLeftIcon,
   PlusIcon,
@@ -485,6 +486,9 @@ export default function CourseVideosPage() {
 
       setUploadProgress(5);
 
+      // 新しいファイルの長さを先に読む（差し替え後の duration が古いままにならないように）
+      const newDuration = await getVideoFileDuration(replaceFile);
+
       // 認証トークンを取得
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -511,6 +515,7 @@ export default function CourseVideosPage() {
           file_path: uploaded.filePath,
           file_size: replaceFile.size,
           mime_type: replaceFile.type,
+          ...(newDuration > 0 ? { duration: newDuration } : {}),
           updated_at: new Date().toISOString()
         })
         .eq('id', videoId);
@@ -551,7 +556,8 @@ export default function CourseVideosPage() {
       }
 
       setUploadProgress(100);
-      alert(`動画を置き換えました${cleanupNote}`);
+      const durationNote = newDuration > 0 ? '' : '\n※ 新しい動画の長さを読み取れなかったので、動画時間を手動で確認してください。';
+      alert(`動画を置き換えました${durationNote}${cleanupNote}`);
       await fetchVideos();
       setReplacingVideo(null);
       setReplaceFile(null);
