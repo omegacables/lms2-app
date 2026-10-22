@@ -2,6 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/database/supabase';
 import { cookies } from 'next/headers';
 
+// コースのコピーはサムネイル画像も元のコースと同じファイルを参照するので、
+// 他のコースが同じ画像を使っていればファイルは消さない（照会に失敗したら消さない）
+async function isThumbnailUsedByOtherCourse(
+  adminSupabase: ReturnType<typeof createAdminSupabaseClient>,
+  url: string,
+  courseId: string
+): Promise<boolean> {
+  const { count, error } = await adminSupabase
+    .from('courses')
+    .select('id', { count: 'exact', head: true })
+    .eq('thumbnail_url', url)
+    .neq('id', courseId);
+  return error ? true : (count ?? 0) > 0;
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -96,7 +111,7 @@ export async function POST(
     }
 
     // 古いサムネイルを削除（新しいアップロード成功後）
-    if (currentCourse?.thumbnail_url) {
+    if (currentCourse?.thumbnail_url && !(await isThumbnailUsedByOtherCourse(adminSupabase, currentCourse.thumbnail_url, id))) {
       try {
         const oldPath = currentCourse.thumbnail_url.split('/').pop();
         if (oldPath && oldPath !== thumbnailFileName) {
@@ -176,7 +191,7 @@ export async function DELETE(
     // ストレージからファイルを削除
     try {
       const fileName = currentCourse.thumbnail_url.split('/').pop();
-      if (fileName) {
+      if (fileName && !(await isThumbnailUsedByOtherCourse(adminSupabase, currentCourse.thumbnail_url, id))) {
         await adminSupabase.storage
           .from('thumbnails')
           .remove([`course-thumbnails/${fileName}`]);

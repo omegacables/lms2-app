@@ -10,6 +10,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { supabase } from '@/lib/database/supabase';
 import { DIFFICULTY_LEVELS } from '@/lib/constants/difficulty';
 import { courseCache } from '@/utils/performance';
+import { CourseCopyModal } from '@/components/admin/CourseCopyModal';
 import {
   PlusIcon,
   MagnifyingGlassIcon,
@@ -65,7 +66,7 @@ export default function CoursesPage() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
-  const [duplicatingId, setDuplicatingId] = useState<number | null>(null);
+  const [copyTarget, setCopyTarget] = useState<Course | null>(null);
 
   useEffect(() => {
     fetchCourses();
@@ -164,41 +165,12 @@ export default function CoursesPage() {
     }
   };
 
-  const handleDuplicate = async (courseId: number) => {
-    if (!confirm('このコースを複製しますか？\n動画・章ごとコピーされ、複製は「非公開」で作成されます。')) {
-      return;
-    }
-
-    try {
-      setDuplicatingId(courseId);
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('認証セッションが見つかりません');
-      }
-
-      const response = await fetch(`/api/courses/${courseId}/duplicate`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'コース複製に失敗しました');
-      }
-
-      alert('コースを複製しました。複製は「非公開」で作成されています。');
+  const handleCopyClose = async (copied: boolean) => {
+    setCopyTarget(null);
+    if (copied) {
       // キャッシュをクリアして一覧を再取得
       courseCache.clear();
       await fetchCourses();
-    } catch (error) {
-      console.error('コース複製エラー:', error);
-      alert(`コースの複製に失敗しました: ${(error as Error).message}`);
-    } finally {
-      setDuplicatingId(null);
     }
   };
 
@@ -479,9 +451,9 @@ export default function CoursesPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleDuplicate(course.id)}
-                          disabled={duplicatingId === course.id}
-                          title="このコースを複製"
+                          onClick={() => setCopyTarget(course)}
+                          title="このコースをコピー"
+                          aria-label="このコースをコピー"
                           className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20"
                         >
                           <DocumentDuplicateIcon className="h-4 w-4" />
@@ -502,6 +474,13 @@ export default function CoursesPage() {
             )}
           </div>
         </div>
+        {copyTarget && (
+          <CourseCopyModal
+            course={copyTarget}
+            existingTitles={courses.map((c) => c.title)}
+            onClose={handleCopyClose}
+          />
+        )}
       </MainLayout>
     </AuthGuard>
   );
