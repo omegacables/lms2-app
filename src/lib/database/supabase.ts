@@ -479,6 +479,7 @@ export type Database = {
           estimated_duration: number | null;
           completion_threshold: number;
           show_viewing_notice: boolean;
+          video_thumbnails_enabled: boolean;
           order_index: number;
           created_by: string | null;
           created_at: string;
@@ -495,6 +496,7 @@ export type Database = {
           estimated_duration?: number | null;
           completion_threshold?: number;
           show_viewing_notice?: boolean;
+          video_thumbnails_enabled?: boolean;
           order_index?: number;
           created_by?: string | null;
           created_at?: string;
@@ -511,6 +513,7 @@ export type Database = {
           estimated_duration?: number | null;
           completion_threshold?: number;
           show_viewing_notice?: boolean;
+          video_thumbnails_enabled?: boolean;
           order_index?: number;
           created_by?: string | null;
           created_at?: string;

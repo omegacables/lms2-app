@@ -16,6 +16,7 @@ import {
   formatFileSize
 } from '@/utils/supabase-storage';
 import { BulkVideoUploader } from '@/components/admin/BulkVideoUploader';
+import { VideoThumbnailEditor } from '@/components/admin/VideoThumbnailEditor';
 import { uploadVideoFile, removeUploadedVideo } from '@/lib/utils/videoUpload';
 import { getVideoFileDuration } from '@/lib/utils/videoDuration';
 import {
@@ -40,6 +41,8 @@ interface Course {
   title: string;
   description: string;
   thumbnail_url?: string;
+  /** 動画ごとのサムネイルを受講者に表示する */
+  video_thumbnails_enabled?: boolean;
 }
 
 interface Video {
@@ -54,6 +57,7 @@ interface Video {
   status: 'active' | 'inactive';
   created_at: string;
   file_path?: string;
+  thumbnail_url?: string | null;
 }
 
 export default function CourseVideosPage() {
@@ -91,6 +95,7 @@ export default function CourseVideosPage() {
 
   // 動画置き換え用の状態
   const [replacingVideo, setReplacingVideo] = useState<string | null>(null);
+  const [savingThumbnailSetting, setSavingThumbnailSetting] = useState(false);
   const [replaceFile, setReplaceFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -141,6 +146,22 @@ export default function CourseVideosPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 動画ごとのサムネイル（コース設定）。ON のときだけ受講者の一覧・プレイヤーに表示する
+  const handleToggleVideoThumbnails = async (enabled: boolean) => {
+    if (!course) return;
+    setSavingThumbnailSetting(true);
+    const { error } = await supabase
+      .from('courses')
+      .update({ video_thumbnails_enabled: enabled, updated_at: new Date().toISOString() })
+      .eq('id', courseId);
+    setSavingThumbnailSetting(false);
+    if (error) {
+      alert(`設定を保存できませんでした: ${error.message}`);
+      return;
+    }
+    setCourse({ ...course, video_thumbnails_enabled: enabled });
   };
 
   const handleDeleteVideo = async (videoId: string) => {
@@ -737,6 +758,20 @@ export default function CourseVideosPage() {
                     <ArrowsUpDownIcon className="h-4 w-4 mr-1" />
                     <span className="text-xs">ドラッグで順序変更</span>
                   </div>
+                  {course && (
+                    <label
+                      className="flex items-center gap-2 cursor-pointer"
+                      title="ON にすると動画ごとにサムネイルを設定でき、受講者のコース画面の動画一覧と再生前の画面に表示されます"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!course.video_thumbnails_enabled}
+                        disabled={savingThumbnailSetting}
+                        onChange={(e) => handleToggleVideoThumbnails(e.target.checked)}
+                      />
+                      <span>動画ごとのサムネイル</span>
+                    </label>
+                  )}
                 </div>
               </div>
             </div>
@@ -835,7 +870,17 @@ export default function CourseVideosPage() {
                                 </div>
                               </div>
                             ) : (
-                              <div>
+                              <div className="flex items-start gap-3">
+                                {course?.video_thumbnails_enabled && (
+                                  <VideoThumbnailEditor
+                                    videoId={video.id}
+                                    thumbnailUrl={video.thumbnail_url}
+                                    onChange={(url) =>
+                                      setVideos((prev) => prev.map((v) => (v.id === video.id ? { ...v, thumbnail_url: url } : v)))
+                                    }
+                                  />
+                                )}
+                              <div className="min-w-0">
                                 <p className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2 flex-wrap">
                                   {video.title}
                                   {!video.file_url && (
@@ -854,6 +899,7 @@ export default function CourseVideosPage() {
                                     ? `サイズ: ${formatFileSize(video.file_size)}`
                                     : '「置き換え」から動画を登録できます'}
                                 </p>
+                              </div>
                               </div>
                             )}
                           </td>

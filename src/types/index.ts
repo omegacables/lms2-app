@@ -34,6 +34,8 @@ export interface Course {
   estimated_duration?: number;
   completion_threshold: number;
   show_viewing_notice?: boolean;
+  /** 動画ごとのサムネイルを受講者に表示する（videos.thumbnail_url） */
+  video_thumbnails_enabled?: boolean;
   order_index: number;
   created_by?: string;
   created_at: string;

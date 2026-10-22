@@ -31,6 +31,8 @@ interface EnhancedVideoPlayerProps {
   showViewingNotice?: boolean;
   /** 前の動画完了からの自動遷移時: 注意事項をスキップして再生を自動開始する */
   autoStart?: boolean;
+  /** 再生前に出す画像（コースで「動画ごとのサムネイル」が ON のときの videos.thumbnail_url） */
+  posterUrl?: string;
 }
 
 export function EnhancedVideoPlayer({
@@ -47,7 +49,8 @@ export function EnhancedVideoPlayer({
   completionThreshold = 95,
   isCompleted = false,
   showViewingNotice = true,
-  autoStart = false
+  autoStart = false,
+  posterUrl
 }: EnhancedVideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1167,6 +1170,7 @@ export function EnhancedVideoPlayer({
       <video
         ref={videoRef}
         src={currentSrc}
+        poster={posterUrl}
         className={`w-full h-full ${!showControls && isPlaying ? 'cursor-none' : ''}`}
         onClick={togglePlay}
         onLoadedMetadata={handleLoadedMetadata}

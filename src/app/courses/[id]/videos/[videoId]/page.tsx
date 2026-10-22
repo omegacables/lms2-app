@@ -1109,6 +1109,7 @@ export default function VideoPlayerPage() {
               isCompleted={hasCompletedBefore}
               showViewingNotice={course?.show_viewing_notice !== false} // コース設定で注意事項ポップアップのON/OFF
               autoStart={autoStart}
+              posterUrl={(course?.video_thumbnails_enabled && video.thumbnail_url) || undefined}
             />
             )}
 

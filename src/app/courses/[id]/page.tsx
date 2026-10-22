@@ -298,6 +298,48 @@ export default function CourseDetailPage() {
     }
   };
 
+  // 動画の行の左端。コースで「動画ごとのサムネイル」が ON ならサムネイル（未設定の動画は同じ大きさの枠）、OFF なら状態アイコン
+  const renderVideoLeading = (video: Video, number: number, status: string) => {
+    if (course?.video_thumbnails_enabled) {
+      const thumbnail = (
+        <div className="relative w-full sm:w-44 aspect-video overflow-hidden rounded-lg bg-gray-100 dark:bg-neutral-800">
+          {video.thumbnail_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={video.thumbnail_url} alt="" loading="lazy" className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center">{getStatusIcon(status)}</div>
+          )}
+          <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[11px] font-bold text-white">
+            {number}
+          </span>
+          {video.thumbnail_url && status === 'completed' && (
+            <span className="absolute bottom-1 right-1 rounded-full bg-white/90 p-0.5" aria-label="視聴済み">
+              {getStatusIcon(status)}
+            </span>
+          )}
+        </div>
+      );
+      // スマートフォンは上に大きく、タブレット以上は左に並べる
+      return video.status === 'active' ? (
+        <Link href={`/courses/${courseId}/videos/${video.id}`} className="w-full sm:w-auto flex-shrink-0" tabIndex={-1} aria-hidden="true">
+          {thumbnail}
+        </Link>
+      ) : (
+        <div className="w-full sm:w-auto flex-shrink-0">{thumbnail}</div>
+      );
+    }
+    return (
+      <div className="flex-shrink-0">
+        <div className="relative">
+          {getStatusIcon(status)}
+          <span className="absolute -top-1 -right-1 bg-blue-100 text-blue-800 text-xs font-bold px-2 py-0.5 rounded-full">
+            {number}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
   const calculateCourseProgress = () => {
     if (videos.length === 0) return 0;
     const totalProgress = viewLogs.reduce((sum, log) => sum + log.progress_percent, 0);
@@ -509,17 +551,10 @@ export default function CourseDetailPage() {
                     key={video.id}
                     className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-4 sm:p-6 hover:shadow-lg dark:shadow-gray-900/50 hover:border-blue-300 transition-all duration-200"
                   >
-                    <div className="flex items-start gap-3 sm:gap-6">
-                      <div className="flex-shrink-0">
-                        <div className="relative">
-                          {getStatusIcon(status)}
-                          <span className="absolute -top-1 -right-1 bg-blue-100 text-blue-800 text-xs font-bold px-2 py-0.5 rounded-full">
-                            {videoIndex + 1}
-                          </span>
-                        </div>
-                      </div>
+                    <div className={`flex ${course?.video_thumbnails_enabled ? 'flex-col sm:flex-row' : ''} items-start gap-3 sm:gap-6`}>
+                      {renderVideoLeading(video, videoIndex + 1, status)}
                       
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 w-full">
                         <div className="flex items-start justify-between gap-2 sm:gap-4 mb-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
@@ -629,17 +664,10 @@ export default function CourseDetailPage() {
                     <div
                       className="bg-white dark:bg-neutral-900 dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-4 sm:p-6 hover:shadow-lg dark:shadow-gray-900/50 hover:border-blue-300 transition-all duration-200"
                     >
-                      <div className="flex items-start gap-3 sm:gap-6">
-                        <div className="flex-shrink-0">
-                          <div className="relative">
-                            {getStatusIcon(status)}
-                            <span className="absolute -top-1 -right-1 bg-blue-100 text-blue-800 text-xs font-bold px-2 py-0.5 rounded-full">
-                              {index + 1}
-                            </span>
-                          </div>
-                        </div>
+                      <div className={`flex ${course?.video_thumbnails_enabled ? 'flex-col sm:flex-row' : ''} items-start gap-3 sm:gap-6`}>
+                        {renderVideoLeading(video, index + 1, status)}
 
-                        <div className="flex-1 min-w-0">
+                        <div className="flex-1 min-w-0 w-full">
                           <div className="flex items-start justify-between gap-2 sm:gap-4 mb-3">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">

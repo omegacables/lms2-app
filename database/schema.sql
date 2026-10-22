@@ -753,3 +753,9 @@ ALTER TABLE quiz_attempts  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE essay_reviews  ENABLE ROW LEVEL SECURITY;
 -- ポリシー定義は migrations/20260819_add_quiz_essay_tables.sql を参照（DROP/CREATE で冪等）
   );
+-- ============================================================================
+-- 動画ごとのサムネイル（2026-10-23。migrations/20261023_add_course_video_thumbnails_enabled.sql）
+-- ON のコースは videos.thumbnail_url を受講者の動画一覧・プレイヤーに表示する
+-- ============================================================================
+ALTER TABLE courses
+  ADD COLUMN IF NOT EXISTS video_thumbnails_enabled BOOLEAN NOT NULL DEFAULT false;

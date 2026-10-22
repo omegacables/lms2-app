@@ -30,6 +30,7 @@ interface Course {
   difficulty_level: DifficultyLevel;
   completion_threshold: number;
   show_viewing_notice: boolean;
+  video_thumbnails_enabled?: boolean;
   status: 'active' | 'inactive';
   thumbnail_url: string;
   thumbnail_file_path: string;
@@ -68,6 +69,7 @@ export default function EditCoursePage() {
     difficulty_level: 'beginner' as DifficultyLevel,
     completion_threshold: 80,
     show_viewing_notice: true,
+    video_thumbnails_enabled: false,
     status: 'active' as 'active' | 'inactive',
     estimated_duration: 0
   });
@@ -114,6 +116,7 @@ export default function EditCoursePage() {
         difficulty_level: courseData.difficulty_level || 'beginner',
         completion_threshold: courseData.completion_threshold || 80,
         show_viewing_notice: courseData.show_viewing_notice !== false,
+        video_thumbnails_enabled: courseData.video_thumbnails_enabled === true,
         status: courseData.status || 'active',
         estimated_duration: courseData.estimated_duration || calculatedDuration
       });
@@ -257,6 +260,7 @@ export default function EditCoursePage() {
         difficulty_level: formData.difficulty_level,
         completion_threshold: formData.completion_threshold,
         show_viewing_notice: formData.show_viewing_notice,
+        video_thumbnails_enabled: formData.video_thumbnails_enabled,
         status: formData.status,
         estimated_duration: manualDuration ? formData.estimated_duration : null,
         updated_at: new Date().toISOString()
@@ -530,6 +534,26 @@ export default function EditCoursePage() {
                           </span>
                           <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                             オフにすると、このコースの動画を再生する際の注意事項ダイアログを表示しません。
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+
+                    {/* 動画ごとのサムネイル */}
+                    <div>
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.video_thumbnails_enabled}
+                          onChange={(e) => setFormData({ ...formData, video_thumbnails_enabled: e.target.checked })}
+                          className="mt-1"
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            動画ごとにサムネイルを設定する
+                          </span>
+                          <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            オンにすると、動画管理で動画ごとにサムネイル画像を設定でき、受講者のコース画面の動画一覧と再生前の画面に表示されます。
                           </span>
                         </span>
                       </label>
