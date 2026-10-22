@@ -1,5 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@/lib/supabase-server';
+
+// 受講者の画面はセッションを localStorage に持つので、この API には Cookie のセッションが届かない。
+// Authorization の token があれば本人として読む（2026-10-11 の RLS 強化以降、未ログイン扱いでは
+// videos が読めず、章ごとの動画が 0 本になっていた）。
+async function createReadClient(request: NextRequest) {
+  const authHeader = request.headers.get('authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) return createServerClient();
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
 
 export async function GET(
   request: NextRequest,
@@ -7,7 +21,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const supabase = await createServerClient();
+    const supabase = await createReadClient(request);
 
     console.log(`[GET /api/courses/${id}/chapters] Fetching chapters from chapters table`);
 

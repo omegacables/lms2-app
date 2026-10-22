@@ -202,7 +202,10 @@ export default function CourseDetailPage() {
 
       // 章データを取得
       try {
-        const response = await fetch(`/api/courses/${courseId}/chapters`);
+        const { data: { session } } = await supabase.auth.getSession();
+        const response = await fetch(`/api/courses/${courseId}/chapters`, {
+          headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined,
+        });
         if (response.ok) {
           const data = await response.json();
           setChapters(data.chapters || []);
