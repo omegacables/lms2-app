@@ -11,6 +11,7 @@ import { useAuth } from '@/stores/auth';
 import { revertSegment, type RedPenSegment } from '@/lib/quiz/redpen';
 import { CheckCircleIcon, ClockIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { QuizAutoReviewsPanel } from '@/components/admin/QuizAutoReviewsPanel';
+import { AutoReviewRetryBanner } from '@/components/admin/AutoReviewRetryBanner';
 
 interface SubQuestion {
   id: number;
@@ -87,6 +88,8 @@ export default function AdminEssayReviewsPage() {
 
   // 最終テストの添削 / 小テストの自動添削
   const [mode, setMode] = useState<'final' | 'auto'>('final');
+  // まとめて作り直した後に一覧を読み直すためのキー
+  const [refreshKey, setRefreshKey] = useState(0);
   const [filter, setFilter] = useState<'pending' | 'auto' | 'all'>('pending');
   // まとめて確認する自動添削（key: quiz_id-user_id）
   const [autoSelected, setAutoSelected] = useState<Set<string>>(new Set());
@@ -296,6 +299,7 @@ export default function AdminEssayReviewsPage() {
       <MainLayout>
         <div className="max-w-4xl mx-auto px-4 py-6">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-3">添削</h1>
+          <AutoReviewRetryBanner onDone={() => { setRefreshKey((k) => k + 1); load(filter); }} />
           <div className="mb-5 inline-flex rounded-lg border border-gray-200 dark:border-gray-700 p-1 bg-gray-50 dark:bg-gray-800">
             <button
               className={`px-4 py-1.5 text-sm rounded-md ${mode === 'final' ? 'bg-white dark:bg-gray-900 shadow text-blue-600 font-medium' : 'text-gray-500'}`}
@@ -308,7 +312,7 @@ export default function AdminEssayReviewsPage() {
           </div>
 
           {mode === 'auto' ? (
-            <QuizAutoReviewsPanel />
+            <QuizAutoReviewsPanel key={refreshKey} />
           ) : (
           <>
           <p className="text-sm text-gray-500 mb-6">
