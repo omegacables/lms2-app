@@ -19,7 +19,9 @@ import {
   MagnifyingGlassIcon,
   ArrowPathIcon,
   DocumentArrowDownIcon,
-  Cog6ToothIcon
+  Cog6ToothIcon,
+  PencilIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline';
 
 interface Certificate {
@@ -55,6 +57,9 @@ export default function CertificatesManagement() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [reissuingId, setReissuingId] = useState<string | null>(null);
+  const [editingIssueDateId, setEditingIssueDateId] = useState<string | null>(null);
+  const [editingIssueDate, setEditingIssueDate] = useState('');
+  const [savingIssueDate, setSavingIssueDate] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [backfilling, setBackfilling] = useState(false);
 
@@ -263,7 +268,8 @@ export default function CertificatesManagement() {
   };
 
   const handleReissueCertificate = async (certificate: Certificate) => {
-    if (!confirm('既存の証明書を削除して、新しい証明書番号で再発行します。完了日付は視聴ログから再計算されます。よろしいですか？')) return;
+    const manualNote = certificate.manual_issue_date ? '手動で修正した発行日は視聴ログの日付に戻ります。' : '';
+    if (!confirm(`既存の証明書を削除して、新しい証明書番号で再発行します。完了日付は視聴ログから再計算されます。${manualNote}よろしいですか？`)) return;
 
     setReissuingId(certificate.id);
 
@@ -407,8 +413,8 @@ export default function CertificatesManagement() {
     }
   };
 
-  const handleDownloadCertificate = async (certificate: Certificate) => {
-    if (downloadingId === certificate.id) return;
+  const handleDownloadCertificate = async (certificate: Certificate): Promise<boolean> => {
+    if (downloadingId === certificate.id) return false;
 
     setDownloadingId(certificate.id);
 
@@ -421,11 +427,82 @@ export default function CertificatesManagement() {
 
       console.log('証明書PDFデータ（署名情報含む）:', certificateData);
       await generateCertificatePDF(certificateData);
+      return true;
     } catch (error) {
       console.error('ダウンロードエラー:', error);
       alert('ダウンロードに失敗しました。');
+      return false;
     } finally {
       setDownloadingId(null);
+    }
+  };
+
+  // manual_issue_date は JST 0時 (= UTC 15:00) で保存されているため、
+  // toISOString() で UTC 日付を切り出すと前日にズレる。JST で整形する。
+  const formatDateForInput = (dateString: string) => {
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('sv-SE', {
+      timeZone: 'Asia/Tokyo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+  };
+
+  const startEditingIssueDate = (certificate: Certificate) => {
+    setEditingIssueDateId(certificate.id);
+    setEditingIssueDate(formatDateForInput(certificate.manual_issue_date || certificate.completion_date));
+  };
+
+  // 発行日を修正して、新しい日付の PDF を発行する（証明書番号は変わらない）
+  // 社労士画面と同じ API を使う（管理者は全件操作可）
+  const handleSaveIssueDate = async (certificate: Certificate) => {
+    if (!editingIssueDate) {
+      alert('発行日を入力してください。');
+      return;
+    }
+
+    setSavingIssueDate(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        alert('認証セッションが見つかりません。再ログインしてください。');
+        return;
+      }
+
+      const response = await fetch('/api/labor-consultant/certificates', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          certificateId: certificate.id,
+          completionDate: editingIssueDate,
+        }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        console.error('発行日更新エラー:', result);
+        alert(`発行日の更新に失敗しました。${result?.error ? `\n${result.error}` : ''}`);
+        return;
+      }
+
+      setEditingIssueDateId(null);
+      await fetchCertificates();
+
+      const downloaded = await handleDownloadCertificate({ ...certificate, ...result.certificate });
+      alert(downloaded
+        ? '発行日を更新し、新しいPDFをダウンロードしました。'
+        : '発行日の更新は完了しています。「PDF」ボタンからもう一度お試しください。');
+    } catch (error) {
+      console.error('発行日更新エラー:', error);
+      alert('発行日の更新に失敗しました。');
+    } finally {
+      setSavingIssueDate(false);
     }
   };
 
@@ -606,7 +683,9 @@ export default function CertificatesManagement() {
       alert('証明書を選択してください。');
       return;
     }
-    if (!confirm(`${selectedCerts.length}件の証明書を一括再発行します。既存の証明書は削除され、新しい証明書番号で再発行されます。完了日付は視聴ログから再計算されます。よろしいですか？`)) return;
+    const manualCount = selectedCerts.filter(c => c.manual_issue_date).length;
+    const manualNote = manualCount > 0 ? `手動で修正した発行日（${manualCount}件）は視聴ログの日付に戻ります。` : '';
+    if (!confirm(`${selectedCerts.length}件の証明書を一括再発行します。既存の証明書は削除され、新しい証明書番号で再発行されます。完了日付は視聴ログから再計算されます。${manualNote}よろしいですか？`)) return;
 
     setBulkProcessing(true);
     setBulkProgress({ current: 0, total: selectedCerts.length, action: '一括再発行' });
@@ -976,9 +1055,50 @@ export default function CertificatesManagement() {
                         {certificate.course_title || certificate.courses?.title}
                       </td>
                       <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                        {new Date(certificate.manual_issue_date || certificate.completion_date).toLocaleDateString('ja-JP')}
-                        {certificate.manual_issue_date && (
-                          <span className="ml-1 text-xs text-blue-600 dark:text-blue-400">(手動)</span>
+                        {editingIssueDateId === certificate.id ? (
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="date"
+                              aria-label="発行日"
+                              value={editingIssueDate}
+                              onChange={(e) => setEditingIssueDate(e.target.value)}
+                              className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-neutral-800 text-gray-900 dark:text-white w-36"
+                            />
+                            <Button
+                              size="sm"
+                              onClick={() => handleSaveIssueDate(certificate)}
+                              disabled={savingIssueDate}
+                            >
+                              {savingIssueDate ? '処理中...' : '保存してPDF発行'}
+                            </Button>
+                            <button
+                              onClick={() => setEditingIssueDateId(null)}
+                              disabled={savingIssueDate}
+                              className="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 disabled:opacity-50"
+                              title="キャンセル"
+                              aria-label="キャンセル"
+                            >
+                              <XMarkIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center space-x-1">
+                            <span>
+                              {new Date(certificate.manual_issue_date || certificate.completion_date).toLocaleDateString('ja-JP')}
+                            </span>
+                            {certificate.manual_issue_date && (
+                              <span className="text-xs text-blue-600 dark:text-blue-400">(手動)</span>
+                            )}
+                            <button
+                              onClick={() => startEditingIssueDate(certificate)}
+                              disabled={savingIssueDate}
+                              className="p-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 disabled:opacity-50"
+                              title="発行日を修正"
+                              aria-label="発行日を修正"
+                            >
+                              <PencilIcon className="h-4 w-4" />
+                            </button>
+                          </div>
                         )}
                       </td>
                       <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
