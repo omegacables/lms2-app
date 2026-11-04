@@ -198,8 +198,6 @@ export function buildRecordHTML(d: LearningRecordData): string {
       <tr>
         <td class="c">${i + 1}</td>
         <td>${esc(v.title)}</td>
-        <td>${fmtDateTime(v.first_start)}</td>
-        <td>${fmtDateTime(v.last_end)}</td>
         <td class="r nw">${fmtDuration(v.watched_seconds)}</td>
         <td class="r nw">${esc(v.progress_percent)}%</td>
         <td class="nw">${fmtDate(v.completed_at)}</td>
@@ -306,8 +304,8 @@ export function buildRecordHTML(d: LearningRecordData): string {
 
     <div class="section keep-next">1. 学習記録（動画視聴）</div>
     <table>
-      <thead class="keep-next"><tr><th class="c">#</th><th>動画</th><th>受講開始日時</th><th>受講終了日時</th><th class="nw">視聴時間</th><th class="nw">進捗率</th><th class="nw">完了日</th></tr></thead>
-      <tbody>${videoRows || '<tr><td colspan="7" class="c">記録なし</td></tr>'}</tbody>
+      <thead class="keep-next"><tr><th class="c">#</th><th>動画</th><th class="nw">視聴時間</th><th class="nw">進捗率</th><th class="nw">完了日</th></tr></thead>
+      <tbody>${videoRows || '<tr><td colspan="5" class="c">記録なし</td></tr>'}</tbody>
     </table>
 
     ${d.choiceQuizzes.length > 0 ? `<div class="section keep-next">2. 小テスト記録</div>${choiceSections}` : ''}
