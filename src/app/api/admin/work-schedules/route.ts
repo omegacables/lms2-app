@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/requireAdmin';
 import { createAdminSupabaseClient } from '@/lib/database/supabase';
+import { chunk } from '@/lib/auth/consultantScope';
 import {
   exceptionFromRow,
   isValidTime,
@@ -16,6 +17,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // GET /api/admin/work-schedules?userId=   → { schedule, exceptions }（schedule は未設定なら null）
 // PUT /api/admin/work-schedules  body: { userIds: string[], schedule: { work_days, start_time, end_time, holidays_off } }
 //     → 選んだ受講者の定期の就業日・就業時間を上書きする
+// DELETE /api/admin/work-schedules  body: { userIds: string[] }
+//     → リセット：選んだ受講者の就業日・就業時間と例外日をすべて消して未設定に戻す（回答日の修正記録は消さない）
 export async function GET(request: NextRequest) {
   const auth = await requireRole(request, ['admin', 'instructor']);
   if (!auth.ok) return auth.response;
@@ -78,4 +81,38 @@ export async function PUT(request: NextRequest) {
   if (error) return NextResponse.json({ error: '保存に失敗しました', details: error.message }, { status: 500 });
 
   return NextResponse.json({ ok: true, count: rows.length });
+}
+
+export async function DELETE(request: NextRequest) {
+  const auth = await requireRole(request, ['admin', 'instructor']);
+  if (!auth.ok) return auth.response;
+
+  const body = await request.json().catch(() => ({}));
+  const userIds: string[] = Array.isArray(body.userIds)
+    ? Array.from(new Set((body.userIds as unknown[]).filter((u): u is string => typeof u === 'string' && UUID_RE.test(u))))
+    : [];
+  if (userIds.length === 0) return NextResponse.json({ error: '受講者を選んでください' }, { status: 400 });
+  if (userIds.length > 1000) return NextResponse.json({ error: '一度にリセットできるのは1000名までです' }, { status: 400 });
+
+  const admin = createAdminSupabaseClient();
+  let schedules = 0;
+  let exceptions = 0;
+  for (const ids of chunk(userIds)) {
+    // 例外日を先に消す（途中で失敗しても、例外日だけが残ることのないように）
+    const { error: exErr, count: exCount } = await admin
+      .from('student_work_exceptions')
+      .delete({ count: 'exact' })
+      .in('user_id', ids);
+    if (exErr) return NextResponse.json({ error: 'リセットに失敗しました', details: exErr.message }, { status: 500 });
+    exceptions += exCount ?? 0;
+
+    const { error, count } = await admin
+      .from('student_work_schedules')
+      .delete({ count: 'exact' })
+      .in('user_id', ids);
+    if (error) return NextResponse.json({ error: 'リセットに失敗しました', details: error.message }, { status: 500 });
+    schedules += count ?? 0;
+  }
+
+  return NextResponse.json({ ok: true, schedules, exceptions });
 }

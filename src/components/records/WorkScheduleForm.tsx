@@ -105,6 +105,37 @@ export function WorkScheduleForm({
     setBusy(null);
   };
 
+  // リセット：定期の就業日・就業時間と例外日を消して未設定に戻す（時間外の判定もしなくなる）
+  const resetSchedule = async () => {
+    const who = single ? 'この受講者' : `選んだ ${userIds.length} 名`;
+    if (
+      !confirm(
+        `${who}の就業日・就業時間と例外日をすべて消して、未設定に戻します。\n` +
+          'テスト実施記録の赤字（時間外の判定）も出なくなります。回答日の修正記録は消えません。\nよろしいですか？'
+      )
+    )
+      return;
+    setBusy('reset');
+    setMessage(null);
+    try {
+      const res = await fetch('/api/admin/work-schedules', {
+        method: 'DELETE',
+        headers: await recordAuthHeaders(),
+        body: JSON.stringify({ userIds }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'リセットに失敗しました');
+      setSaved(null);
+      setForm(DEFAULT_WORK_SCHEDULE);
+      setExceptions([]);
+      setMessage(single ? '就業日・就業時間をリセットしました（未設定）。' : `${userIds.length} 名の就業日・就業時間をリセットしました（未設定）。`);
+      onSaved?.();
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : String(e));
+    }
+    setBusy(null);
+  };
+
   const addException = async () => {
     if (!exDate) {
       setMessage('例外にする日を選んでください。');
@@ -216,9 +247,17 @@ export function WorkScheduleForm({
             祝日は休み
           </label>
         </div>
-        <Button size="sm" onClick={saveSchedule} loading={busy === 'schedule'} disabled={!!busy}>
-          {single ? '就業日・就業時間を保存' : `${userIds.length} 名に保存`}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" onClick={saveSchedule} loading={busy === 'schedule'} disabled={!!busy}>
+            {single ? '就業日・就業時間を保存' : `${userIds.length} 名に保存`}
+          </Button>
+          {/* 1名で何も設定していないときは出さない（消すものが無い） */}
+          {(!single || saved || exceptions.length > 0) && (
+            <Button size="sm" variant="outline" onClick={resetSchedule} loading={busy === 'reset'} disabled={!!busy}>
+              {single ? 'リセット（未設定に戻す）' : `${userIds.length} 名をリセット`}
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* 例外日 */}
