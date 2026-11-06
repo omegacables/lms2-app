@@ -1,14 +1,30 @@
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { circledNumber } from '@/lib/quiz/redpen';
+import { fmtYmd, type WorkException, type WorkSchedule } from '@/lib/records/workSchedule';
+import type { AnswerDateEntry } from '@/lib/records/answerDates';
 
-// 学習・テスト実施記録PDF（証拠書類）。
+// テスト実施記録PDF（証拠書類）。小テスト・最終テストの回答と添削を載せる（動画の視聴記録は学習ログで見る）。
+// 回答日は日付だけ。受講者の就業日・就業時間の外の回答は日付を赤字にする。
+// 回答日を修正したものは「（修正）」を付け、元の回答日・修正者・理由を「回答日の修正記録」に載せる。
 // 日本語の長文が複数ページに渡っても崩れないよう、HTMLをブラウザで描画→html2canvasで画像にして
 // A4縦のjsPDFに貼り付ける。画面での閲覧（RecordViewer）も同じ HTML（buildRecordHTML）を使う。
 // - 改ページ位置は DOM の位置から決め、文字の行・表の行・小さなまとまりの途中では切らない
 // - サイトの CSS（Tailwind の img{display:block}）が当たると、html2canvas が文字の基準線を測り違えて
 //   文字・下線・取り消し線が数px下にずれる。PDF の作成中だけ、計測用の要素にこれを当てないようにする
 // - 1ページずつ JPEG で貼る（無圧縮の PNG だと1ページ約9MBになっていた）
+
+/** 回答日の表示（日本時間の日付・修正の有無・就業日／就業時間の外かどうか） */
+interface AnswerDateFields {
+  /** 実施記録に載せる日付 'YYYY-MM-DD'（修正があれば修正後） */
+  answered_date?: string | null;
+  date_corrected?: boolean;
+  /** 就業日・就業時間の外なら理由（「休日」「祝日」「就業時間外」） */
+  off_reason?: string | null;
+}
+
+/** 回答・提出1回ごとの回答日（画面で日付を修正するのに使う） */
+export type { AnswerDateEntry };
 
 export interface LearningRecordData {
   student: { name: string; email: string; company: string; department: string };
@@ -46,7 +62,7 @@ export interface LearningRecordData {
       question_text: string;
       choices: string[];
       explanation?: string;
-      attempts: { attempt_no: number; selected_text: string; is_correct: boolean | null; answered_at: string }[];
+      attempts: ({ attempt_no: number; selected_text: string; is_correct: boolean | null; answered_at: string } & AnswerDateFields)[];
       /** 自動添削（AI）の設問ごとの講評・赤ペン */
       auto_mark?: {
         comment: string | null;
@@ -60,7 +76,7 @@ export interface LearningRecordData {
     type_label?: string;
     questions: {
       question_text: string;
-      answers: { attempt_no: number; answer_text: string; answered_at: string }[];
+      answers: ({ attempt_no: number; answer_text: string; answered_at: string } & AnswerDateFields)[];
       /** 指導者が設問ごとに付けたコメント・赤ペン（最新の添削）。正誤は記録に載せない */
       review_mark?: {
         is_correct: boolean | null;
@@ -84,6 +100,21 @@ export interface LearningRecordData {
   testsPassed: boolean | null;
   totalWatchedSeconds: number;
   seal?: { stampUrl: string | null; signerName: string; signerTitle: string; companyName?: string } | null;
+  answerDates?: AnswerDateEntry[];
+  /** 回答日の修正記録（実施記録に載せる） */
+  dateCorrections?: {
+    quiz_title: string;
+    attempt_no: number;
+    original_date: string;
+    corrected_date: string;
+    reason: string;
+    corrected_by_name: string;
+    corrected_at: string;
+  }[];
+  workSchedule?: WorkSchedule | null;
+  /** 「月〜金 9:00〜18:00・祝日休み」 */
+  workScheduleSummary?: string;
+  workExceptions?: WorkException[];
 }
 
 const esc = (s: unknown) =>
@@ -92,6 +123,15 @@ const escAttr = (s: unknown) => esc(s).replace(/"/g, '&quot;').replace(/'/g, '&#
 
 const fmtDateTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString('ja-JP') : '—');
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('ja-JP') : '—');
+
+/** 回答日（日付だけ）。就業日・就業時間の外は赤字、修正したものは「（修正）」を付ける */
+function answerDateHTML(a: { answered_at: string } & AnswerDateFields): string {
+  const text = a.answered_date ? fmtYmd(a.answered_date) : fmtDate(a.answered_at);
+  const date = a.off_reason
+    ? `<span class="off" title="${escAttr(a.off_reason)}">${esc(text)}</span>`
+    : esc(text);
+  return `${date}${a.date_corrected ? '<span class="dc">（修正）</span>' : ''}`;
+}
 const fmtDuration = (sec: number | null | undefined) => {
   if (!sec) return '0分';
   const h = Math.floor(sec / 3600);
@@ -165,7 +205,12 @@ const RECORD_CSS = `
 .lr-doc table.sub{margin:4px 0 8px;}
 .lr-doc table.sub th,.lr-doc table.sub td{font-size:10px;padding:3px 5px;}
 .lr-doc table.sub .no{width:26px;}
-.lr-doc table.sub .dt{width:88px;}
+.lr-doc table.sub .dt{width:112px;white-space:nowrap;}
+.lr-doc .off{color:#d00;font-weight:bold;}
+.lr-doc .dc{font-size:9px;color:#555;}
+.lr-doc .legend{font-size:10px;color:#444;margin:-8px 0 10px;}
+.lr-doc .legend .off{font-weight:bold;}
+.lr-doc .empty{color:#666;margin:8px 0 14px;}
 .lr-doc .ans{margin:4px 0;}
 .lr-doc .ans-no{font-size:10px;color:#666;}
 .lr-doc .ans-body{white-space:pre-wrap;background:#fafafa;border:1px solid #eee;padding:6px;border-radius:3px;}
@@ -192,19 +237,6 @@ export function buildRecordHTML(d: LearningRecordData): string {
   const stdMin = d.course.standard_learning_minutes;
   const stdTime = stdMin ? `${Math.floor(stdMin / 60)}時間${stdMin % 60}分（${stdMin}分）` : '—';
 
-  const videoRows = d.videos
-    .map(
-      (v, i) => `
-      <tr>
-        <td class="c">${i + 1}</td>
-        <td>${esc(v.title)}</td>
-        <td class="r nw">${fmtDuration(v.watched_seconds)}</td>
-        <td class="r nw">${esc(v.progress_percent)}%</td>
-        <td class="nw">${fmtDate(v.completed_at)}</td>
-      </tr>`
-    )
-    .join('');
-
   const choiceSections = d.choiceQuizzes
     .map((q) => {
       const qs = q.questions
@@ -216,7 +248,7 @@ export function buildRecordHTML(d: LearningRecordData): string {
               <tr>
                 <td class="c">${esc(a.attempt_no)}</td>
                 <td>${esc(a.selected_text)}</td>
-                <td>${fmtDateTime(a.answered_at)}</td>
+                <td class="dt">${answerDateHTML(a)}</td>
               </tr>`
             )
             .join('');
@@ -225,7 +257,7 @@ export function buildRecordHTML(d: LearningRecordData): string {
               <div class="qh keep-next">問${qi + 1}. ${esc(qq.question_text)}</div>
               <div class="choices keep">${choicesHtml}</div>
               <table class="sub">
-                <thead class="keep-next"><tr><th class="no c nw">回</th><th>選択した解答</th><th class="dt">回答日時</th></tr></thead>
+                <thead class="keep-next"><tr><th class="no c nw">回</th><th>選択した解答</th><th class="dt">回答日</th></tr></thead>
                 <tbody>${attemptRows || '<tr><td colspan="3" class="c">未回答</td></tr>'}</tbody>
               </table>
               ${qq.explanation ? `<div class="expl keep"><b>解説：</b>${esc(qq.explanation)}</div>` : ''}
@@ -252,7 +284,7 @@ export function buildRecordHTML(d: LearningRecordData): string {
         .map((qq, qi) => {
           const answers = qq.answers
             .map(
-              (a) => `<div class="ans keep"><span class="ans-no">提出${esc(a.attempt_no)}（${fmtDateTime(a.answered_at)}）</span><div class="ans-body">${esc(a.answer_text)}</div></div>`
+              (a) => `<div class="ans keep"><span class="ans-no">提出${esc(a.attempt_no)}（${answerDateHTML(a)}）</span><div class="ans-body">${esc(a.answer_text)}</div></div>`
             )
             .join('');
           const mark = qq.review_mark;
@@ -286,11 +318,44 @@ export function buildRecordHTML(d: LearningRecordData): string {
     })
     .join('');
 
+  // 見出しの番号は載せる節だけで振る
+  let sectionNo = 0;
+  const sectionHead = (label: string) => `<div class="section keep-next">${++sectionNo}. ${esc(label)}</div>`;
+
+  const corrections = d.dateCorrections || [];
+  const correctionRows = corrections
+    .map(
+      (c) => `
+      <tr>
+        <td>${esc(c.quiz_title)}</td>
+        <td class="c nw">${esc(c.attempt_no)}</td>
+        <td class="nw">${esc(fmtYmd(c.original_date))}</td>
+        <td class="nw">${esc(fmtYmd(c.corrected_date))}</td>
+        <td>${esc(c.reason)}</td>
+        <td class="nw">${esc(c.corrected_by_name || '—')}</td>
+        <td class="nw">${fmtDate(c.corrected_at)}</td>
+      </tr>`
+    )
+    .join('');
+
+  const hasOff =
+    d.choiceQuizzes.some((q) => q.questions.some((qq) => qq.attempts.some((a) => a.off_reason))) ||
+    d.essayQuizzes.some((q) => q.questions.some((qq) => qq.answers.some((a) => a.off_reason)));
+  const legend = hasOff
+    ? `<div class="legend keep"><span class="off">赤字の回答日</span>：就業日・就業時間の外に回答したもの${
+        d.workScheduleSummary ? `（就業日・時間：${esc(d.workScheduleSummary)}）` : ''
+      }</div>`
+    : '';
+
+  const testSections =
+    (d.choiceQuizzes.length > 0 ? `${sectionHead('小テスト記録')}${choiceSections}` : '') +
+    (d.essayQuizzes.length > 0 ? `${sectionHead('最終テスト・添削記録')}${essaySections}` : '');
+
   return `
   <div class="lr-doc">
     <style>${RECORD_CSS}</style>
 
-    <h1 class="keep-next">学習・テスト実施記録</h1>
+    <h1 class="keep-next">テスト実施記録</h1>
     <div class="sub-title">${esc(d.course.title)}</div>
 
     <table class="info keep">
@@ -301,15 +366,19 @@ export function buildRecordHTML(d: LearningRecordData): string {
       <tr><td class="k">受講時間合計</td><td>${fmtDuration(d.totalWatchedSeconds)}</td><td class="k">テスト通過</td><td>${d.testsPassed === null ? '—' : d.testsPassed ? '全通過' : '未通過'}</td></tr>
       <tr><td class="k">証明書ID</td><td>${esc(d.certificate?.id || '—')}</td><td class="k">発行日</td><td>${fmtDate(d.certificate?.completion_date || null)}</td></tr>
     </table>
+    ${legend}
 
-    <div class="section keep-next">1. 学習記録（動画視聴）</div>
+    ${testSections || '<div class="empty">このコースのテストの記録はありません。</div>'}
+
+    ${
+      corrections.length > 0
+        ? `${sectionHead('回答日の修正記録')}
     <table>
-      <thead class="keep-next"><tr><th class="c">#</th><th>動画</th><th class="nw">視聴時間</th><th class="nw">進捗率</th><th class="nw">完了日</th></tr></thead>
-      <tbody>${videoRows || '<tr><td colspan="5" class="c">記録なし</td></tr>'}</tbody>
-    </table>
-
-    ${d.choiceQuizzes.length > 0 ? `<div class="section keep-next">2. 小テスト記録</div>${choiceSections}` : ''}
-    ${d.essayQuizzes.length > 0 ? `<div class="section keep-next">3. 最終テスト・添削記録</div>${essaySections}` : ''}
+      <thead class="keep-next"><tr><th>テスト</th><th class="c nw">回</th><th class="nw">元の回答日</th><th class="nw">修正後の日付</th><th>理由</th><th class="nw">修正者</th><th class="nw">修正日</th></tr></thead>
+      <tbody>${correctionRows}</tbody>
+    </table>`
+        : ''
+    }
 
     <div class="footer keep">出力日: ${new Date().toLocaleString('ja-JP')}</div>
   </div>`;
@@ -526,7 +595,7 @@ export async function generateLearningRecordPDFBlob(
 
     const safeName = (d.student.name || 'user').replace(/[^a-zA-Z0-9　-鿿]/g, '_');
     const safeCourse = (d.course.title || 'course').replace(/[^a-zA-Z0-9　-鿿]/g, '_');
-    const fileName = `実施記録_${safeCourse}_${safeName}.pdf`;
+    const fileName = `テスト実施記録_${safeCourse}_${safeName}.pdf`;
     const blob = pdf.output('blob');
     return { blob, fileName };
   } finally {

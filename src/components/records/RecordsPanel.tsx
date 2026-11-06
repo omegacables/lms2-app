@@ -11,13 +11,14 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { downloadCSV } from '@/lib/utils/csv';
 import { generateLearningRecordPDFBlob } from '@/lib/utils/learningRecordPDF';
 import { generateCertificatePDFBlob } from '@/lib/utils/certificatePDF';
-import { DocumentArrowDownIcon, ArchiveBoxIcon, EyeIcon } from '@heroicons/react/24/outline';
+import { DocumentArrowDownIcon, ArchiveBoxIcon, EyeIcon, ClockIcon, PencilSquareIcon } from '@heroicons/react/24/outline';
 import {
   RecordViewer,
   downloadLearningRecordPDF,
   fetchLearningRecord,
   recordAuthHeaders,
 } from '@/components/records/RecordViewer';
+import { WorkScheduleForm } from '@/components/records/WorkScheduleForm';
 
 interface CourseOpt {
   id: number;
@@ -36,6 +37,58 @@ interface RosterRow {
   video_complete: boolean;
   tests_passed: boolean | null;
   completion_date: string | null;
+  /** 就業日・就業時間（「月〜金 9:00〜18:00・祝日休み」）。未設定は null */
+  work_schedule: string | null;
+}
+
+/** 就業日・就業時間の設定（1名なら今の設定を編集、複数名なら同じ設定をまとめて保存） */
+function WorkScheduleModal({
+  users,
+  onClose,
+}: {
+  users: { user_id: string; name: string }[];
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const label =
+    users.length === 1
+      ? users[0].name
+      : `${users.slice(0, 3).map((u) => u.name).join('、')}${users.length > 3 ? ` ほか${users.length - 3}名` : ''}（${users.length}名）`;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 overflow-y-auto p-2 sm:p-4" onClick={onClose}>
+      <div
+        className="mx-auto my-6 w-full max-w-2xl rounded-xl bg-white dark:bg-neutral-900 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="就業日・就業時間"
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+          <div className="min-w-0">
+            <div className="font-semibold text-gray-900 dark:text-gray-100">就業日・就業時間</div>
+            <div className="truncate text-xs text-gray-500">{label}</div>
+          </div>
+          <Button size="sm" variant="outline" onClick={onClose}>
+            閉じる
+          </Button>
+        </div>
+        <div className="px-4 py-4">
+          <p className="mb-3 text-xs text-gray-500">
+            定期的な出勤日と就業時間を設定すると、テスト実施記録で就業日・就業時間の外に回答した日付が赤字になります。休み・出勤日の入れ替えや時間の違う日は「例外日」で設定できます。
+          </p>
+          <WorkScheduleForm userIds={users.map((u) => u.user_id)} />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const fmtDur = (sec: number) => {
@@ -58,6 +111,8 @@ export function RecordsPanel({ audience }: { audience: 'admin' | 'consultant' })
   const [company, setCompany] = useState('all');
   const [search, setSearch] = useState('');
   const [viewing, setViewing] = useState<RosterRow | null>(null);
+  const [scheduleFor, setScheduleFor] = useState<RosterRow[] | null>(null);
+  const canEdit = audience === 'admin';
 
   useEffect(() => {
     (async () => {
@@ -77,9 +132,12 @@ export function RecordsPanel({ audience }: { audience: 'admin' | 'consultant' })
     })();
   }, []);
 
-  const loadRoster = useCallback(async (cid: number) => {
-    setLoading(true);
-    setSelected(new Set());
+  /** quiet: 選択と表示を残したまま読み直す（就業日の設定を変えたあと） */
+  const loadRoster = useCallback(async (cid: number, quiet = false) => {
+    if (!quiet) {
+      setLoading(true);
+      setSelected(new Set());
+    }
     try {
       const res = await fetch(`/api/admin/course-roster?courseId=${cid}`, { headers: await recordAuthHeaders() });
       const json = await res.json();
@@ -90,7 +148,7 @@ export function RecordsPanel({ audience }: { audience: 'admin' | 'consultant' })
     } catch {
       alert('受講一覧の取得に失敗しました');
     }
-    setLoading(false);
+    if (!quiet) setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -310,6 +368,16 @@ export function RecordsPanel({ audience }: { audience: 'admin' | 'consultant' })
             <Button variant="outline" size="sm" onClick={exportQaCSV} loading={busy === 'qa'} disabled={selected.size === 0 || !!busy}>
               <DocumentArrowDownIcon className="w-4 h-4 mr-1" /> 質疑応答ログCSV
             </Button>
+            {canEdit && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setScheduleFor(rows.filter((r) => selected.has(r.user_id)))}
+                disabled={selected.size === 0 || !!busy}
+              >
+                <ClockIcon className="w-4 h-4 mr-1" /> 就業日・時間を設定
+              </Button>
+            )}
           </div>
 
           {loading || !coursesLoaded ? (
@@ -334,6 +402,7 @@ export function RecordsPanel({ audience }: { audience: 'admin' | 'consultant' })
                     <th className="py-2 pr-4">動画</th>
                     <th className="py-2 pr-4">テスト</th>
                     <th className="py-2 pr-4">修了日</th>
+                    <th className="py-2 pr-4">就業日・時間</th>
                     <th className="py-2 pr-4">実施記録</th>
                   </tr>
                 </thead>
@@ -354,6 +423,21 @@ export function RecordsPanel({ audience }: { audience: 'admin' | 'consultant' })
                       </td>
                       <td className="py-2 pr-4 whitespace-nowrap">
                         {r.completion_date ? new Date(r.completion_date).toLocaleDateString('ja-JP') : '—'}
+                      </td>
+                      <td className="py-2 pr-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1">
+                          <span className={r.work_schedule ? 'text-xs' : 'text-xs text-gray-400'}>{r.work_schedule || '未設定'}</span>
+                          {canEdit && (
+                            <button
+                              className="p-1 text-gray-500 hover:text-blue-700 dark:hover:text-blue-300"
+                              onClick={() => setScheduleFor([r])}
+                              title="就業日・就業時間を設定"
+                              aria-label={`${r.name}の就業日・就業時間を設定`}
+                            >
+                              <PencilSquareIcon className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="py-2 pr-4">
                         <div className="flex items-center gap-2">
@@ -379,8 +463,23 @@ export function RecordsPanel({ audience }: { audience: 'admin' | 'consultant' })
         <RecordViewer
           userId={viewing.user_id}
           courseId={courseId}
-          title={`実施記録：${viewing.name}（${courseInfo?.title || ''}）`}
-          onClose={() => setViewing(null)}
+          title={`テスト実施記録：${viewing.name}（${courseInfo?.title || ''}）`}
+          onClose={() => {
+            setViewing(null);
+            // 記録の画面で就業日を変えたかもしれないので一覧の表示を読み直す
+            if (canEdit) loadRoster(courseId, true);
+          }}
+          editable={canEdit}
+        />
+      )}
+
+      {scheduleFor && scheduleFor.length > 0 && (
+        <WorkScheduleModal
+          users={scheduleFor}
+          onClose={() => {
+            setScheduleFor(null);
+            if (courseId) loadRoster(courseId, true);
+          }}
         />
       )}
     </div>

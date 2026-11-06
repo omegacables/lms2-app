@@ -3,6 +3,7 @@ import { requireRole } from '@/lib/auth/requireAdmin';
 import { createAdminSupabaseClient } from '@/lib/database/supabase';
 import { computeGateState } from '@/lib/quiz/gating';
 import { chunk, consultantCompanyScope, inScope } from '@/lib/auth/consultantScope';
+import { scheduleFromRow, scheduleSummary } from '@/lib/records/workSchedule';
 
 export const runtime = 'nodejs';
 
@@ -45,6 +46,16 @@ export async function GET(request: NextRequest) {
   // 社労士は担当会社の受講者だけ
   const scope = await consultantCompanyScope(admin, auth);
   const visibleUcs = (ucs || []).filter((u) => inScope(scope, profileMap.get(u.user_id)?.company));
+
+  // 就業日・就業時間（テスト実施記録で時間外の回答日を赤字にする設定）。テーブルが無い環境では未設定扱い
+  const scheduleMap = new Map<string, string>();
+  for (const ids of chunk(visibleUcs.map((u) => u.user_id))) {
+    const { data } = await admin
+      .from('student_work_schedules')
+      .select('user_id, work_days, start_time, end_time, holidays_off')
+      .in('user_id', ids);
+    (data || []).forEach((r) => scheduleMap.set(r.user_id, scheduleSummary(scheduleFromRow(r))));
+  }
 
   // 動画
   const { data: videos } = await admin
@@ -105,6 +116,7 @@ export async function GET(request: NextRequest) {
       video_complete: totalVideos > 0 && completedVideos >= totalVideos,
       tests_passed: testsPassed,
       completion_date: certMap.get(uid) || null,
+      work_schedule: scheduleMap.get(uid) || null,
     });
   }
 

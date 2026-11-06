@@ -4,6 +4,8 @@ import { createAdminSupabaseClient } from '@/lib/database/supabase';
 import { computeGateState } from '@/lib/quiz/gating';
 import { aiInstructorLabel, isAutoOrigin, reviewSignature } from '@/lib/quiz/aiInstructors';
 import { consultantCompanyScope, inScope } from '@/lib/auth/consultantScope';
+import { exceptionFromRow, scheduleFromRow, scheduleSummary } from '@/lib/records/workSchedule';
+import { createAnswerDateResolver } from '@/lib/records/answerDates';
 
 export const runtime = 'nodejs';
 
@@ -110,6 +112,38 @@ export async function GET(request: NextRequest) {
     .order('sort_order', { ascending: true })
     .order('id', { ascending: true });
 
+  // 就業日・就業時間（未設定なら時間外の判定はしない）。テーブルがまだ無い環境でもエラーにせず未設定として扱う
+  const { data: scheduleRow } = await admin
+    .from('student_work_schedules')
+    .select('work_days, start_time, end_time, holidays_off')
+    .eq('user_id', userId)
+    .maybeSingle();
+  const workSchedule = scheduleFromRow(scheduleRow);
+  const { data: exceptionRows } = await admin
+    .from('student_work_exceptions')
+    .select('work_date, is_workday, start_time, end_time, note')
+    .eq('user_id', userId)
+    .order('work_date', { ascending: true });
+  const workExceptions = (exceptionRows || []).map(exceptionFromRow);
+
+  // 回答日の修正（追記のみ。同じ回答への最新の行が有効、corrected_date が NULL なら取り消し）
+  const quizIds = (quizzes || []).map((q) => q.id);
+  let corrRows: any[] = [];
+  if (quizIds.length > 0) {
+    const { data } = await admin
+      .from('quiz_answer_date_corrections')
+      .select('id, quiz_id, answered_at, corrected_date, reason, corrected_by_name, corrected_at')
+      .eq('user_id', userId)
+      .in('quiz_id', quizIds)
+      .order('corrected_at', { ascending: true })
+      .order('id', { ascending: true });
+    corrRows = data || [];
+  }
+
+  // テストの回答を回答・提出ごとにまとめ、実施記録に載せる日付と就業時間外かどうかを決める
+  const dates = createAnswerDateResolver({ schedule: workSchedule, exceptions: workExceptions, corrections: corrRows });
+  const answerDates = dates.entries;
+
   const choiceQuizzes: any[] = [];
   const essayQuizzes: any[] = [];
 
@@ -128,6 +162,7 @@ export async function GET(request: NextRequest) {
 
     // 提出制（記述式／選択式 grading_mode='review'）は添削記録として出力する
     const isReviewQuiz = quiz.quiz_type === 'essay' || quiz.grading_mode === 'review';
+    const dateOf = dates.add(quiz, isReviewQuiz ? 'final' : 'small', attempts || []);
 
     if (!isReviewQuiz) {
       // 小テストの自動添削（AI）
@@ -176,6 +211,7 @@ export async function GET(request: NextRequest) {
                 (a.selected_index !== null && a.selected_index !== undefined ? choices[a.selected_index] ?? '' : ''),
               is_correct: a.is_correct,
               answered_at: a.answered_at,
+              ...dateOf(a.answered_at),
             })),
           };
         }),
@@ -232,6 +268,7 @@ export async function GET(request: NextRequest) {
                       : '（未回答）')
                   : a.answer_text,
               answered_at: a.answered_at,
+              ...dateOf(a.answered_at),
             })),
             review_mark: mark,
           };
@@ -295,6 +332,22 @@ export async function GET(request: NextRequest) {
     videos: videoRecords,
     choiceQuizzes,
     essayQuizzes,
+    // 回答日の一覧（画面での修正用）と、実施記録に載せる修正の記録
+    answerDates,
+    dateCorrections: answerDates
+      .filter((e) => e.correction)
+      .map((e) => ({
+        quiz_title: e.quiz_title,
+        attempt_no: e.attempt_no,
+        original_date: e.original_date,
+        corrected_date: e.correction!.corrected_date,
+        reason: e.correction!.reason,
+        corrected_by_name: e.correction!.corrected_by_name,
+        corrected_at: e.correction!.corrected_at,
+      })),
+    workSchedule,
+    workScheduleSummary: scheduleSummary(workSchedule),
+    workExceptions,
     testsPassed: course.test_required ? gate.allPassed : null,
     totalWatchedSeconds: videoRecords.reduce((s, v) => s + (v.watched_seconds || 0), 0),
   });

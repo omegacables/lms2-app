@@ -1,25 +1,21 @@
 'use client';
 
-// 実施記録（動画の視聴・小テスト・最終テストと添削）を画面で見る。PDF と同じ HTML（buildRecordHTML）を表示する。
+// テスト実施記録（小テスト・最終テストと添削）を画面で見る。PDF と同じ HTML（buildRecordHTML）を表示する。
 // 管理者・講師・社労士で共通（社労士は API 側で担当会社の受講者だけに絞られる）。
+// editable（管理者・講師）のときは「日付・就業日」で回答日の修正と就業日・就業時間の設定ができる。
 
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { supabase } from '@/lib/database/supabase';
+import { recordAuthHeaders } from '@/components/records/recordApi';
+import { RecordEditPanel } from '@/components/records/RecordEditPanel';
 import {
   buildRecordHTML,
   generateLearningRecordPDFBlob,
   type LearningRecordData,
 } from '@/lib/utils/learningRecordPDF';
 
-export async function recordAuthHeaders(): Promise<HeadersInit> {
-  const { data: { session } } = await supabase.auth.getSession();
-  return {
-    'Content-Type': 'application/json',
-    Authorization: session?.access_token ? `Bearer ${session.access_token}` : '',
-  };
-}
+export { recordAuthHeaders };
 
 export async function fetchLearningRecord(userId: string, courseId: number): Promise<LearningRecordData> {
   const res = await fetch(
@@ -46,23 +42,35 @@ export function RecordViewer({
   courseId,
   title,
   onClose,
+  editable = false,
 }: {
   userId: string;
   courseId: number;
   title?: string;
   onClose: () => void;
+  /** 回答日の修正・就業日の設定ができる（管理者・講師） */
+  editable?: boolean;
 }) {
   const [data, setData] = useState<LearningRecordData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
-    let cancelled = false;
     setData(null);
     setError(null);
+  }, [userId, courseId]);
+
+  // 編集のあとは表示を残したまま読み直す
+  useEffect(() => {
+    let cancelled = false;
     fetchLearningRecord(userId, courseId)
       .then((d) => {
-        if (!cancelled) setData(d);
+        if (!cancelled) {
+          setData(d);
+          setError(null);
+        }
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -70,7 +78,7 @@ export function RecordViewer({
     return () => {
       cancelled = true;
     };
-  }, [userId, courseId]);
+  }, [userId, courseId, version]);
 
   // Esc で閉じる
   useEffect(() => {
@@ -99,11 +107,22 @@ export function RecordViewer({
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label={title || '実施記録'}
+        aria-label={title || 'テスト実施記録'}
       >
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 rounded-t-xl border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-neutral-900 px-4 py-3">
-          <div className="min-w-0 truncate font-semibold text-gray-900 dark:text-gray-100">{title || '実施記録'}</div>
+          <div className="min-w-0 truncate font-semibold text-gray-900 dark:text-gray-100">{title || 'テスト実施記録'}</div>
           <div className="flex shrink-0 items-center gap-2">
+            {editable && (
+              <Button
+                size="sm"
+                variant={editing ? 'primary' : 'outline'}
+                onClick={() => setEditing((v) => !v)}
+                disabled={!data}
+                aria-pressed={editing}
+              >
+                日付・就業日
+              </Button>
+            )}
             <Button size="sm" variant="outline" onClick={downloadPdf} disabled={!data} loading={busy}>
               PDF
             </Button>
@@ -112,6 +131,9 @@ export function RecordViewer({
             </Button>
           </div>
         </div>
+        {editable && editing && data && (
+          <RecordEditPanel userId={userId} data={data} onChanged={() => setVersion((v) => v + 1)} />
+        )}
         <div className="overflow-x-auto bg-gray-100 dark:bg-neutral-800 p-3 sm:p-4">
           {error ? (
             <p className="py-10 text-center text-sm text-red-600">{error}</p>

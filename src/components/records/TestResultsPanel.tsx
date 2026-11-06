@@ -284,6 +284,7 @@ export function TestResultsPanel({ audience }: { audience: 'admin' | 'consultant
           courseId={courseId}
           title={`${viewing.name}（${courseTitle}）`}
           onClose={() => setViewing(null)}
+          editable={audience === 'admin'}
         />
       )}
     </div>
