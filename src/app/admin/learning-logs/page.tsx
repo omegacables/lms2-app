@@ -7,6 +7,7 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { useAuth } from '@/stores/auth';
 import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { supabase } from '@/lib/database/supabase';
 import { parseCSV } from '@/lib/utils/csv';
 import {
@@ -315,6 +316,12 @@ export default function LearningLogsPage() {
       console.error('フィルター情報取得エラー:', error);
     }
   };
+
+  // 検索語が変わったら1ページ目に戻す（後ろのページを開いたまま検索すると、結果があるのに空に見えるため）
+  const handleSearch = React.useCallback((value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  }, []);
 
   // 日時系の列は初回クリック時に新しい順（降順）から始める
   const isTimeField = (field: SortField) =>
@@ -1108,41 +1115,29 @@ export default function LearningLogsPage() {
   }, [showUnstarted, learningLogs, allUsers, allVideos, courses]);
 
   // 表示用ログ（既存ログ + 未開始ログ）
-  const displayableLogs = showUnstarted ? [...learningLogs, ...unstartedLogs] : learningLogs;
+  const displayableLogs = React.useMemo(
+    () => (showUnstarted ? [...learningLogs, ...unstartedLogs] : learningLogs),
+    [showUnstarted, learningLogs, unstartedLogs]
+  );
 
-  // フィルタリングとソート
-  const filteredAndSortedLogs = displayableLogs
-    .filter(log => {
-      const matchesSearch = 
-        log.user_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.user_email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.course_title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.video_title.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      const matchesStatus = filterStatus === 'all' || log.status === filterStatus;
-      const matchesCompany = filterCompany === 'all' || log.company === filterCompany;
-      const matchesCourse = filterCourse === 'all' || String(log.course_id) === String(filterCourse);
-      
-      let matchesDate = true;
-      if (dateRange.start && dateRange.end) {
-        const logDate = new Date(log.created_at);
-        const startDate = new Date(dateRange.start);
-        const endDate = new Date(dateRange.end);
-        endDate.setHours(23, 59, 59, 999);
-        matchesDate = logDate >= startDate && logDate <= endDate;
-      }
+  // 並べ替え。件数が多いので、並べ替え・検索用の文字列づくり・絞り込みは必要なときだけやり直す
+  // （以前は検索欄に1文字打つたび・ほかの入力のたびに全件を絞り込んで並べ直していて、入力が引っかかった）。
+  // 並べ替えは安定なので、「並べてから絞り込む」と「絞り込んでから並べる」は同じ順になる。
+  const sortedLogs = React.useMemo(() => {
+    // 日時の文字列を数値にするのは1つの値につき1回だけ（比べるたびに Date を作ると遅い）
+    const timeCache = new Map<string, number | null>();
+    // 空の日時は常に末尾へ（未開始ログなど）
+    const timeValue = (value: string) => {
+      const cached = timeCache.get(value);
+      if (cached !== undefined) return cached;
+      const time = value ? new Date(value).getTime() : NaN;
+      const result = Number.isNaN(time) ? null : time;
+      timeCache.set(value, result);
+      return result;
+    };
+    const statusRank = { not_started: 0, in_progress: 1, completed: 2 } as const;
 
-      return matchesSearch && matchesStatus && matchesCompany && matchesCourse && matchesDate;
-    })
-    .sort((a, b) => {
-      // 空の日時は常に末尾へ（未開始ログなど）
-      const timeValue = (value: string) => {
-        const time = value ? new Date(value).getTime() : NaN;
-        return Number.isNaN(time) ? null : time;
-      };
-      const statusRank = { not_started: 0, in_progress: 1, completed: 2 } as const;
-
+    return [...displayableLogs].sort((a, b) => {
       let compareValue = 0;
 
       switch (sortField) {
@@ -1194,6 +1189,40 @@ export default function LearningLogsPage() {
 
       return sortOrder === 'asc' ? compareValue : -compareValue;
     });
+  }, [displayableLogs, sortField, sortOrder]);
+
+  // 検索に使う文字列（氏名・メール・会社名・コース名・動画名を小文字でつないだもの）。sortedLogs と同じ並び
+  const searchTexts = React.useMemo(
+    () =>
+      sortedLogs.map(log =>
+        [log.user_name, log.user_email, log.company, log.course_title, log.video_title].join('\n').toLowerCase()
+      ),
+    [sortedLogs]
+  );
+
+  // フィルタリング（並べ替え済みの一覧から絞り込む）
+  const filteredAndSortedLogs = React.useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    const useDate = Boolean(dateRange.start && dateRange.end);
+    const startDate = new Date(dateRange.start);
+    const endDate = new Date(dateRange.end);
+    endDate.setHours(23, 59, 59, 999);
+
+    return sortedLogs.filter((log, index) => {
+      const matchesSearch = searchTexts[index].includes(term);
+      const matchesStatus = filterStatus === 'all' || log.status === filterStatus;
+      const matchesCompany = filterCompany === 'all' || log.company === filterCompany;
+      const matchesCourse = filterCourse === 'all' || String(log.course_id) === String(filterCourse);
+
+      let matchesDate = true;
+      if (useDate) {
+        const logDate = new Date(log.created_at);
+        matchesDate = logDate >= startDate && logDate <= endDate;
+      }
+
+      return matchesSearch && matchesStatus && matchesCompany && matchesCourse && matchesDate;
+    });
+  }, [sortedLogs, searchTexts, searchTerm, filterStatus, filterCompany, filterCourse, dateRange.start, dateRange.end]);
 
   // ページネーション
   const totalPages = Math.ceil(filteredAndSortedLogs.length / itemsPerPage);
@@ -1313,12 +1342,11 @@ export default function LearningLogsPage() {
               <div className="lg:col-span-2">
                 <div className="relative">
                   <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <input
-                    type="text"
+                  <SearchInput
                     placeholder="氏名、会社名、コース名、動画名で検索..."
                     className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-neutral-900 text-gray-900 dark:text-gray-100"
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onSearch={handleSearch}
                   />
                 </div>
               </div>
