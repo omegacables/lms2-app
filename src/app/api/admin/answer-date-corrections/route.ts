@@ -6,12 +6,13 @@ import { isValidDate, jstParts, jstToday } from '@/lib/records/workSchedule';
 export const runtime = 'nodejs';
 
 // POST /api/admin/answer-date-corrections
-// テスト実施記録に載せる回答日を修正する（管理者・講師）。
+// テストの回答日を修正する（管理者・講師）。
 // body: { userId, quizId, answeredAt, correctedDate: 'YYYY-MM-DD' | null, reason }
 //  - answeredAt は対象の回答・提出の quiz_attempts.answered_at（全設問で同じ値）
 //  - correctedDate が null または元の回答日と同じなら「修正の取り消し」
 // quiz_attempts（回答ログ）は書き換えず、修正の記録を quiz_answer_date_corrections に追記する。
-// 実施記録には修正後の日付と、元の回答日・修正者・理由が載る。
+// 修正後の日付は「日付・就業日」の一覧に出る。テスト実施記録（PDF）には今は回答日を載せていないが、
+// 載せるときは修正後の日付と一緒に、元の回答日・修正者・理由も必ず載せる（learningRecordPDF.ts の SHOW_TEST_DATES）。
 export async function POST(request: NextRequest) {
   const auth = await requireRole(request, ['admin', 'instructor']);
   if (!auth.ok) return auth.response;

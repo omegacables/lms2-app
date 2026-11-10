@@ -1,10 +1,10 @@
 'use client';
 
 // テスト実施記録の「日付・就業日」編集（管理者・講師）。
-// - 回答日：テストの回答・提出1回ごとに、実施記録に載せる日付を修正する（理由が必須）。
-//   回答ログ（quiz_attempts）は書き換えず、修正の記録を残す。実施記録には修正後の日付に「（修正）」が付き、
-//   元の回答日・修正者・理由が「回答日の修正記録」に載る。
-// - 就業日・就業時間：この受講者の定期の出勤日・就業時間と例外日。外れた回答日は実施記録で赤字になる。
+// テスト実施記録（PDF・表示）には回答日を載せていないので、回答日と就業時間外かどうかはここで確認する。
+// - 回答日：テストの回答・提出1回ごとに、回答日を修正できる（理由が必須）。
+//   回答ログ（quiz_attempts）は書き換えず、修正の記録（元の回答日・修正者・理由）を残す。
+// - 就業日・就業時間：この受講者の定期の出勤日・就業時間と例外日。外れた回答日はこの一覧で赤字になる。
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/Button';
@@ -37,7 +37,7 @@ function DateRow({
 
   const submit = async (correctedDate: string | null) => {
     if (!reason.trim()) {
-      setError('修正の理由を入力してください（実施記録に載ります）。');
+      setError('修正の理由を入力してください（修正の記録に残ります）。');
       return;
     }
     setBusy(true);
@@ -85,13 +85,13 @@ function DateRow({
               value={date}
               max={jstToday()}
               onChange={(e) => setDate(e.target.value)}
-              aria-label="実施記録に載せる日付"
+              aria-label="修正後の回答日"
             />
             <input
               className={`${inputCls} w-full min-w-[14rem]`}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="修正の理由（必須・実施記録に載ります）"
+              placeholder="修正の理由（必須・修正の記録に残ります）"
               maxLength={500}
               aria-label="修正の理由"
             />
@@ -180,7 +180,7 @@ export function RecordEditPanel({
       <section>
         <h3 className="mb-1 font-semibold">回答日</h3>
         <p className="mb-2 text-xs text-gray-500">
-          テストの回答・提出ごとに、実施記録に載せる日付を修正できます。回答の記録そのものは残り、実施記録には修正後の日付に「（修正）」が付き、元の回答日・修正者・理由が「回答日の修正記録」に載ります。
+          テスト実施記録（PDF・表示）には回答日を載せていません。回答日と、就業日・就業時間の外かどうかは、この一覧で確認できます。回答日を修正すると、元の回答日・修正者・理由が修正の記録として残ります（回答の記録そのものは変わりません）。
           {data.workSchedule
             ? offCount > 0
               ? ` 就業日・就業時間の外の回答が ${offCount} 件あります（赤字）。`
@@ -196,7 +196,7 @@ export function RecordEditPanel({
                 <tr className="border-b border-gray-200 text-left text-xs text-gray-500 dark:border-gray-700">
                   <th className="py-1.5 pr-3">テスト</th>
                   <th className="py-1.5 pr-3">回答日時（記録）</th>
-                  <th className="py-1.5 pr-3">実施記録の日付</th>
+                  <th className="py-1.5 pr-3">回答日</th>
                   <th className="py-1.5 pr-3">判定</th>
                   <th className="py-1.5" />
                 </tr>

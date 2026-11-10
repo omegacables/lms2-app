@@ -82,7 +82,7 @@ function WorkScheduleModal({
         </div>
         <div className="px-4 py-4">
           <p className="mb-3 text-xs text-gray-500">
-            定期的な出勤日と就業時間を設定すると、テスト実施記録で就業日・就業時間の外に回答した日付が赤字になります。休み・出勤日の入れ替えや時間の違う日は「例外日」で設定できます。
+            定期的な出勤日と就業時間を設定すると、実施記録の「日付・就業日」の一覧で、就業日・就業時間の外に回答した日付が赤字になります（PDF には回答日を載せていません）。休み・出勤日の入れ替えや時間の違う日は「例外日」で設定できます。
           </p>
           <WorkScheduleForm userIds={users.map((u) => u.user_id)} />
         </div>
@@ -247,13 +247,15 @@ export function RecordsPanel({ audience }: { audience: 'admin' | 'consultant' })
         // 修了証PDF（修了日がある場合）。発行者・署名・印影は証明書設定（記録の seal）を使う
         const completion = data.certificate?.completion_date || row?.completion_date;
         if (completion) {
+          // 発行日は修了日と同じ日（修了証の画面と同じ扱い。出力した日にはしない）
+          const completionText = new Date(completion).toLocaleDateString('ja-JP');
           const cert = await generateCertificatePDFBlob({
             certificateId: data.certificate?.id,
             courseName: data.course.title,
             userName: data.student.name,
             company: data.student.company,
-            completionDate: new Date(completion).toLocaleDateString('ja-JP'),
-            issueDate: new Date().toLocaleDateString('ja-JP'),
+            completionDate: completionText,
+            issueDate: completionText,
             totalVideos: data.videos.length,
             totalWatchTime: data.totalWatchedSeconds,
             issuerCompanyName: data.seal?.companyName || undefined,

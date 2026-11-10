@@ -5,8 +5,8 @@ import { fmtYmd, type WorkException, type WorkSchedule } from '@/lib/records/wor
 import type { AnswerDateEntry } from '@/lib/records/answerDates';
 
 // テスト実施記録PDF（証拠書類）。小テスト・最終テストの回答と添削を載せる（動画の視聴記録は学習ログで見る）。
-// 回答日は日付だけ。受講者の就業日・就業時間の外の回答は日付を赤字にする。
-// 回答日を修正したものは「（修正）」を付け、元の回答日・修正者・理由を「回答日の修正記録」に載せる。
+// 日付は基本情報（受講開始・修了日・発行日）だけ。「1. 小テスト記録」より下には日付を載せない（SHOW_TEST_DATES）。
+// 回答日・就業時間外かどうか・回答日の修正は、画面の「日付・就業日」（RecordEditPanel）で確認する。
 // 日本語の長文が複数ページに渡っても崩れないよう、HTMLをブラウザで描画→html2canvasで画像にして
 // A4縦のjsPDFに貼り付ける。画面での閲覧（RecordViewer）も同じ HTML（buildRecordHTML）を使う。
 // - 改ページ位置は DOM の位置から決め、文字の行・表の行・小さなまとまりの途中では切らない
@@ -123,6 +123,16 @@ const escAttr = (s: unknown) => esc(s).replace(/"/g, '&quot;').replace(/'/g, '&#
 
 const fmtDateTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString('ja-JP') : '—');
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('ja-JP') : '—');
+
+/**
+ * 「1. 小テスト記録」より下に日付（回答日・添削日時・出力日）を載せるか。
+ * 2026-11-10 の依頼で、載せないことにした（false）。
+ *
+ * 回答日は管理者が修正できる（quiz_answer_date_corrections）。日付を載せるなら、修正後の日付だけを載せると
+ * 証拠書類が事実と違ってしまうので、必ず「（修正）」の印と「回答日の修正記録」も一緒に載せる。
+ * ばらばらに切り替えられないよう、この1つの設定でまとめて切り替える。
+ */
+const SHOW_TEST_DATES: boolean = false;
 
 /** 回答日（日付だけ）。就業日・就業時間の外は赤字、修正したものは「（修正）」を付ける */
 function answerDateHTML(a: { answered_at: string } & AnswerDateFields): string {
@@ -248,7 +258,7 @@ export function buildRecordHTML(d: LearningRecordData): string {
               <tr>
                 <td class="c">${esc(a.attempt_no)}</td>
                 <td>${esc(a.selected_text)}</td>
-                <td class="dt">${answerDateHTML(a)}</td>
+                ${SHOW_TEST_DATES ? `<td class="dt">${answerDateHTML(a)}</td>` : ''}
               </tr>`
             )
             .join('');
@@ -257,8 +267,8 @@ export function buildRecordHTML(d: LearningRecordData): string {
               <div class="qh keep-next">問${qi + 1}. ${esc(qq.question_text)}</div>
               <div class="choices keep">${choicesHtml}</div>
               <table class="sub">
-                <thead class="keep-next"><tr><th class="no c nw">回</th><th>選択した解答</th><th class="dt">回答日</th></tr></thead>
-                <tbody>${attemptRows || '<tr><td colspan="3" class="c">未回答</td></tr>'}</tbody>
+                <thead class="keep-next"><tr><th class="no c nw">回</th><th>選択した解答</th>${SHOW_TEST_DATES ? '<th class="dt">回答日</th>' : ''}</tr></thead>
+                <tbody>${attemptRows || `<tr><td colspan="${SHOW_TEST_DATES ? 3 : 2}" class="c">未回答</td></tr>`}</tbody>
               </table>
               ${qq.explanation ? `<div class="expl keep"><b>解説：</b>${esc(qq.explanation)}</div>` : ''}
               ${qq.auto_mark?.comment ? `<div class="expl keep"><b>講評：</b>${esc(qq.auto_mark.comment)}</div>` : ''}
@@ -270,8 +280,12 @@ export function buildRecordHTML(d: LearningRecordData): string {
         .join('');
       const ar = q.auto_review;
       const autoLine = ar
-        ? `<div class="expl keep" style="margin:2px 0 6px;">添削：${esc(ar.signature || '講師')}（AIによる自動添削　${fmtDateTime(ar.generated_at)}）${
-            ar.confirmed ? `　／　講師の確認：${esc(ar.reviewer_name || '')}（${fmtDateTime(ar.confirmed_at)}）${ar.edited ? '・講師が修正' : ''}` : ''
+        ? `<div class="expl keep" style="margin:2px 0 6px;">添削：${esc(ar.signature || '講師')}（AIによる自動添削${
+            SHOW_TEST_DATES ? `　${fmtDateTime(ar.generated_at)}` : ''
+          }）${
+            ar.confirmed
+              ? `　／　講師の確認：${esc(ar.reviewer_name || '')}${SHOW_TEST_DATES ? `（${fmtDateTime(ar.confirmed_at)}）` : ''}${ar.edited ? '・講師が修正' : ''}`
+              : ''
           }${ar.comment ? `<br><b>全体のコメント：</b>${esc(ar.comment)}` : ''}</div>`
         : '';
       return `<div class="quiz"><div class="quiz-title keep-next">■ 小テスト：${esc(q.title)}</div>${autoLine}${qs}</div>`;
@@ -284,7 +298,7 @@ export function buildRecordHTML(d: LearningRecordData): string {
         .map((qq, qi) => {
           const answers = qq.answers
             .map(
-              (a) => `<div class="ans keep"><span class="ans-no">提出${esc(a.attempt_no)}（${answerDateHTML(a)}）</span><div class="ans-body">${esc(a.answer_text)}</div></div>`
+              (a) => `<div class="ans keep"><span class="ans-no">提出${esc(a.attempt_no)}${SHOW_TEST_DATES ? `（${answerDateHTML(a)}）` : ''}</span><div class="ans-body">${esc(a.answer_text)}</div></div>`
             )
             .join('');
           const mark = qq.review_mark;
@@ -308,7 +322,7 @@ export function buildRecordHTML(d: LearningRecordData): string {
                 : d.seal?.signerTitle
                 ? '（' + esc(d.seal.signerTitle) + '）'
                 : ''
-            }　${fmtDateTime(r.reviewed_at)}</div>
+            }${SHOW_TEST_DATES ? `　${fmtDateTime(r.reviewed_at)}` : ''}</div>
             ${r.comment ? `<div class="review-comment"><b>添削：</b>${esc(r.comment)}</div>` : ''}
             ${r.explanation ? `<div class="review-comment"><b>解説：</b>${esc(r.explanation)}</div>` : ''}
           </div>`
@@ -322,7 +336,8 @@ export function buildRecordHTML(d: LearningRecordData): string {
   let sectionNo = 0;
   const sectionHead = (label: string) => `<div class="section keep-next">${++sectionNo}. ${esc(label)}</div>`;
 
-  const corrections = d.dateCorrections || [];
+  // 回答日を載せないときは、修正の記録・赤字の説明も載せない（載せる日付が無いので）
+  const corrections = SHOW_TEST_DATES ? d.dateCorrections || [] : [];
   const correctionRows = corrections
     .map(
       (c) => `
@@ -339,8 +354,9 @@ export function buildRecordHTML(d: LearningRecordData): string {
     .join('');
 
   const hasOff =
-    d.choiceQuizzes.some((q) => q.questions.some((qq) => qq.attempts.some((a) => a.off_reason))) ||
-    d.essayQuizzes.some((q) => q.questions.some((qq) => qq.answers.some((a) => a.off_reason)));
+    SHOW_TEST_DATES &&
+    (d.choiceQuizzes.some((q) => q.questions.some((qq) => qq.attempts.some((a) => a.off_reason))) ||
+      d.essayQuizzes.some((q) => q.questions.some((qq) => qq.answers.some((a) => a.off_reason))));
   const legend = hasOff
     ? `<div class="legend keep"><span class="off">赤字の回答日</span>：就業日・就業時間の外に回答したもの${
         d.workScheduleSummary ? `（就業日・時間：${esc(d.workScheduleSummary)}）` : ''
@@ -350,6 +366,9 @@ export function buildRecordHTML(d: LearningRecordData): string {
   const testSections =
     (d.choiceQuizzes.length > 0 ? `${sectionHead('小テスト記録')}${choiceSections}` : '') +
     (d.essayQuizzes.length > 0 ? `${sectionHead('最終テスト・添削記録')}${essaySections}` : '');
+
+  // 修了日と発行日は同じ日（修了証は修了した日に発行される。どちらも certificates.completion_date）
+  const completionDate = fmtDate(d.period.completion_date ?? d.certificate?.completion_date ?? null);
 
   return `
   <div class="lr-doc">
@@ -361,10 +380,10 @@ export function buildRecordHTML(d: LearningRecordData): string {
     <table class="info keep">
       <tr><td class="k">氏名</td><td>${esc(d.student.name)}</td><td class="k">所属</td><td>${esc(d.student.company)} ${esc(d.student.department)}</td></tr>
       <tr><td class="k">コース名</td><td>${esc(d.course.title)}</td><td class="k">訓練区分</td><td>${esc(d.course.training_type_note || '—')}</td></tr>
-      <tr><td class="k">受講開始</td><td>${fmtDate(d.period.assigned_at)}</td><td class="k">修了日</td><td>${fmtDate(d.period.completion_date)}</td></tr>
+      <tr><td class="k">受講開始</td><td>${fmtDate(d.period.assigned_at)}</td><td class="k">修了日</td><td>${completionDate}</td></tr>
       <tr><td class="k">標準学習時間</td><td>${stdTime}</td><td class="k">標準学習期間</td><td>${esc(d.course.standard_learning_period || '—')}</td></tr>
       <tr><td class="k">受講時間合計</td><td>${fmtDuration(d.totalWatchedSeconds)}</td><td class="k">テスト通過</td><td>${d.testsPassed === null ? '—' : d.testsPassed ? '全通過' : '未通過'}</td></tr>
-      <tr><td class="k">証明書ID</td><td>${esc(d.certificate?.id || '—')}</td><td class="k">発行日</td><td>${fmtDate(d.certificate?.completion_date || null)}</td></tr>
+      <tr><td class="k">証明書ID</td><td>${esc(d.certificate?.id || '—')}</td><td class="k">発行日</td><td>${d.certificate ? completionDate : '—'}</td></tr>
     </table>
     ${legend}
 
@@ -380,7 +399,7 @@ export function buildRecordHTML(d: LearningRecordData): string {
         : ''
     }
 
-    <div class="footer keep">出力日: ${new Date().toLocaleString('ja-JP')}</div>
+    ${SHOW_TEST_DATES ? `<div class="footer keep">出力日: ${new Date().toLocaleString('ja-JP')}</div>` : ''}
   </div>`;
 }
 
