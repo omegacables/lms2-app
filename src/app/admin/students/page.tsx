@@ -11,7 +11,11 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { supabase } from '@/lib/database/supabase';
 import { EmailSendConfirmModal } from '@/components/admin/EmailSendConfirmModal';
+import { CompanyTrainingPeriodModal } from '@/components/admin/CompanyTrainingPeriodModal';
+import { recordAuthHeaders } from '@/components/records/recordApi';
+import { trainingPeriodLabel, type CompanyTrainingPeriodMap } from '@/lib/companies/companySettings';
 import {
+  CalendarDaysIcon,
   MagnifyingGlassIcon,
   FunnelIcon,
   DocumentArrowDownIcon,
@@ -97,9 +101,15 @@ export default function StudentsManagePage() {
   const [renameCompanyTo, setRenameCompanyTo] = useState('');
   const [renameCompanyProcessing, setRenameCompanyProcessing] = useState(false);
 
+  // 会社ごとの研修期間（研修開始日・研修終了日。任意）
+  const [companyPeriods, setCompanyPeriods] = useState<CompanyTrainingPeriodMap>({});
+  const [periodModalCompany, setPeriodModalCompany] = useState<string | null>(null);
+
   // ログイン情報メール作成モーダル
   const [emailModalCompany, setEmailModalCompany] = useState<string | null>(null);
   const [emailTrainingStart, setEmailTrainingStart] = useState<string>('');
+  // 研修終了日。空なら開始日の6か月後（自動）。会社に研修終了日が設定されていればその日
+  const [emailTrainingEnd, setEmailTrainingEnd] = useState<string>('');
   const [emailSubject, setEmailSubject] = useState<string>('');
   const [emailBody, setEmailBody] = useState<string>('');
   const [emailOnlyActive, setEmailOnlyActive] = useState(true);
@@ -112,6 +122,7 @@ export default function StudentsManagePage() {
   useEffect(() => {
     fetchStudents();
     fetchCourses();
+    fetchCompanyPeriods();
     fetchCompanyConsultantMap();
     // ログインURLの初期値は今開いているサイト（stus-lms / axialms / 人への投資）のログイン画面
     setEmailLoginUrl(`${window.location.origin}/auth/login`);
@@ -271,6 +282,18 @@ export default function StudentsManagePage() {
       setCourses(coursesData || []);
     } catch (error) {
       console.error('コース取得エラー:', error);
+    }
+  };
+
+  // 会社ごとの研修期間を読み込む（取れなくても、ほかの表示はそのまま出す）
+  const fetchCompanyPeriods = async () => {
+    try {
+      const res = await fetch('/api/admin/company-settings', { headers: await recordAuthHeaders() });
+      if (!res.ok) return;
+      const json = await res.json();
+      setCompanyPeriods(json.settings || {});
+    } catch (error) {
+      console.error('研修期間の取得エラー:', error);
     }
   };
 
@@ -569,6 +592,17 @@ export default function StudentsManagePage() {
         if (s.id === user?.id) return true; // 自分は残る
         return false;
       }));
+      // 研修期間の設定もサーバー側で消えるので、画面の表示からも外す
+      // （自分がこの会社にいる場合は会社が残るので、設定も残る）
+      const selfRemains = students.some(s => (s.company || '個人') === deleteCompanyName && s.id === user?.id);
+      if (!selfRemains) {
+        setCompanyPeriods(prev => {
+          if (!(deleteCompanyName in prev)) return prev;
+          const next = { ...prev };
+          delete next[deleteCompanyName];
+          return next;
+        });
+      }
 
       const failures = result.failures?.length ?? 0;
       alert(
@@ -634,6 +668,14 @@ export default function StudentsManagePage() {
         }
         return s;
       }));
+      // 研修期間の設定は新しい会社名へ引き継がれる（変更先にすでに設定があれば、そちらが残る）
+      setCompanyPeriods(prev => {
+        if (!(renameCompanyFrom in prev)) return prev;
+        const next = { ...prev };
+        if (!(newName in next)) next[newName] = next[renameCompanyFrom];
+        delete next[renameCompanyFrom];
+        return next;
+      });
 
       alert(
         `「${renameCompanyFrom}」→「${newName}」に変更しました。\n` +
@@ -685,10 +727,14 @@ export default function StudentsManagePage() {
     members: Student[],
     startIso: string,
     senderCompany: string,
-    loginUrl: string
+    loginUrl: string,
+    endIso: string = ''
   ): { subject: string; body: string } => {
     const startStr = formatReiwaDate(startIso);
-    const endStr = startIso ? formatReiwaDate(addMonthsIso(startIso, 6)) : '令和X年XX月X日(X)';
+    // 研修終了日：会社に設定があればその日、無ければ開始日の6か月後
+    const endStr = endIso
+      ? formatReiwaDate(endIso)
+      : startIso ? formatReiwaDate(addMonthsIso(startIso, 6)) : '令和X年XX月X日(X)';
 
     const honorifics = members
       .map(s => `${s.display_name || s.email}様`)
@@ -764,7 +810,8 @@ ${accounts}
       members,
       startIso,
       senderCompany,
-      loginUrl
+      loginUrl,
+      emailTrainingEnd
     );
     setEmailSubject(subject);
     setEmailBody(body);
@@ -772,9 +819,13 @@ ${accounts}
   };
 
   const openLoginEmailModal = (company: string) => {
-    const today = new Date().toISOString().slice(0, 10);
+    // 会社に研修期間が設定されていれば、それを研修期間の初期値にする（無ければ今日から6か月）
+    const period = companyPeriods[company];
+    const startIso = period?.training_start_date || new Date().toISOString().slice(0, 10);
+    const endIso = period?.training_end_date || '';
     setEmailModalCompany(company);
-    setEmailTrainingStart(today);
+    setEmailTrainingStart(startIso);
+    setEmailTrainingEnd(endIso);
     setEmailOnlyActive(true);
 
     const members = students.filter(s => {
@@ -786,9 +837,10 @@ ${accounts}
     const { subject, body } = buildLoginEmail(
       company,
       members,
-      today,
+      startIso,
       emailSenderCompany,
-      emailLoginUrl
+      emailLoginUrl,
+      endIso
     );
     setEmailSubject(subject);
     setEmailBody(body);
@@ -1503,10 +1555,11 @@ ${accounts}
                   {Object.entries(groupedStudents).map(([company, companyStudents]) => (
                     <div key={company} className={`space-y-4 ${companyStudents.every(s => !s.is_active) ? 'opacity-60' : ''}`}>
                       {groupByCompany && (
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                          {/* 幅が足りないときは、会社名の行とボタンの行に折り返す（横にはみ出さないように） */}
                           <button
                             onClick={() => toggleCompanyExpanded(company)}
-                            className="flex items-center space-x-2 text-lg font-semibold text-gray-900 dark:text-white hover:text-indigo-600 transition-colors"
+                            className="flex flex-wrap items-center gap-y-1 space-x-2 text-left text-lg font-semibold text-gray-900 dark:text-white hover:text-indigo-600 transition-colors"
                           >
                             {expandedCompanies.has(company) ? (
                               <ChevronUpIcon className="h-5 w-5" />
@@ -1530,8 +1583,13 @@ ${accounts}
                                 非アクティブ
                               </span>
                             )}
+                            {trainingPeriodLabel(companyPeriods[company]) && (
+                              <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                                研修期間: {trainingPeriodLabel(companyPeriods[company])}
+                              </span>
+                            )}
                           </button>
-                          <div className="flex items-center gap-2 sm:gap-4 text-sm text-gray-500 dark:text-gray-400">
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-x-4 text-sm text-gray-500 dark:text-gray-400">
                             <span className="hidden sm:inline">
                               完了率: {Math.round(
                                 companyStudents.reduce((sum, s) => sum + s.courseStats.completionRate, 0) / companyStudents.length
@@ -1563,6 +1621,21 @@ ${accounts}
                               <span className="hidden sm:inline">メール作成</span>
                               <span className="sm:hidden">メール</span>
                             </Button>
+                            {company !== '個人' && (
+                              <Button
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPeriodModalCompany(company);
+                                }}
+                                className="flex items-center text-xs sm:text-sm whitespace-nowrap"
+                                title={`${company} の研修開始日・研修終了日を設定`}
+                              >
+                                <CalendarDaysIcon className="h-4 w-4 mr-1 flex-shrink-0" />
+                                <span className="hidden sm:inline">研修期間</span>
+                                <span className="sm:hidden">期間</span>
+                              </Button>
+                            )}
                             {company !== '個人' && (
                               <Button
                                 variant="outline"
@@ -2126,6 +2199,24 @@ ${accounts}
           </div>
         )}
 
+        {/* 研修期間の設定モーダル（会社単位） */}
+        {periodModalCompany && (
+          <CompanyTrainingPeriodModal
+            company={periodModalCompany}
+            initial={companyPeriods[periodModalCompany] || null}
+            onClose={() => setPeriodModalCompany(null)}
+            onSaved={(period) => {
+              setCompanyPeriods(prev => {
+                const next = { ...prev };
+                if (period) next[periodModalCompany] = period;
+                else delete next[periodModalCompany];
+                return next;
+              });
+              setPeriodModalCompany(null);
+            }}
+          />
+        )}
+
         {/* ログイン情報メール作成モーダル（会社単位） */}
         {emailModalCompany && (
           <div
@@ -2172,7 +2263,9 @@ ${accounts}
                       className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-gray-900 dark:text-white"
                     />
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      終了日（自動）: {emailTrainingStart ? formatReiwaDate(addMonthsIso(emailTrainingStart, 6)) : '—'}
+                      {emailTrainingEnd
+                        ? `終了日（会社の設定）: ${formatReiwaDate(emailTrainingEnd)}`
+                        : `終了日（自動）: ${emailTrainingStart ? formatReiwaDate(addMonthsIso(emailTrainingStart, 6)) : '—'}`}
                     </p>
                   </div>
                   <div>

@@ -6,6 +6,7 @@ import { requireAdmin } from '@/lib/auth/requireAdmin';
  * 会社名のリネーム（または既存の会社へのマージ）。
  * - user_profiles.company と labor_consultant_companies.company を一括更新
  * - 統合先がすでに存在する場合は labor_consultant_companies の重複を解消
+ * - company_settings（会社ごとの研修期間）も新しい会社名へ引き継ぐ（統合先に設定があればそちらを残す）
  */
 export async function POST(request: NextRequest) {
   try {
@@ -105,6 +106,37 @@ export async function POST(request: NextRequest) {
       console.warn('[Company Rename] labor_consultant_companies cleanup warning:', e);
     }
 
+    // 3. company_settings（会社ごとの研修期間など）を新しい会社名へ引き継ぐ。
+    // 変更先にすでに設定があればそちらを残し、変更元の行は消す（表がまだ無い環境では何もしない）
+    let companySettings: 'none' | 'moved' | 'kept_target' = 'none';
+    try {
+      const { data: fromSetting } = await adminClient
+        .from('company_settings')
+        .select('company')
+        .eq('company', from)
+        .maybeSingle();
+
+      if (fromSetting) {
+        const { data: toSetting } = await adminClient
+          .from('company_settings')
+          .select('company')
+          .eq('company', to)
+          .maybeSingle();
+
+        if (toSetting) {
+          const { error } = await adminClient.from('company_settings').delete().eq('company', from);
+          if (error) console.warn('[Company Rename] company_settings cleanup warning:', error.message);
+          else companySettings = 'kept_target';
+        } else {
+          const { error } = await adminClient.from('company_settings').update({ company: to }).eq('company', from);
+          if (error) console.warn('[Company Rename] company_settings rename warning:', error.message);
+          else companySettings = 'moved';
+        }
+      }
+    } catch (e) {
+      console.warn('[Company Rename] company_settings warning:', e);
+    }
+
     return NextResponse.json({
       success: true,
       from,
@@ -112,6 +144,7 @@ export async function POST(request: NextRequest) {
       updatedProfiles: updatedProfileCount,
       laborConsultantMappingsRenamed: lccUpdated,
       laborConsultantMappingsMerged: lccMerged,
+      companySettings,
       message:
         updatedProfileCount > 0
           ? `${updatedProfileCount}名のユーザーを「${to}」に統合しました`

@@ -10,6 +10,7 @@ const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
  * - 会社の全ユーザーを auth.users / user_profiles から削除
  * - 関連レコード (video_view_logs / user_courses / certificates etc.) も削除
  * - labor_consultant_companies の該当会社マッピングも削除
+ * - company_settings（会社ごとの研修期間）も削除（呼び出し元 admin 自身がその会社に残る場合は残す）
  * - 呼び出し元 admin 自身は対象から除外（誤って自分を消さないように）
  */
 export async function POST(request: NextRequest) {
@@ -57,6 +58,11 @@ export async function POST(request: NextRequest) {
         .eq('company', companyName);
       if (lccError) {
         console.warn('[Company Delete] labor_consultant_companies cleanup warning:', lccError.message);
+      }
+      // 自分しか残っていない会社は存続するので、company_settings（研修期間）は残す。誰もいなければ消す
+      if ((usersInCompany ?? []).length === 0) {
+        const { error: csError } = await adminClient.from('company_settings').delete().eq('company', companyName);
+        if (csError) console.warn('[Company Delete] company_settings cleanup warning:', csError.message);
       }
       return NextResponse.json({
         success: true,
@@ -158,6 +164,17 @@ export async function POST(request: NextRequest) {
         .eq('company', companyName);
     } catch (e) {
       console.warn('[Company Delete] labor_consultant_companies cleanup skipped:', e);
+    }
+
+    // 8. company_settings（会社ごとの研修期間）を削除。
+    // 呼び出した管理者自身がこの会社にいる場合は会社が残るので、設定も残す（表がまだ無い環境では何もしない）
+    if (!(usersInCompany ?? []).some(u => u.id === auth.user.id)) {
+      try {
+        const { error: csError } = await adminClient.from('company_settings').delete().eq('company', companyName);
+        if (csError) console.warn('[Company Delete] company_settings cleanup warning:', csError.message);
+      } catch (e) {
+        console.warn('[Company Delete] company_settings cleanup skipped:', e);
+      }
     }
 
     return NextResponse.json({
