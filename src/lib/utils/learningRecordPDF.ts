@@ -6,9 +6,9 @@ import type { AnswerDateEntry } from '@/lib/records/answerDates';
 import type { CompanyTrainingPeriod } from '@/lib/companies/companySettings';
 
 // テスト実施記録PDF（証拠書類）。小テスト・最終テストの回答と添削を載せる（動画の視聴記録は学習ログで見る）。
-// 日付は基本情報（研修開始日・研修終了日・受講開始・修了日・発行日）だけ。
+// 日付は基本情報の研修期間と発行日だけ（受講開始・修了日・標準学習時間・標準学習期間は 2026-11-11 の依頼で載せないことにした）。
 // 「1. 小テスト記録」より下には日付を載せない（SHOW_TEST_DATES）。
-// 研修開始日・研修終了日は会社ごとの任意の設定（company_settings）。設定のある会社の受講者だけ行を出す。
+// 研修期間は会社ごとの任意の設定（company_settings の研修開始日・研修終了日）。設定のある会社の受講者だけ行を出す。
 // 回答日・就業時間外かどうか・回答日の修正は、画面の「日付・就業日」（RecordEditPanel）で確認する。
 // 日本語の長文が複数ページに渡っても崩れないよう、HTMLをブラウザで描画→html2canvasで画像にして
 // A4縦のjsPDFに貼り付ける。画面での閲覧（RecordViewer）も同じ HTML（buildRecordHTML）を使う。
@@ -128,6 +128,9 @@ const escAttr = (s: unknown) => esc(s).replace(/"/g, '&quot;').replace(/'/g, '&#
 
 const fmtDateTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString('ja-JP') : '—');
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('ja-JP') : '—');
+/** 'YYYY-MM-DD' → '2026/10/01'（月・日を2桁にそろえる。研修期間の表示用）。日付が無ければ空文字 */
+const fmtYmdPadded = (date: string | null | undefined) =>
+  date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date.replace(/-/g, '/') : '';
 
 /**
  * 「1. 小テスト記録」より下に日付（回答日・添削日時・出力日）を載せるか。
@@ -249,9 +252,6 @@ const RECORD_CSS = `
 `;
 
 export function buildRecordHTML(d: LearningRecordData): string {
-  const stdMin = d.course.standard_learning_minutes;
-  const stdTime = stdMin ? `${Math.floor(stdMin / 60)}時間${stdMin % 60}分（${stdMin}分）` : '—';
-
   const choiceSections = d.choiceQuizzes
     .map((q) => {
       const qs = q.questions
@@ -372,14 +372,15 @@ export function buildRecordHTML(d: LearningRecordData): string {
     (d.choiceQuizzes.length > 0 ? `${sectionHead('小テスト記録')}${choiceSections}` : '') +
     (d.essayQuizzes.length > 0 ? `${sectionHead('最終テスト・添削記録')}${essaySections}` : '');
 
-  // 修了日と発行日は同じ日（修了証は修了した日に発行される。どちらも certificates.completion_date）
+  // 発行日は修了日と同じ日（修了証は修了した日に発行される。certificates.completion_date）
   const completionDate = fmtDate(d.period.completion_date ?? d.certificate?.completion_date ?? null);
 
-  // 会社ごとの研修期間（任意の設定）。どちらかが設定されている会社だけ行を出し、設定の無い方は「—」にする
+  // 会社ごとの研修期間（任意の設定）。「2026/10/01～2027/03/31」の形で1項目にまとめる。
+  // どちらかが設定されている会社だけ行を出し、設定の無い方は空ける（「2026/10/01～」「～2027/03/31」）
   const training = d.trainingPeriod;
   const trainingRow =
     training && (training.training_start_date || training.training_end_date)
-      ? `<tr><td class="k">研修開始日</td><td>${fmtYmd(training.training_start_date)}</td><td class="k">研修終了日</td><td>${fmtYmd(training.training_end_date)}</td></tr>`
+      ? `<tr><td class="k">研修期間</td><td colspan="3">${fmtYmdPadded(training.training_start_date)}～${fmtYmdPadded(training.training_end_date)}</td></tr>`
       : '';
 
   return `
@@ -393,8 +394,6 @@ export function buildRecordHTML(d: LearningRecordData): string {
       <tr><td class="k">氏名</td><td>${esc(d.student.name)}</td><td class="k">所属</td><td>${esc(d.student.company)} ${esc(d.student.department)}</td></tr>
       <tr><td class="k">コース名</td><td>${esc(d.course.title)}</td><td class="k">訓練区分</td><td>${esc(d.course.training_type_note || '—')}</td></tr>
       ${trainingRow}
-      <tr><td class="k">受講開始</td><td>${fmtDate(d.period.assigned_at)}</td><td class="k">修了日</td><td>${completionDate}</td></tr>
-      <tr><td class="k">標準学習時間</td><td>${stdTime}</td><td class="k">標準学習期間</td><td>${esc(d.course.standard_learning_period || '—')}</td></tr>
       <tr><td class="k">受講時間合計</td><td>${fmtDuration(d.totalWatchedSeconds)}</td><td class="k">テスト通過</td><td>${d.testsPassed === null ? '—' : d.testsPassed ? '全通過' : '未通過'}</td></tr>
       <tr><td class="k">証明書ID</td><td>${esc(d.certificate?.id || '—')}</td><td class="k">発行日</td><td>${d.certificate ? completionDate : '—'}</td></tr>
     </table>
