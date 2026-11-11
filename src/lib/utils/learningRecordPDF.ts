@@ -3,9 +3,12 @@ import html2canvas from 'html2canvas';
 import { circledNumber } from '@/lib/quiz/redpen';
 import { fmtYmd, type WorkException, type WorkSchedule } from '@/lib/records/workSchedule';
 import type { AnswerDateEntry } from '@/lib/records/answerDates';
+import type { CompanyTrainingPeriod } from '@/lib/companies/companySettings';
 
 // テスト実施記録PDF（証拠書類）。小テスト・最終テストの回答と添削を載せる（動画の視聴記録は学習ログで見る）。
-// 日付は基本情報（受講開始・修了日・発行日）だけ。「1. 小テスト記録」より下には日付を載せない（SHOW_TEST_DATES）。
+// 日付は基本情報（研修開始日・研修終了日・受講開始・修了日・発行日）だけ。
+// 「1. 小テスト記録」より下には日付を載せない（SHOW_TEST_DATES）。
+// 研修開始日・研修終了日は会社ごとの任意の設定（company_settings）。設定のある会社の受講者だけ行を出す。
 // 回答日・就業時間外かどうか・回答日の修正は、画面の「日付・就業日」（RecordEditPanel）で確認する。
 // 日本語の長文が複数ページに渡っても崩れないよう、HTMLをブラウザで描画→html2canvasで画像にして
 // A4縦のjsPDFに貼り付ける。画面での閲覧（RecordViewer）も同じ HTML（buildRecordHTML）を使う。
@@ -36,6 +39,8 @@ export interface LearningRecordData {
     test_required: boolean;
   };
   period: { assigned_at: string | null; completion_date: string | null };
+  /** 会社ごとの研修開始日・研修終了日（任意の設定。どちらも未設定の会社は null） */
+  trainingPeriod?: CompanyTrainingPeriod | null;
   certificate: { id: string; completion_date: string } | null;
   videos: {
     title: string;
@@ -370,6 +375,13 @@ export function buildRecordHTML(d: LearningRecordData): string {
   // 修了日と発行日は同じ日（修了証は修了した日に発行される。どちらも certificates.completion_date）
   const completionDate = fmtDate(d.period.completion_date ?? d.certificate?.completion_date ?? null);
 
+  // 会社ごとの研修期間（任意の設定）。どちらかが設定されている会社だけ行を出し、設定の無い方は「—」にする
+  const training = d.trainingPeriod;
+  const trainingRow =
+    training && (training.training_start_date || training.training_end_date)
+      ? `<tr><td class="k">研修開始日</td><td>${fmtYmd(training.training_start_date)}</td><td class="k">研修終了日</td><td>${fmtYmd(training.training_end_date)}</td></tr>`
+      : '';
+
   return `
   <div class="lr-doc">
     <style>${RECORD_CSS}</style>
@@ -380,6 +392,7 @@ export function buildRecordHTML(d: LearningRecordData): string {
     <table class="info keep">
       <tr><td class="k">氏名</td><td>${esc(d.student.name)}</td><td class="k">所属</td><td>${esc(d.student.company)} ${esc(d.student.department)}</td></tr>
       <tr><td class="k">コース名</td><td>${esc(d.course.title)}</td><td class="k">訓練区分</td><td>${esc(d.course.training_type_note || '—')}</td></tr>
+      ${trainingRow}
       <tr><td class="k">受講開始</td><td>${fmtDate(d.period.assigned_at)}</td><td class="k">修了日</td><td>${completionDate}</td></tr>
       <tr><td class="k">標準学習時間</td><td>${stdTime}</td><td class="k">標準学習期間</td><td>${esc(d.course.standard_learning_period || '—')}</td></tr>
       <tr><td class="k">受講時間合計</td><td>${fmtDuration(d.totalWatchedSeconds)}</td><td class="k">テスト通過</td><td>${d.testsPassed === null ? '—' : d.testsPassed ? '全通過' : '未通過'}</td></tr>

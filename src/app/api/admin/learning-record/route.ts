@@ -6,6 +6,7 @@ import { aiInstructorLabel, isAutoOrigin, reviewSignature } from '@/lib/quiz/aiI
 import { consultantCompanyScope, inScope } from '@/lib/auth/consultantScope';
 import { exceptionFromRow, scheduleFromRow, scheduleSummary } from '@/lib/records/workSchedule';
 import { createAnswerDateResolver } from '@/lib/records/answerDates';
+import type { CompanyTrainingPeriod } from '@/lib/companies/companySettings';
 
 export const runtime = 'nodejs';
 
@@ -34,6 +35,22 @@ export async function GET(request: NextRequest) {
   const scope = await consultantCompanyScope(admin, auth);
   if (!inScope(scope, student?.company)) {
     return NextResponse.json({ error: 'この受講者の記録を見る権限がありません' }, { status: 403 });
+  }
+
+  // 会社ごとの研修期間（任意の設定）。未設定の会社・表がまだ無い環境では null（実施記録に行を出さない）
+  let trainingPeriod: CompanyTrainingPeriod | null = null;
+  if (student?.company) {
+    const { data: companySetting } = await admin
+      .from('company_settings')
+      .select('training_start_date, training_end_date')
+      .eq('company', student.company)
+      .maybeSingle();
+    if (companySetting && (companySetting.training_start_date || companySetting.training_end_date)) {
+      trainingPeriod = {
+        training_start_date: companySetting.training_start_date || null,
+        training_end_date: companySetting.training_end_date || null,
+      };
+    }
   }
 
   // コース
@@ -328,6 +345,8 @@ export async function GET(request: NextRequest) {
       assigned_at: uc?.assigned_at || null,
       completion_date: cert?.completion_date || null,
     },
+    // 会社ごとの研修開始日・研修終了日（設定されている会社だけ）
+    trainingPeriod,
     certificate: cert ? { id: cert.id, completion_date: cert.completion_date } : null,
     videos: videoRecords,
     choiceQuizzes,
